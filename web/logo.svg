@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <bx:export>
+      <bx:file format="svg"/>
+    </bx:export>
+  </defs>
+  <rect x="24.558" y="21.98" width="270.903" height="270.903" style="fill: rgb(255, 0, 0); stroke: rgb(0, 0, 0); stroke-width: 20px;"/>
+  <rect x="118.596" y="113.215" width="270.903" height="270.903" style="fill: rgb(255, 255, 0); stroke: rgb(0, 0, 0); stroke-width: 20px;"/>
+  <g style="" transform="matrix(0.949901, 0, 0, 0.949901, 20.393593, 16.199547)">
+    <rect x="205.33" y="208.997" width="285.191" height="285.191" style="stroke: rgb(0, 0, 0); stroke-width: 21.0548px; fill: rgb(0, 255, 0);"/>
+  </g>
+</svg>

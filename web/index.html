@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SpaceBrowser</title>
+  <link rel="icon" href="logo.svg" type="image/svg">
+  <link rel="stylesheet" href="style.css">
+  <script src="eel.js"></script>
+  <script src="app.js" defer></script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="controls">
+      <input type="text" id="pathInput" placeholder="Enter folder path" value="/home" />
+      <button onclick="triggerFolderSelect()">📁 Browse Folder</button>
+      <button onclick="analyze()">Analyze</button>
+      <button id="rootButton", onclick="goToRoot()" disabled>🗺️ Zoom Full</button>
+      <button id="parentButton" onclick="goToParent()" disabled>⬆️ Go to Parent</button>
+      <button id="backwardButton" onclick="goBackward()" disabled>⬅️ Back</button>
+      <button id="forwardButton" onclick="goForward()" disabled>➡️ Forward</button>
+
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;" />
+    </div>
+    <canvas id="treemap"></canvas>
+  </div>
+  <ul id="contextMenu" class="context-menu">
+    <li onclick="navigateToSelected()">🔍 Go to</li>
+    <li onclick="openInSystemBrowser()">📂 Open in browser</li>
+  </ul>
+</body>
+
+</html>
