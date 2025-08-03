@@ -1,10 +1,20 @@
 let cachedTree = null;
 let focusedCachedTree = null;
 let cachedRects = null
-let selectedRect = null;
-let canvas = null;
+let selectedRectIndex = -1;
+
 let navHistory = [];
 let navIndex = -1;
+
+let colorCanvas = null, colorCtx = null;
+let idCanvas = null, idCtx = null;
+let tmpCanvas = null, tmpCtx = null;
+let maskCanvas = null, maskCtx = null;
+
+const folderColors = [
+    "#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff",
+    "#bfbfff", "#bfbfbf"
+];
 
 const PADDING = 5;
 const MIN_SIZE = 4;
@@ -29,37 +39,41 @@ document.getElementById("folderInput").addEventListener("change", function (even
 });
 
 window.addEventListener("load", () => {
-    canvas = document.getElementById("treemap");
+    colorCanvas = document.getElementById("colorCanvas");
+    idCanvas = document.getElementById("idCanvas");
+    tmpCanvas = document.getElementById("tmpCanvas");
+    maskCanvas = document.getElementById("maskCanvas");
+
+    colorCtx = colorCanvas.getContext("2d");
+    idCtx = idCanvas.getContext("2d");
+    tmpCtx = tmpCanvas.getContext("2d", {alpha: true});
+    maskCtx = maskCanvas.getContext("2d", {alpha: true});
+
     resizeCanvas();
 
-    canvas.addEventListener("click", (e) => {
+    colorCanvas.addEventListener("click", (e) => {
         const { x, y } = getCanvasCoords(e);
-        const rect = rectAtPoint(x, y);
-        if (rect && !rect.node.is_free_space) {
-            selectedRect = rect;
-            redraw();
-        }else{
-            selectedRect = null;
-        }
+        const index = rectIdAtPoint(x, y);
+        if (index >= 0)
+            selectRect(index);
+
     });
 
-    canvas.addEventListener("contextmenu", (e) => {
+    colorCanvas.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const { x, y } = getCanvasCoords(e);
-        const clicked = rectAtPoint(x, y);
-        if (clicked && !clicked.node.is_free_space) {
-            selectedRect = clicked;
-            showContextMenu(e.pageX, e.pageY, clicked);
-            redraw();
+        const index = rectIdAtPoint(x, y);
+        selectRect(index, dontDeselect=true);
+        if (index >= 0 && !cachedRects[index].node.is_free_space) {
+            showContextMenu(e.pageX, e.pageY);
         } else {
             hideContextMenu();
-            selectedRect = null;
         }
     });
 });
 
 function getCanvasCoords(event) {
-    const rect = canvas.getBoundingClientRect();
+    const rect = colorCanvas.getBoundingClientRect();
     return {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top
@@ -73,17 +87,33 @@ window.addEventListener("resize", () => {
 });
 
 function resizeCanvas() {
-    const containerRect = canvas.parentElement.getBoundingClientRect();
+    const containerRect = colorCanvas.parentElement.getBoundingClientRect();
     const controlsRect = document.querySelector(".controls").getBoundingClientRect();
 
     const width = containerRect.width;
     const height = window.innerHeight - controlsRect.height;
+    const dpr = window.devicePixelRatio || 1;
 
-    canvas.width = width;
-    canvas.height = height;
+    colorCanvas.width = width * dpr;
+    colorCanvas.height = height * dpr;
+    idCanvas.width = width * dpr;
+    idCanvas.height = height * dpr;
 
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    colorCanvas.style.width = `${width}px`;
+    colorCanvas.style.height = `${height}px`;
+    idCanvas.style.width = `${width}px`;
+    idCanvas.style.height = `${height}px`;
+
+
+    tmpCanvas.width = width * dpr;
+    tmpCanvas.height = height * dpr;
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+
+    tmpCtx.setTransform(1, 0, 0, 1, 0, 0);
+    tmpCtx.scale(dpr, dpr);
+
+
 }
 
 function setUIBusy(state) {
@@ -116,6 +146,7 @@ async function analyze() {
             cachedTree = tree;
             navHistory = [];
             navIndex = -1;
+            selectedRectIndex = -1
             visit(cachedTree);
             redraw();
         }
@@ -129,7 +160,7 @@ async function analyze() {
 
 function redraw() {
     if (!focusedCachedTree) return;
-    cachedRects = layoutTree(focusedCachedTree, 0, 0, canvas.width, canvas.height);
+    cachedRects = layoutTree(focusedCachedTree, 0, 0, colorCanvas.width, colorCanvas.height);
     drawTreemap(cachedRects);
 }
 
@@ -160,43 +191,88 @@ function layoutTree(node, x, y, w, h) {
 }
 
 function drawTreemap(rects) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const colorCtx = colorCanvas.getContext("2d");
+    colorCtx.clearRect(0, 0, colorCanvas.width, colorCanvas.height);
 
-    const folderColors = [
-        "#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff",
-        "#bfbfff", "#bfbfbf"
-    ];
-
-   for (const rect of rects) {
-        const isSelected = selectedRect && rect.node === selectedRect.node;
-
-        // Background
-        ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
-        if (rect.node.is_free_space)
-            ctx.fillStyle = "#eee"
-        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-        // Diagonal for files
-        if (!rect.node.is_folder) {
-            drawDiagonalCross(ctx, rect.x, rect.y, rect.w, rect.h, 6, isSelected ? "#fff" : "#555");
-        }
-
-        // Border
-        ctx.strokeStyle = "#222";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
-
-        // Label
-        if (rect.w > 60 && rect.h > 15) {
-            ctx.font = `${FONT_SIZE}px sans-serif`;
-            const maxTextWidth = rect.w - 6;
-            const label = truncateText(ctx, rect.node.name, maxTextWidth);
-            ctx.fillStyle = isSelected ? "#fff" : "#000";
-            ctx.fillText(label, rect.x + 4, rect.y + FONT_SIZE + 1);
-        }
+    for (const [index, rect] of rects.entries()){
+        drawRect(index, rect, true);
     }
 }
+
+function drawRect(index, rect, drawId = true, ctxOverride = null) {
+    const ctx = ctxOverride || colorCtx;
+    // const idCtx = idCanvas.getContext("2d");
+    
+    const isSelected = index === selectedRectIndex;
+    console.log("Drawing index:", index, "Selected:", selectedRectIndex, "=>", isSelected);
+    ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
+    if (rect.node.is_free_space)
+        ctx.fillStyle = "#eee";
+
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+
+    if (!rect.node.is_folder) {
+        drawDiagonalCross(ctx, rect.x, rect.y, rect.w, rect.h, 6, isSelected ? "#fff" : "#555");
+    }
+
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+
+    if (rect.w > 60 && rect.h > 15) {
+        ctx.font = `${FONT_SIZE}px sans-serif`;
+        const maxTextWidth = rect.w - 6;
+        const label = truncateText(ctx, rect.node.name, maxTextWidth);
+        ctx.fillStyle = isSelected ? "#fff" : "#000";
+        ctx.fillText(label, rect.x + 4, rect.y + FONT_SIZE + 1);
+    }
+
+    if (drawId && ctx === colorCanvas.getContext("2d")) {
+        const id = index + 1;
+        const idColor = [(id >> 16) & 0xff, (id >> 8) & 0xff, id & 0xff];
+        idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
+        idCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    }
+}
+
+
+function reDrawRect(index) {
+
+    const rect = cachedRects[index];
+    if (!rect || rect.w <= 0 || rect.h <= 0) return;
+    const { x, y, w, h, node } = rect;
+
+    // Pixels of the drawn rect
+    drawRect(index, rect, false, tmpCtx);  
+
+    // Creating a mask to only blit this rect
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskCtx.fillStyle = 'rgba(0,0,0,1)';
+    maskCtx.fillRect(x, y, w, h);
+
+    maskCtx.save();
+    maskCtx.globalCompositeOperation = 'destination-out';
+  
+    // carving out the rect childs from the mask !
+    if (node.is_folder && node.children) {
+        for (const child of node.children) {
+            if (child.rect) {
+                const cr = child.rect;
+                maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
+                console.log('masking', cr.x, cr.y, cr.w, cr.h)
+            }
+        }
+    }
+    maskCtx.restore();
+
+    tmpCtx.globalCompositeOperation = 'destination-in';
+    tmpCtx.drawImage(maskCanvas, 0, 0);
+    tmpCtx.globalCompositeOperation = 'source-over';
+
+    colorCtx.drawImage(tmpCanvas, 0, 0);
+
+}
+
 
 function truncateText(ctx, text, maxWidth) {
     if (ctx.measureText(text).width <= maxWidth) return text;
@@ -315,34 +391,15 @@ function worstAspect(row, area, w, h) {
     return worst;
 }
 
-function isInRect(x, y, rect){
-    return  x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
+function rectIdAtPoint(x, y){
+    const idCtx = idCanvas.getContext("2d");
+    const pixel = idCtx.getImageData(x, y, 1, 1).data;
+    const id = ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
+    return id;
 }
 
 
-function nodeAtPoint(x, y, node){
-    if (node.is_folder && node.children.length > 0){
-        in_rect_child = node.children.find(n => n.rect && isInRect(x, y, n.rect))
-        if (in_rect_child){
-            return nodeAtPoint(x, y, in_rect_child)
-        }
-        return node;
-    }
-    return node;
-}
-
-function rectAtPoint(x, y){
-    if (!focusedCachedTree)
-        return null
-    if (isInRect(x, y, focusedCachedTree.rect)){
-        node = nodeAtPoint(x, y, focusedCachedTree)
-        return node.rect
-    }
-}
-
-
-function showContextMenu(x, y, rect) {
-    selectedRect = rect;
+function showContextMenu(x, y,) {
     const menu = document.getElementById("contextMenu");
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
@@ -350,50 +407,56 @@ function showContextMenu(x, y, rect) {
 }
 
 
-
 function hideContextMenu() {
     document.getElementById("contextMenu").style.display = "none";
-    selectedRect = null;
+    //selectRect(-1)
+}
+
+function selectRect(rectIndex, dontDeselect=false){
+    if (selectedRectIndex == rectIndex)
+        if(rectIndex >= 0 && !dontDeselect){
+            rectIndex = -1;
+        }else{
+            return;
+        }
+    prev_selectedRectIndex = selectedRectIndex
+    selectedRectIndex = rectIndex
+  
+    reDrawRect(prev_selectedRectIndex)
+    reDrawRect(selectedRectIndex)
 }
 
 window.addEventListener("click", () => hideContextMenu());
 
 async function openInSystemBrowser() {
-    if (selectedRect) {
-        await eel.open_in_file_browser(selectedRect.node.full_path)();
+    if (selectedRectIndex > 0 && selectedRectIndex < cachedRects.length) {
+        node = cachedRects[selectedRectIndex].node
+        await eel.open_in_file_browser(node.full_path)();
         hideContextMenu();
     }
 }
 
 function navigateToSelected() {
-    if (selectedRect?.node.is_folder) {
-        visit(selectedRect.node)
-        redraw()
-    } else {
-        console.warn("Not a folder:", selectedRect.node.full_path);
+    if (selectedRectIndex > 0 && selectedRectIndex < cachedRects.length) {
+        node = cachedRects[selectedRectIndex].node;
+        visit(node);
     }
 }
 
 function goToRoot() {
     if (!cachedTree) return;
     visit(cachedTree);
-    redraw();
-    updateNavButtons();
 }
 
 function goToParent() {
     if (!focusedCachedTree || !focusedCachedTree.parent) return;
 
     visit(focusedCachedTree.parent);
-    redraw();
-    updateNavButtons();
 }
 
 
-
-
 function visit(node) {
-    if (node === focusedCachedTree)
+    if (node === focusedCachedTree || !node.is_folder)
         return
 
     // Truncate future history if we went back and then change focus
@@ -403,6 +466,9 @@ function visit(node) {
     navIndex = navHistory.length - 1;
 
     focusedCachedTree = node;
+
+    selectedRectIndex = -1;
+
     redraw();
     updateNavButtons();
 }

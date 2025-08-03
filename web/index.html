@@ -22,7 +22,11 @@
 
       <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;" />
     </div>
-    <canvas id="treemap"></canvas>
+    <canvas id="idCanvas" style="display: none"></canvas>
+    <canvas id="tmpCanvas" style="display: none"></canvas>
+    <canvas id="maskCanvas" style="display: none"></canvas>
+    <canvas id="colorCanvas"></canvas>
+    
   </div>
   <ul id="contextMenu" class="context-menu">
     <li onclick="navigateToSelected()">🔍 Go to</li>
