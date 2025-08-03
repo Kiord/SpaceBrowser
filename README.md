@@ -1,6 +1,11 @@
 # <img src="web/logo.svg " height="20">  SpaceBrowser
 
-A cross-platform port of SpaceMonger written in Python (with Eel) and Javascript.
+A cross-platform port of SpaceMonger written in Python and Javascript.
+
+The only dependancy is Eel for the Python/JS interface. 
+```
+pip install eel
+```
 
 <img src="web/screenshot.jpg ">
 
