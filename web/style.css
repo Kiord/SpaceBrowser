@@ -40,11 +40,17 @@ html, body {
   background-color: #45a049;
 }
 
-canvas#treemap {
-  flex: 1;
-  width: 100%;
-  display: block;
-  box-sizing: border-box;
+#idCanvas {
+  z-index: 0;
+  pointer-events: none;
+}
+#tmpCanvas,
+#maskCanvas {
+  z-index: 1;
+  display: none;
+}
+#colorCanvas {
+  z-index: 2;
 }
 
 .context-menu {

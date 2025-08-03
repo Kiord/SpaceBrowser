@@ -46,6 +46,7 @@ window.addEventListener("load", () => {
 
     colorCtx = colorCanvas.getContext("2d");
     idCtx = idCanvas.getContext("2d");
+    idCtx.imageSmoothingEnabled = false;
     tmpCtx = tmpCanvas.getContext("2d", {alpha: true});
     maskCtx = maskCanvas.getContext("2d", {alpha: true});
 
@@ -199,12 +200,20 @@ function drawTreemap(rects) {
     }
 }
 
+function colorToId(color){
+    return ((color[0] << 16) | (color[1] << 8) | color[2]) - 1;
+}
+
+function idToColor(id){
+    const code = id + 1
+    return idColor = [(code >> 16) & 0xff, (code >> 8) & 0xff, code & 0xff];
+}
+
 function drawRect(index, rect, drawId = true, ctxOverride = null) {
     const ctx = ctxOverride || colorCtx;
     // const idCtx = idCanvas.getContext("2d");
     
     const isSelected = index === selectedRectIndex;
-    console.log("Drawing index:", index, "Selected:", selectedRectIndex, "=>", isSelected);
     ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
     if (rect.node.is_free_space)
         ctx.fillStyle = "#eee";
@@ -228,10 +237,9 @@ function drawRect(index, rect, drawId = true, ctxOverride = null) {
     }
 
     if (drawId && ctx === colorCanvas.getContext("2d")) {
-        const id = index + 1;
-        const idColor = [(id >> 16) & 0xff, (id >> 8) & 0xff, id & 0xff];
+        const idColor = idToColor(index)
         idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
-        idCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
     }
 }
 
@@ -259,7 +267,6 @@ function reDrawRect(index) {
             if (child.rect) {
                 const cr = child.rect;
                 maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
-                console.log('masking', cr.x, cr.y, cr.w, cr.h)
             }
         }
     }
@@ -391,10 +398,19 @@ function worstAspect(row, area, w, h) {
     return worst;
 }
 
-function rectIdAtPoint(x, y){
-    const idCtx = idCanvas.getContext("2d");
-    const pixel = idCtx.getImageData(x, y, 1, 1).data;
-    const id = ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
+// function rectIdAtPoint(x, y){
+//     const idCtx = idCanvas.getContext("2d");
+//     const pixel = idCtx.getImageData(x, y, 1, 1).data;
+//     const id = ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
+//     return id;
+// }
+
+function rectIdAtPoint(x, y) {
+    const dpr = window.devicePixelRatio || 1;
+    const px = Math.round(x * dpr);
+    const py = Math.round(y * dpr);
+    const pixel = idCtx.getImageData(px, py, 1, 1).data;
+    const id = colorToId(pixel)// ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
     return id;
 }
 
@@ -429,7 +445,7 @@ function selectRect(rectIndex, dontDeselect=false){
 window.addEventListener("click", () => hideContextMenu());
 
 async function openInSystemBrowser() {
-    if (selectedRectIndex > 0 && selectedRectIndex < cachedRects.length) {
+    if (selectedRectIndex >= 0 && selectedRectIndex < cachedRects.length) {
         node = cachedRects[selectedRectIndex].node
         await eel.open_in_file_browser(node.full_path)();
         hideContextMenu();
@@ -437,7 +453,7 @@ async function openInSystemBrowser() {
 }
 
 function navigateToSelected() {
-    if (selectedRectIndex > 0 && selectedRectIndex < cachedRects.length) {
+    if (selectedRectIndex >= 0 && selectedRectIndex < cachedRects.length) {
         node = cachedRects[selectedRectIndex].node;
         visit(node);
     }
