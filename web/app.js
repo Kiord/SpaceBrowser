@@ -45,7 +45,7 @@ window.addEventListener("load", () => {
     maskCanvas = document.getElementById("maskCanvas");
 
     colorCtx = colorCanvas.getContext("2d");
-    idCtx = idCanvas.getContext("2d");
+    idCtx = idCanvas.getContext("2d", { willReadFrequently: true });
     idCtx.imageSmoothingEnabled = false;
     tmpCtx = tmpCanvas.getContext("2d", {alpha: true});
     maskCtx = maskCanvas.getContext("2d", {alpha: true});
