@@ -81,11 +81,18 @@ function getCanvasCoords(event) {
     };
 }
 
-window.addEventListener("resize", () => {
-    console.log("resizing!")
+function debounce(func, delay) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+
+window.addEventListener("resize", debounce(() => {
     resizeCanvas();
     redraw();
-});
+}, 150));
 
 function resizeCanvas() {
     const containerRect = colorCanvas.parentElement.getBoundingClientRect();
