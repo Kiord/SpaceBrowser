@@ -21,42 +21,44 @@ class FileRecord:
         self.size = size
         self.depth = depth
 
+
 class DirRecord(FileRecord):
     def __init__(self, path, depth=0):
         super().__init__(path, 0, depth)
         self.contains = []
-        
+
         if os.path.islink(self.full_path):
-            return 
-        
-        try:
-            entries = os.listdir(self.full_path)
-        except Exception:
             return
 
-        for f in entries:
-            p = os.path.join(self.full_path, f)
+        try:
+            with os.scandir(self.full_path) as entries:
+                for entry in entries:
+                    p = entry.path
 
-            if p in EXCLUDED_PATHS:
-                continue
+                    if p in EXCLUDED_PATHS:
+                        continue
 
-            try:
-                st = os.stat(p)
-            except:
-                continue
+                    try:
+                        if entry.is_symlink():
+                            continue
 
-            if stat.S_ISDIR(st.st_mode):
-                d = DirRecord(p, depth + 1)
-                self.contains.append(d)
-                self.size += d.size
+                        if entry.is_dir(follow_symlinks=False):
+                            d = DirRecord(p, depth + 1)
+                            self.contains.append(d)
+                            self.size += d.size
 
-            elif stat.S_ISREG(st.st_mode):
-                if MIN_FILE_SIZE > 0 and st.st_size < MIN_FILE_SIZE:
-                    continue
+                        elif entry.is_file(follow_symlinks=False):
+                            stat_info = entry.stat()
+                            if MIN_FILE_SIZE > 0 and stat_info.st_size < MIN_FILE_SIZE:
+                                continue
+                            fm = FileRecord(p, stat_info.st_size, depth + 1)
+                            self.contains.append(fm)
+                            self.size += stat_info.st_size
 
-                fm = FileRecord(f, st.st_size, depth + 1)
-                self.contains.append(fm)
-                self.size += st.st_size
+                    except Exception:
+                        continue  # skip unreadable entry
+        except Exception:
+            return  # skip unreadable directory
 
         self.contains.sort(key=lambda f: f.size, reverse=True)
 
