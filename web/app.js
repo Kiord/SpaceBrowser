@@ -1,15 +1,19 @@
-let cachedTree = null;
-let focusedCachedTree = null;
-let cachedRects = null
-let selectedRectIndex = -1;
-
-let navHistory = [];
-let navIndex = -1;
-
-let colorCanvas = null, colorCtx = null;
-let idCanvas = null, idCtx = null;
-let tmpCanvas = null, tmpCtx = null;
-let maskCanvas = null, maskCtx = null;
+const AppState = {
+    cachedTree: null,
+    focusedCachedTree: null,
+    cachedRects: null,
+    selectedRectIndex: -1,
+    navHistory: [],
+    navIndex: -1,
+    colorCanvas: null,
+    colorCtx: null,
+    idCanvas: null,
+    idCtx: null,
+    tmpCanvas: null,
+    tmpCtx: null,
+    maskCanvas: null,
+    maskCtx: null,
+};
 
 const folderColors = [
     "#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff",
@@ -39,20 +43,20 @@ document.getElementById("folderInput").addEventListener("change", function (even
 });
 
 window.addEventListener("load", () => {
-    colorCanvas = document.getElementById("colorCanvas");
-    idCanvas = document.getElementById("idCanvas");
-    tmpCanvas = document.getElementById("tmpCanvas");
-    maskCanvas = document.getElementById("maskCanvas");
+    AppState.colorCanvas = document.getElementById("colorCanvas");
+    AppState.idCanvas = document.getElementById("idCanvas");
+    AppState.tmpCanvas = document.getElementById("tmpCanvas");
+    AppState.maskCanvas = document.getElementById("maskCanvas");
 
-    colorCtx = colorCanvas.getContext("2d");
-    idCtx = idCanvas.getContext("2d", { willReadFrequently: true });
-    idCtx.imageSmoothingEnabled = false;
-    tmpCtx = tmpCanvas.getContext("2d", {alpha: true});
-    maskCtx = maskCanvas.getContext("2d", {alpha: true});
+    AppState.colorCtx = AppState.colorCanvas.getContext("2d");
+    AppState.idCtx = AppState.idCanvas.getContext("2d", { willReadFrequently: true });
+    AppState.idCtx.imageSmoothingEnabled = false;
+    AppState.tmpCtx = AppState.tmpCanvas.getContext("2d", {alpha: true});
+    AppState.maskCtx = AppState.maskCanvas.getContext("2d", {alpha: true});
 
     resizeCanvas();
 
-    colorCanvas.addEventListener("click", (e) => {
+    AppState.colorCanvas.addEventListener("click", (e) => {
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
         if (index >= 0)
@@ -60,12 +64,12 @@ window.addEventListener("load", () => {
 
     });
 
-    colorCanvas.addEventListener("contextmenu", (e) => {
+    AppState.colorCanvas.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
         selectRect(index, dontDeselect=true);
-        if (index >= 0 && !cachedRects[index].node.is_free_space) {
+        if (index >= 0 && !AppState.cachedRects[index].node.is_free_space) {
             showContextMenu(e.pageX, e.pageY);
         } else {
             hideContextMenu();
@@ -74,7 +78,7 @@ window.addEventListener("load", () => {
 });
 
 function getCanvasCoords(event) {
-    const rect = colorCanvas.getBoundingClientRect();
+    const rect = AppState.colorCanvas.getBoundingClientRect();
     return {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top
@@ -95,31 +99,31 @@ window.addEventListener("resize", debounce(() => {
 }, 150));
 
 function resizeCanvas() {
-    const containerRect = colorCanvas.parentElement.getBoundingClientRect();
+    const containerRect = AppState.colorCanvas.parentElement.getBoundingClientRect();
     const controlsRect = document.querySelector(".controls").getBoundingClientRect();
 
     const width = containerRect.width;
     const height = window.innerHeight - controlsRect.height;
     const dpr = window.devicePixelRatio || 1;
 
-    colorCanvas.width = width * dpr;
-    colorCanvas.height = height * dpr;
-    idCanvas.width = width * dpr;
-    idCanvas.height = height * dpr;
+    AppState.colorCanvas.width = width * dpr;
+    AppState.colorCanvas.height = height * dpr;
+    AppState.idCanvas.width = width * dpr;
+    AppState.idCanvas.height = height * dpr;
 
-    colorCanvas.style.width = `${width}px`;
-    colorCanvas.style.height = `${height}px`;
-    idCanvas.style.width = `${width}px`;
-    idCanvas.style.height = `${height}px`;
+    AppState.colorCanvas.style.width = `${width}px`;
+    AppState.colorCanvas.style.height = `${height}px`;
+    AppState.idCanvas.style.width = `${width}px`;
+    AppState.idCanvas.style.height = `${height}px`;
 
 
-    tmpCanvas.width = width * dpr;
-    tmpCanvas.height = height * dpr;
-    maskCanvas.width = width;
-    maskCanvas.height = height;
+    AppState.tmpCanvas.width = width * dpr;
+    AppState.tmpCanvas.height = height * dpr;
+    AppState.maskCanvas.width = width;
+    AppState.maskCanvas.height = height;
 
-    tmpCtx.setTransform(1, 0, 0, 1, 0, 0);
-    tmpCtx.scale(dpr, dpr);
+    AppState.tmpCtx.setTransform(1, 0, 0, 1, 0, 0);
+    AppState.tmpCtx.scale(dpr, dpr);
 
 
 }
@@ -145,17 +149,19 @@ async function analyze() {
 
     setUIBusy(true);
     try {
+        console.time("get_full_tree");
         const tree = await eel.get_full_tree(path)();
+        console.timeEnd("get_full_tree");
         if (tree.error) {
             console.error("Backend error:", tree.error);
         } else {
             trackParents(tree);
             tree.parent = null;
-            cachedTree = tree;
-            navHistory = [];
-            navIndex = -1;
-            selectedRectIndex = -1
-            visit(cachedTree);
+            AppState.cachedTree = tree;
+            AppState.navHistory = [];
+            AppState.navIndex = -1;
+            AppState.selectedRectIndex = -1
+            visit(AppState.cachedTree);
             redraw();
         }
     } catch (err) {
@@ -167,9 +173,9 @@ async function analyze() {
 }
 
 function redraw() {
-    if (!focusedCachedTree) return;
-    cachedRects = layoutTree(focusedCachedTree, 0, 0, colorCanvas.width, colorCanvas.height);
-    drawTreemap(cachedRects);
+    if (!AppState.focusedCachedTree) return;
+    AppState.cachedRects = layoutTree(AppState.focusedCachedTree, 0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
+    drawTreemap(AppState.cachedRects);
 }
 
 function layoutTree(node, x, y, w, h) {
@@ -199,8 +205,8 @@ function layoutTree(node, x, y, w, h) {
 }
 
 function drawTreemap(rects) {
-    const colorCtx = colorCanvas.getContext("2d");
-    colorCtx.clearRect(0, 0, colorCanvas.width, colorCanvas.height);
+    const colorCtx = AppState.colorCanvas.getContext("2d");
+    colorCtx.clearRect(0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
 
     for (const [index, rect] of rects.entries()){
         drawRect(index, rect, true);
@@ -217,10 +223,10 @@ function idToColor(id){
 }
 
 function drawRect(index, rect, drawId = true, ctxOverride = null) {
-    const ctx = ctxOverride || colorCtx;
+    const ctx = ctxOverride || AppState.colorCtx;
     // const idCtx = idCanvas.getContext("2d");
     
-    const isSelected = index === selectedRectIndex;
+    const isSelected = index === AppState.selectedRectIndex;
     ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
     if (rect.node.is_free_space)
         ctx.fillStyle = "#eee";
@@ -243,47 +249,47 @@ function drawRect(index, rect, drawId = true, ctxOverride = null) {
         ctx.fillText(label, rect.x + 4, rect.y + FONT_SIZE + 1);
     }
 
-    if (drawId && ctx === colorCanvas.getContext("2d")) {
+    if (drawId && ctx === AppState.colorCanvas.getContext("2d")) {
         const idColor = idToColor(index)
-        idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
-        idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
+        AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
+        AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
     }
 }
 
 
 function reDrawRect(index) {
 
-    const rect = cachedRects[index];
+    const rect = AppState.cachedRects[index];
     if (!rect || rect.w <= 0 || rect.h <= 0) return;
     const { x, y, w, h, node } = rect;
 
     // Pixels of the drawn rect
-    drawRect(index, rect, false, tmpCtx);  
+    drawRect(index, rect, false, AppState.tmpCtx);  
 
     // Creating a mask to only blit this rect
-    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-    maskCtx.fillStyle = 'rgba(0,0,0,1)';
-    maskCtx.fillRect(x, y, w, h);
+    AppState.maskCtx.clearRect(0, 0, AppState.maskCanvas.width, AppState.maskCanvas.height);
+    AppState.maskCtx.fillStyle = 'rgba(0,0,0,1)';
+    AppState.maskCtx.fillRect(x, y, w, h);
 
-    maskCtx.save();
-    maskCtx.globalCompositeOperation = 'destination-out';
+    AppState.maskCtx.save();
+    AppState.maskCtx.globalCompositeOperation = 'destination-out';
   
     // carving out the rect childs from the mask !
     if (node.is_folder && node.children) {
         for (const child of node.children) {
             if (child.rect) {
                 const cr = child.rect;
-                maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
+                AppState.maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
             }
         }
     }
-    maskCtx.restore();
+    AppState.maskCtx.restore();
 
-    tmpCtx.globalCompositeOperation = 'destination-in';
-    tmpCtx.drawImage(maskCanvas, 0, 0);
-    tmpCtx.globalCompositeOperation = 'source-over';
+    AppState.tmpCtx.globalCompositeOperation = 'destination-in';
+    AppState.tmpCtx.drawImage(AppState.maskCanvas, 0, 0);
+    AppState.tmpCtx.globalCompositeOperation = 'source-over';
 
-    colorCtx.drawImage(tmpCanvas, 0, 0);
+    AppState.colorCtx.drawImage(AppState.tmpCanvas, 0, 0);
 
 }
 
@@ -416,7 +422,7 @@ function rectIdAtPoint(x, y) {
     const dpr = window.devicePixelRatio || 1;
     const px = Math.round(x * dpr);
     const py = Math.round(y * dpr);
-    const pixel = idCtx.getImageData(px, py, 1, 1).data;
+    const pixel = AppState.idCtx.getImageData(px, py, 1, 1).data;
     const id = colorToId(pixel)// ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
     return id;
 }
@@ -436,61 +442,61 @@ function hideContextMenu() {
 }
 
 function selectRect(rectIndex, dontDeselect=false){
-    if (selectedRectIndex == rectIndex)
+    if (AppState.selectedRectIndex == rectIndex)
         if(rectIndex >= 0 && !dontDeselect){
             rectIndex = -1;
         }else{
             return;
         }
-    prev_selectedRectIndex = selectedRectIndex
-    selectedRectIndex = rectIndex
+    prev_selectedRectIndex = AppState.selectedRectIndex
+    AppState.selectedRectIndex = rectIndex
   
     reDrawRect(prev_selectedRectIndex)
-    reDrawRect(selectedRectIndex)
+    reDrawRect(AppState.selectedRectIndex)
 }
 
 window.addEventListener("click", () => hideContextMenu());
 
 async function openInSystemBrowser() {
-    if (selectedRectIndex >= 0 && selectedRectIndex < cachedRects.length) {
-        node = cachedRects[selectedRectIndex].node
+    if (AppState.selectedRectIndex >= 0 && AppState.selectedRectIndex < AppState.cachedRects.length) {
+        node = AppState.cachedRects[AppState.selectedRectIndex].node
         await eel.open_in_file_browser(node.full_path)();
         hideContextMenu();
     }
 }
 
 function navigateToSelected() {
-    if (selectedRectIndex >= 0 && selectedRectIndex < cachedRects.length) {
-        node = cachedRects[selectedRectIndex].node;
+    if (AppState.selectedRectIndex >= 0 && AppState.selectedRectIndex < AppState.cachedRects.length) {
+        node = AppState.cachedRects[AppState.selectedRectIndex].node;
         visit(node);
     }
 }
 
 function goToRoot() {
-    if (!cachedTree) return;
-    visit(cachedTree);
+    if (!AppState.cachedTree) return;
+    visit(AppState.cachedTree);
 }
 
 function goToParent() {
-    if (!focusedCachedTree || !focusedCachedTree.parent) return;
+    if (!AppState.focusedCachedTree || !AppState.focusedCachedTree.parent) return;
 
-    visit(focusedCachedTree.parent);
+    visit(AppState.focusedCachedTree.parent);
 }
 
 
 function visit(node) {
-    if (node === focusedCachedTree || !node.is_folder)
+    if (node === AppState.focusedCachedTree || !node.is_folder)
         return
 
     // Truncate future history if we went back and then change focus
-    navHistory = navHistory.slice(0, navIndex + 1);
+    AppState.navHistory = AppState.navHistory.slice(0, AppState.navIndex + 1);
 
-    navHistory.push(node);
-    navIndex = navHistory.length - 1;
+    AppState.navHistory.push(node);
+    AppState.navIndex = AppState.navHistory.length - 1;
 
-    focusedCachedTree = node;
+    AppState.focusedCachedTree = node;
 
-    selectedRectIndex = -1;
+    AppState.selectedRectIndex = -1;
 
     redraw();
     updateNavButtons();
@@ -498,27 +504,27 @@ function visit(node) {
 
 
 function goBackward() {
-    if (navIndex > 0) {
-        navIndex--;
-        focusedCachedTree = navHistory[navIndex];
+    if (AppState.navIndex > 0) {
+        AppState.navIndex--;
+        AppState.focusedCachedTree = AppState.navHistory[AppState.navIndex];
         redraw();
         updateNavButtons();
     }
 }
 
 function goForward() {
-    if (navIndex < navHistory.length - 1) {
-        navIndex++;
-        focusedCachedTree = navHistory[navIndex];
+    if (AppState.navIndex < AppState.navHistory.length - 1) {
+        AppState.navIndex++;
+        AppState.focusedCachedTree = AppState.navHistory[AppState.navIndex];
         redraw();
         updateNavButtons();
     }
 }
 
 function updateNavButtons() {
-    document.getElementById("rootButton").disabled = !cachedTree || focusedCachedTree === cachedTree;
-    document.getElementById("parentButton").disabled = !cachedTree || !focusedCachedTree?.parent;
+    document.getElementById("rootButton").disabled = !AppState.cachedTree || AppState.focusedCachedTree === AppState.cachedTree;
+    document.getElementById("parentButton").disabled = !AppState.cachedTree || !AppState.focusedCachedTree?.parent;
 
-    document.getElementById("backwardButton").disabled = !cachedTree || navIndex <= 0;
-    document.getElementById("forwardButton").disabled = !cachedTree || navIndex >= navHistory.length - 1;
+    document.getElementById("backwardButton").disabled = !AppState.cachedTree || AppState.navIndex <= 0;
+    document.getElementById("forwardButton").disabled = !AppState.cachedTree || AppState.navIndex >= AppState.navHistory.length - 1;
 }
