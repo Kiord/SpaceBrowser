@@ -2,10 +2,16 @@
 
 A cross-platform port of SpaceMonger written in Python and Javascript.
 
-The only dependancy is Eel for the Python/JS interface. 
+Usage:
+```
+python main.py
+```
+
+The only dependancy is Eel for the Python/JS interface:
 ```
 pip install eel
 ```
+
 
 <img src="web/screenshot.jpg ">
 
