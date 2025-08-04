@@ -182,7 +182,11 @@ async function analyze() {
 function redraw() {
     if (!AppState.focusedCachedTree) return;
     console.time("layoutTree");
-
+    if (AppState.cachedRects){
+        for (const rect of AppState.cachedRects){
+            rect.node.rect = null;
+        }
+    }
     AppState.cachedRects = layoutTree(AppState.focusedCachedTree, 0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
     console.timeEnd("layoutTree")
     console.log(`layoutTree produced ${AppState.cachedRects.length} rects.`)
