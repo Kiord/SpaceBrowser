@@ -43,12 +43,12 @@ document.getElementById("folderInput").addEventListener("change", function (even
 });
 
 function nodeFromRectId(index){
-    node = null;
     if (AppState.cachedRects &&
         index >= 0 &&
         index < AppState.cachedRects.length){
+        return AppState.cachedRects[index].node;
     }
-    return AppState.cachedRects[index].node
+    return null;
 }
 
 window.addEventListener("load", () => {
