@@ -2,7 +2,7 @@ const AppState = {
     cachedTree: null,
     focusedCachedTree: null,
     cachedRects: null,
-    selectedRectIndex: -1,
+    selectedNode: null,
     navHistory: [],
     navIndex: -1,
     colorCanvas: null,
@@ -59,19 +59,23 @@ window.addEventListener("load", () => {
     AppState.colorCanvas.addEventListener("click", (e) => {
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
-        if (index >= 0)
-            selectRect(index);
+        if (index >= 0 && index < AppState.cachedRects.length){
+            selectNode(AppState.cachedRects[index].node);
+        }
 
+            
     });
 
     AppState.colorCanvas.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
-        selectRect(index, dontDeselect=true);
-        if (index >= 0 && !AppState.cachedRects[index].node.is_free_space) {
-            showContextMenu(e.pageX, e.pageY);
-        } else {
+        if (index >= 0 && index < AppState.cachedRects.length){
+            selectNode(AppState.cachedRects[index].node, dontDeselect=true);
+            if (!AppState.cachedRects[index].node.is_free_space) {
+                showContextMenu(e.pageX, e.pageY);
+            }
+        }else {
             hideContextMenu();
         }
     });
@@ -158,7 +162,7 @@ async function analyze() {
             AppState.cachedTree = tree;
             AppState.navHistory = [];
             AppState.navIndex = -1;
-            AppState.selectedRectIndex = -1
+            AppState.selectedNode = null;
             visit(AppState.cachedTree);
         }
     } catch (err) {
@@ -172,19 +176,21 @@ async function analyze() {
 function redraw() {
     if (!AppState.focusedCachedTree) return;
     console.time("layoutTree");
+
     AppState.cachedRects = layoutTree(AppState.focusedCachedTree, 0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
     console.timeEnd("layoutTree")
+    console.log(`layoutTree produced ${AppState.cachedRects.length} rects.`)
     console.time("drawTreemap");
     drawTreemap(AppState.cachedRects);
     console.timeEnd("drawTreemap");
 }
 
-function layoutTree(node, x, y, w, h) {
+function layoutTree(node, x, y, w, h, indexRef = { value: 0 }) {
     const rects = [];
     if (w < MIN_SIZE || h < MIN_SIZE) return rects;
 
-    rect = {x, y, w, h, node: node}
-    node.rect = rect
+    const rect = { x, y, w, h, node: node, index: indexRef.value++ };
+    node.rect = rect;
     rects.push(rect);
 
     if (!node.is_folder || !node.children || node.children.length === 0) {
@@ -201,16 +207,16 @@ function layoutTree(node, x, y, w, h) {
         area: (c.size / total) * area
     }));
 
-    squarify(boxes, x + PADDING, y + PADDING + FONT_SIZE, w - 2 * PADDING, h - 2 * PADDING - FONT_SIZE, rects);
+    squarify(boxes, x + PADDING, y + PADDING + FONT_SIZE, w - 2 * PADDING, h - 2 * PADDING - FONT_SIZE, rects, indexRef);
     return rects;
 }
 
 function drawTreemap(rects) {
     const colorCtx = AppState.colorCanvas.getContext("2d");
     colorCtx.clearRect(0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
+    for (const rect of rects){
 
-    for (const [index, rect] of rects.entries()){
-        drawRect(index, rect, true);
+        drawRect(rect, true);
     }
 }
 
@@ -223,11 +229,11 @@ function idToColor(id){
     return idColor = [(code >> 16) & 0xff, (code >> 8) & 0xff, code & 0xff];
 }
 
-function drawRect(index, rect, drawId = true, ctxOverride = null) {
+function drawRect(rect, drawId = true, ctxOverride = null) {
     const ctx = ctxOverride || AppState.colorCtx;
-    // const idCtx = idCanvas.getContext("2d");
-    
-    const isSelected = index === AppState.selectedRectIndex;
+
+    const isSelected = rect.node === AppState.selectedNode;
+
     ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
     if (rect.node.is_free_space)
         ctx.fillStyle = "#eee";
@@ -251,21 +257,21 @@ function drawRect(index, rect, drawId = true, ctxOverride = null) {
     }
 
     if (drawId && ctx === AppState.colorCanvas.getContext("2d")) {
-        const idColor = idToColor(index)
+        const idColor = idToColor(rect.index)
         AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
         AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
     }
 }
 
 
-function reDrawRect(index) {
+function reDrawRect(rect) {
+    
 
-    const rect = AppState.cachedRects[index];
     if (!rect || rect.w <= 0 || rect.h <= 0) return;
     const { x, y, w, h, node } = rect;
 
     // Pixels of the drawn rect
-    drawRect(index, rect, false, AppState.tmpCtx);  
+    drawRect(rect, false, AppState.tmpCtx);  
 
     // Creating a mask to only blit this rect
     AppState.maskCtx.clearRect(0, 0, AppState.maskCanvas.width, AppState.maskCanvas.height);
@@ -291,7 +297,6 @@ function reDrawRect(index) {
     AppState.tmpCtx.globalCompositeOperation = 'source-over';
 
     AppState.colorCtx.drawImage(AppState.tmpCanvas, 0, 0);
-
 }
 
 
@@ -336,7 +341,7 @@ function drawDiagonalCross(ctx, x, y, w, h, size, color) {
     ctx.restore();
 }
 
-function squarify(items, x, y, w, h, rects) {
+function squarify(items, x, y, w, h, rects, indexRef) {
     if (items.length === 0) return;
 
     let row = [];
@@ -354,7 +359,7 @@ function squarify(items, x, y, w, h, rects) {
         if (aspectAfter > aspectBefore && row.length > 1) {
             row.pop();
             rowArea -= item.area;
-            layoutRow(row, x, y, w, h, rects);
+            layoutRow(row, x, y, w, h, rects, indexRef);
             const rowBreadth = row.reduce((sum, r) => sum + r.area, 0) / (w >= h ? w : h);
             if (w >= h) {
                 y += rowBreadth;
@@ -371,16 +376,16 @@ function squarify(items, x, y, w, h, rects) {
     }
 
     if (row.length > 0) {
-        layoutRow(row, x, y, w, h, rects);
+        layoutRow(row, x, y, w, h, rects, indexRef);
     }
 }
 
-function layoutRow(row, x, y, w, h, rects) {
+function layoutRow(row, x, y, w, h, rects, indexRef) {
     const totalArea = row.reduce((sum, r) => sum + r.area, 0);
     const horizontal = w >= h;
     const length = horizontal ? w : h;
     const thickness = totalArea / length;
-    const padding = -1
+    const padding = -1;
 
     let offset = 0;
     for (const box of row) {
@@ -391,7 +396,7 @@ function layoutRow(row, x, y, w, h, rects) {
         const bx = horizontal ? x + offset : x;
         const by = horizontal ? y : y + offset;
 
-        rects.push(...layoutTree(box.node, bx + 0.5 * padding, by + 0.5 * padding, bw, bh));
+        rects.push(...layoutTree(box.node, bx + 0.5 * padding, by + 0.5 * padding, bw, bh, indexRef));
         offset += breadth;
     }
 }
@@ -412,19 +417,13 @@ function worstAspect(row, area, w, h) {
     return worst;
 }
 
-// function rectIdAtPoint(x, y){
-//     const idCtx = idCanvas.getContext("2d");
-//     const pixel = idCtx.getImageData(x, y, 1, 1).data;
-//     const id = ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
-//     return id;
-// }
 
 function rectIdAtPoint(x, y) {
     const dpr = window.devicePixelRatio || 1;
     const px = Math.round(x * dpr);
     const py = Math.round(y * dpr);
     const pixel = AppState.idCtx.getImageData(px, py, 1, 1).data;
-    const id = colorToId(pixel)// ((pixel[0] << 16) | (pixel[1] << 8) | pixel[2]) - 1;
+    const id = colorToId(pixel)
     return id;
 }
 
@@ -439,38 +438,37 @@ function showContextMenu(x, y,) {
 
 function hideContextMenu() {
     document.getElementById("contextMenu").style.display = "none";
-    //selectRect(-1)
 }
 
-function selectRect(rectIndex, dontDeselect=false){
-    if (AppState.selectedRectIndex == rectIndex)
-        if(rectIndex >= 0 && !dontDeselect){
-            rectIndex = -1;
-        }else{
+
+function selectNode(node, dontDeselect=false){
+    if (AppState.selectedNode === node){
+        if(node && dontDeselect){
             return;
         }
-    prev_selectedRectIndex = AppState.selectedRectIndex
-    AppState.selectedRectIndex = rectIndex
-  
-    reDrawRect(prev_selectedRectIndex)
-    reDrawRect(AppState.selectedRectIndex)
+        node = null;
+    }
+
+    previousNode = AppState.selectedNode
+    AppState.selectedNode = node
+ 
+    reDrawRect(previousNode?.rect)
+    reDrawRect(AppState.selectedNode?.rect)
 }
 
 window.addEventListener("click", () => hideContextMenu());
 
 async function openInSystemBrowser() {
-    if (AppState.selectedRectIndex >= 0 && AppState.selectedRectIndex < AppState.cachedRects.length) {
-        node = AppState.cachedRects[AppState.selectedRectIndex].node
-        await eel.open_in_file_browser(node.full_path)();
+
+    if (AppState.selectedNode){
+        await eel.open_in_file_browser(AppState.selectedNode.full_path)();
         hideContextMenu();
     }
+
 }
 
 function navigateToSelected() {
-    if (AppState.selectedRectIndex >= 0 && AppState.selectedRectIndex < AppState.cachedRects.length) {
-        node = AppState.cachedRects[AppState.selectedRectIndex].node;
-        visit(node);
-    }
+    visit(AppState.selectedNode);
 }
 
 function goToRoot() {
@@ -486,7 +484,7 @@ function goToParent() {
 
 
 function visit(node) {
-    if (node === AppState.focusedCachedTree || !node.is_folder)
+    if (!node || node === AppState.focusedCachedTree || !node.is_folder)
         return
 
     // Truncate future history if we went back and then change focus
@@ -496,8 +494,6 @@ function visit(node) {
     AppState.navIndex = AppState.navHistory.length - 1;
 
     AppState.focusedCachedTree = node;
-
-    AppState.selectedRectIndex = -1;
 
     redraw();
     updateNavButtons();
