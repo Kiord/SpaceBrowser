@@ -42,6 +42,15 @@ document.getElementById("folderInput").addEventListener("change", function (even
     analyze();
 });
 
+function nodeFromRectId(index){
+    node = null;
+    if (AppState.cachedRects &&
+        index >= 0 &&
+        index < AppState.cachedRects.length){
+    }
+    return AppState.cachedRects[index].node
+}
+
 window.addEventListener("load", () => {
     AppState.colorCanvas = document.getElementById("colorCanvas");
     AppState.idCanvas = document.getElementById("idCanvas");
@@ -59,22 +68,19 @@ window.addEventListener("load", () => {
     AppState.colorCanvas.addEventListener("click", (e) => {
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
-        if (index >= 0 && index < AppState.cachedRects.length){
-            selectNode(AppState.cachedRects[index].node);
-        }
-
-            
+        const node = nodeFromRectId(index);
+        selectNode(node);
+        hideContextMenu();    
     });
 
     AppState.colorCanvas.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const { x, y } = getCanvasCoords(e);
         const index = rectIdAtPoint(x, y);
-        if (index >= 0 && index < AppState.cachedRects.length){
-            selectNode(AppState.cachedRects[index].node, dontDeselect=true);
-            if (!AppState.cachedRects[index].node.is_free_space) {
-                showContextMenu(e.pageX, e.pageY);
-            }
+        const node = nodeFromRectId(index);
+        selectNode(node, dontDeselect=true);
+        if (node && node.is_folder && !node.is_free_space ) {
+            showContextMenu(e.pageX, e.pageY);
         }else {
             hideContextMenu();
         }
