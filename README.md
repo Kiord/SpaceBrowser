@@ -1,6 +1,6 @@
 _Uh no... my disk is full_
 
-# <img src="web/logo.svg " height="20">  SpaceBrowser
+# <img src="web/logo.svg " height="30">  SpaceBrowser
 
 A cross-platform port of SpaceMonger written in Python and Javascript.
 
