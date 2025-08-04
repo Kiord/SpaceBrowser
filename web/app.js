@@ -119,12 +119,8 @@ function resizeCanvas() {
 
     AppState.tmpCanvas.width = width * dpr;
     AppState.tmpCanvas.height = height * dpr;
-    AppState.maskCanvas.width = width;
-    AppState.maskCanvas.height = height;
-
-    AppState.tmpCtx.setTransform(1, 0, 0, 1, 0, 0);
-    AppState.tmpCtx.scale(dpr, dpr);
-
+    AppState.maskCanvas.width = width * dpr;
+    AppState.maskCanvas.height = height * dpr;
 
 }
 
@@ -155,14 +151,15 @@ async function analyze() {
         if (tree.error) {
             console.error("Backend error:", tree.error);
         } else {
+            console.time("trackParents");
             trackParents(tree);
+            console.timeEnd("trackParents");
             tree.parent = null;
             AppState.cachedTree = tree;
             AppState.navHistory = [];
             AppState.navIndex = -1;
             AppState.selectedRectIndex = -1
             visit(AppState.cachedTree);
-            redraw();
         }
     } catch (err) {
         console.error("Eel call failed:", err);
@@ -174,8 +171,12 @@ async function analyze() {
 
 function redraw() {
     if (!AppState.focusedCachedTree) return;
+    console.time("layoutTree");
     AppState.cachedRects = layoutTree(AppState.focusedCachedTree, 0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
+    console.timeEnd("layoutTree")
+    console.time("drawTreemap");
     drawTreemap(AppState.cachedRects);
+    console.timeEnd("drawTreemap");
 }
 
 function layoutTree(node, x, y, w, h) {
