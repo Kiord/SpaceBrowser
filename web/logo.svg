@@ -1,34 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgb(255,100,100)"/>
-      <stop offset="20%" stop-color="rgb(255,0,0)"/>
-      <stop offset="50%" stop-color="rgb(255,80,0)"/>
-      <stop offset="100%" stop-color="rgb(255,255,0)"/>
-    </linearGradient>
-
-    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgb(255,255,100)"/>
-      <stop offset="20%" stop-color="rgb(255, 255, 0)"/>
-      <stop offset="50%" stop-color="rgb(200,255,0)"/>
-      <stop offset="100%" stop-color="rgb(150,255,0)"/>
-    </linearGradient>
-
-    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgb(100,255,100)"/>
-      <stop offset="20%" stop-color="rgb(0,255,0)"/>
-      <stop offset="50%" stop-color="rgb(0,225,50)"/>
-      <stop offset="100%" stop-color="rgb(0,210,80)"/>
+    <linearGradient id="diagonalGradient"
+                    x1="0" y1="0"
+                    x2="500" y2="500"
+                    gradientUnits="userSpaceOnUse">
+  <stop offset="0%"   stop-color="rgb(255, 0, 0)"/>
+  <stop offset="25%"  stop-color="rgb(255, 128, 0)"/>
+  <stop offset="50%"  stop-color="rgb(255, 255, 0)"/>
+  <stop offset="75%"  stop-color="rgb(128, 255, 0)"/>
+  <stop offset="100%" stop-color="rgb(0, 255, 0)"/>
     </linearGradient>
   </defs>
 
   <rect x="10" y="10" width="275" height="275"
-        fill="url(#grad1)" stroke="black" stroke-width="20"/>
-
+        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
   <rect x="102.5" y="102.5" width="275" height="275"
-        fill="url(#grad2)" stroke="black" stroke-width="20"/>
-
+        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
   <rect x="215" y="215" width="275" height="275"
-        fill="url(#grad3)" stroke="black" stroke-width="20"/>
+        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
 </svg>
