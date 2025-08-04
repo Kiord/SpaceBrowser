@@ -235,37 +235,102 @@ function idToColor(id){
     return idColor = [(code >> 16) & 0xff, (code >> 8) & 0xff, code & 0xff];
 }
 
+function formatSize(bytes) {
+  if (bytes === 0) return '0 B';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const size = bytes / Math.pow(1024, i);
+
+  return `${size.toFixed(size < 10 ? 1 : 0)} ${units[i]}`;
+}
+
 function drawRect(rect, drawId = true, ctxOverride = null) {
     const ctx = ctxOverride || AppState.colorCtx;
-
     const isSelected = rect.node === AppState.selectedNode;
 
     ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
-    if (rect.node.is_free_space)
-        ctx.fillStyle = "#eee";
+    if (rect.node.is_free_space) ctx.fillStyle = "#fff";
 
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-
-    if (!rect.node.is_folder) {
-        drawDiagonalCross(ctx, rect.x, rect.y, rect.w, rect.h, 6, isSelected ? "#fff" : "#555");
-    }
 
     ctx.strokeStyle = "#222";
     ctx.lineWidth = 1;
     ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
-    if (rect.w > 60 && rect.h > 15) {
-        ctx.font = `${FONT_SIZE}px sans-serif`;
-        const maxTextWidth = rect.w - 6;
-        const label = truncateText(ctx, rect.node.name, maxTextWidth);
-        ctx.fillStyle = isSelected ? "#fff" : "#000";
-        ctx.fillText(label, rect.x + 4, rect.y + FONT_SIZE + 1);
+    ctx.font = `${FONT_SIZE}px sans-serif`;
+    ctx.textBaseline = "top";
+    ctx.fillStyle = isSelected ? "#fff" : "#000";
+
+    if (rect.node.is_free_space) {
+        const percent = 100 * rect.node.size / AppState.cachedTree.size;
+        const sizeString = formatSize(rect.node.size);
+        const fileCount = AppState.cachedTree.file_count ?? '?';
+        const folderCount = AppState.cachedTree.folder_count ?? '?';
+
+        const lines = [
+        `Free Space: ${percent.toFixed(1)}%`,
+        `${sizeString} Free`,
+        `Files: ${fileCount}`,
+        `Folders: ${folderCount}`
+        ];
+
+        const lineHeight = FONT_SIZE + 2;
+        const totalHeight = lines.length * lineHeight;
+        const yStart = rect.y + (rect.h - totalHeight) / 2;
+
+        for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const textWidth = ctx.measureText(line).width;
+        const xText = rect.x + (rect.w - textWidth) / 2;
+        const yText = yStart + i * lineHeight;
+        ctx.fillText(line, xText, yText);
+        }
+    }
+
+    else if (rect.node.is_folder) {
+        if (rect.w > 60 && rect.h > 15) {
+        const label = truncateText(ctx, rect.node.name, rect.w - 6);
+        ctx.fillText(label, rect.x + 4, rect.y + 4);
+        }
+    }
+
+    else {
+    if (rect.w > 60 && rect.h > FONT_SIZE * 2 + 6) {
+        const name = truncateText(ctx, rect.node.name, rect.w - 6);
+        const sizeStr = formatSize(rect.node.size);
+
+        const lines = [name, sizeStr];
+        const lineHeight = FONT_SIZE + 2;
+        const totalHeight = lines.length * lineHeight;
+        const yStart = rect.y + (rect.h - totalHeight) / 2;
+
+        for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const textWidth = ctx.measureText(line).width;
+        const xText = rect.x + (rect.w - textWidth) / 2;
+        const yText = yStart + i * lineHeight;
+        ctx.fillText(line, xText, yText);
+        }
+    } else if (rect.h > FONT_SIZE + 4 && rect.w > 30) {
+        // Show only size if not enough space for both
+        const sizeStr = formatSize(rect.node.size);
+        const textWidth = ctx.measureText(sizeStr).width;
+        const xText = rect.x + (rect.w - textWidth) / 2;
+        const yText = rect.y + (rect.h - FONT_SIZE) / 2;
+        ctx.fillText(sizeStr, xText, yText);
+    }
     }
 
     if (drawId && ctx === AppState.colorCanvas.getContext("2d")) {
-        const idColor = idToColor(rect.index)
+        const idColor = idToColor(rect.index);
         AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
-        AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
+        AppState.idCtx.fillRect(
+        Math.round(rect.x),
+        Math.round(rect.y),
+        Math.round(rect.w),
+        Math.round(rect.h)
+    );
     }
 }
 
@@ -328,24 +393,24 @@ function truncateText(ctx, text, maxWidth) {
     return text.slice(0, low - 1) + ellipsis;
 }
 
-function drawDiagonalCross(ctx, x, y, w, h, size, color) {
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    const maxSize = Math.min(w, h);
-    const clampedSize = Math.min(size, maxSize);
-    const half = clampedSize / 2;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
+// function drawDiagonalCross(ctx, x, y, w, h, size, color) {
+//     ctx.save();
+//     ctx.strokeStyle = color;
+//     ctx.lineWidth = 1;
+//     const maxSize = Math.min(w, h);
+//     const clampedSize = Math.min(size, maxSize);
+//     const half = clampedSize / 2;
+//     const cx = x + w / 2;
+//     const cy = y + h / 2;
 
-    ctx.beginPath();
-    ctx.moveTo(cx - half, cy - half);
-    ctx.lineTo(cx + half, cy + half);
-    ctx.moveTo(cx + half, cy - half);
-    ctx.lineTo(cx - half, cy + half);
-    ctx.stroke();
-    ctx.restore();
-}
+//     ctx.beginPath();
+//     ctx.moveTo(cx - half, cy - half);
+//     ctx.lineTo(cx + half, cy + half);
+//     ctx.moveTo(cx + half, cy - half);
+//     ctx.lineTo(cx - half, cy + half);
+//     ctx.stroke();
+//     ctx.restore();
+// }
 
 function squarify(items, x, y, w, h, rects, indexRef) {
     if (items.length === 0) return;

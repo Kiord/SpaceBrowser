@@ -12,7 +12,12 @@ import subprocess
 MIN_FILE_SIZE = 1024
 EXCLUDED_PATHS = ["/proc", "/dev", "/sys", "/run", "/var/lib/docker", "/var/log/lastlog", "/snap"]
 
+def reset_count():
+    FileRecord.COUNT = 0
+    DirRecord.COUNT = 0
+
 class FileRecord:
+    COUNT = 0
     def __init__(self, path, size, depth):
         self.name = os.path.basename(path)
         if self.name == "":
@@ -20,11 +25,15 @@ class FileRecord:
         self.full_path = os.path.abspath(path)
         self.size = size
         self.depth = depth
+        FileRecord.COUNT += 1
 
 
 class DirRecord(FileRecord):
+    COUNT = 0
     def __init__(self, path, depth=0):
         super().__init__(path, 0, depth)
+        DirRecord.COUNT += 1
+
         self.contains = []
 
         if os.path.islink(self.full_path):
@@ -85,6 +94,7 @@ def get_full_tree(path):
         if not os.path.isdir(path):
             return {"error": f"Invalid path ({path})"}
         print(f"SpaceBrowsing \"{path}\"...")
+        reset_count()
         model = DirRecord(path)
         tree = model.get_full_tree()
         if model.full_path == "/":
@@ -95,6 +105,8 @@ def get_full_tree(path):
                 "is_free_space":True,
                 "depth": 0
            })
+        tree["file_count"] = FileRecord.COUNT - DirRecord.COUNT
+        tree["folder_count"] = DirRecord.COUNT
         print(f"Done !") 
         return tree
     except Exception as e:
