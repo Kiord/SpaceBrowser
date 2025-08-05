@@ -266,17 +266,18 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
     ctx.textBaseline = "top";
     ctx.fillStyle = isSelected ? "#fff" : "#000";
 
+    const sizeString = formatSize(rect.node.size);
+
     if (rect.node.is_free_space) {
         const percent = 100 * rect.node.size / AppState.cachedTree.size;
-        const sizeString = formatSize(rect.node.size);
         const fileCount = AppState.cachedTree.file_count ?? '?';
         const folderCount = AppState.cachedTree.folder_count ?? '?';
 
         const lines = [
-        `Free Space: ${percent.toFixed(1)}%`,
-        `${sizeString} Free`,
-        `Files: ${fileCount}`,
-        `Folders: ${folderCount}`
+            `Free Space: ${percent.toFixed(1)}%`,
+            `${sizeString} Free`,
+            `Files: ${fileCount}`,
+            `Folders: ${folderCount}`
         ];
 
         const lineHeight = FONT_SIZE + 2;
@@ -284,57 +285,56 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
         const yStart = rect.y + (rect.h - totalHeight) / 2;
 
         for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const textWidth = ctx.measureText(line).width;
-        const xText = rect.x + (rect.w - textWidth) / 2;
-        const yText = yStart + i * lineHeight;
-        ctx.fillText(line, xText, yText);
+            const line = lines[i];
+            const textWidth = ctx.measureText(line).width;
+            const xText = rect.x + (rect.w - textWidth) / 2;
+            const yText = yStart + i * lineHeight;
+            ctx.fillText(line, xText, yText);
         }
     }
 
     else if (rect.node.is_folder) {
         if (rect.w > 60 && rect.h > 15) {
-        const label = truncateText(ctx, rect.node.name, rect.w - 6);
-        ctx.fillText(label, rect.x + 4, rect.y + 4);
+            const labelText = `${rect.node.name} (${sizeString})`;
+            const label = truncateText(ctx, labelText, rect.w - 6);
+            ctx.fillText(label, rect.x + 4, rect.y + 4);
         }
     }
 
     else {
-    if (rect.w > 60 && rect.h > FONT_SIZE * 2 + 6) {
-        const name = truncateText(ctx, rect.node.name, rect.w - 6);
-        const sizeStr = formatSize(rect.node.size);
+        if (rect.w > 60 && rect.h > FONT_SIZE * 2 + 6) {
+            const name = truncateText(ctx, rect.node.name, rect.w - 6);
 
-        const lines = [name, sizeStr];
-        const lineHeight = FONT_SIZE + 2;
-        const totalHeight = lines.length * lineHeight;
-        const yStart = rect.y + (rect.h - totalHeight) / 2;
+            const lines = [name, sizeString];
+            const lineHeight = FONT_SIZE + 2;
+            const totalHeight = lines.length * lineHeight;
+            const yStart = rect.y + (rect.h - totalHeight) / 2;
 
-        for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const textWidth = ctx.measureText(line).width;
-        const xText = rect.x + (rect.w - textWidth) / 2;
-        const yText = yStart + i * lineHeight;
-        ctx.fillText(line, xText, yText);
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const textWidth = ctx.measureText(line).width;
+                const xText = rect.x + (rect.w - textWidth) / 2;
+                const yText = yStart + i * lineHeight;
+                ctx.fillText(line, xText, yText);
+            }
+        } else if (rect.h > FONT_SIZE + 4 && rect.w > 30) {
+            // Show only size if not enough space for both
+            const textWidth = ctx.measureText(sizeString).width;
+            const xText = rect.x + (rect.w - textWidth) / 2;
+            const yText = rect.y + (rect.h - FONT_SIZE) / 2;
+            ctx.fillText(sizeString, xText, yText);
         }
-    } else if (rect.h > FONT_SIZE + 4 && rect.w > 30) {
-        // Show only size if not enough space for both
-        const sizeStr = formatSize(rect.node.size);
-        const textWidth = ctx.measureText(sizeStr).width;
-        const xText = rect.x + (rect.w - textWidth) / 2;
-        const yText = rect.y + (rect.h - FONT_SIZE) / 2;
-        ctx.fillText(sizeStr, xText, yText);
-    }
     }
 
     if (drawId && ctx === AppState.colorCanvas.getContext("2d")) {
         const idColor = idToColor(rect.index);
         AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
         AppState.idCtx.fillRect(
-        Math.round(rect.x),
-        Math.round(rect.y),
-        Math.round(rect.w),
-        Math.round(rect.h)
-    );
+            Math.round(rect.x),
+            Math.round(rect.y),
+            Math.round(rect.w),
+            Math.round(rect.h)
+        );
     }
 }
 
