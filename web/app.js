@@ -15,9 +15,19 @@ const AppState = {
     maskCtx: null,
 };
 
+// const folderColors = [
+//     "#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff",
+//     "#bfbfff", "#bfbfbf"
+// ];
+
 const folderColors = [
-    "#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff",
-    "#bfbfff", "#bfbfbf"
+    "#ff9b85", // soft warm coral
+    "#ffbe76", // light apricot orange
+    "#ffe066", // bright pastel yellow
+    "#7bed9f", // fresh mint green
+    "#70d6ff", // light sky blue
+    "#a29bfe", // pastel lavender-blue
+    "#dfe4ea"  // very light gray
 ];
 
 const PADDING = 5;
