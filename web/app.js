@@ -353,18 +353,12 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
         const idColor = idToColor(rect.index);
         AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
         
-        fillRoundedRect(AppState.idCtx,
+        AppState.idCtx.fillRect(
             Math.round(rect.x),
             Math.round(rect.y),
             Math.round(rect.w),
-            Math.round(rect.h));
-
-        // AppState.idCtx.fillRect(
-        //     Math.round(rect.x),
-        //     Math.round(rect.y),
-        //     Math.round(rect.w),
-        //     Math.round(rect.h)
-        // );
+            Math.round(rect.h)
+        );
     }
 }
 
