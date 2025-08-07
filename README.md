@@ -2,7 +2,9 @@ _Uh no... my disk is full_
 
 # <img src="web/logo.svg " height="30">  SpaceBrowser
 
-A cross-platform port of SpaceMonger written in Python and Javascript.
+A cross-platform file system visualizer.
+
+SpaceBrowser is an independent open-source project heavily inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1) from [Sean Werkema](https://www.werkema.com/).
 
 Usage:
 ```
