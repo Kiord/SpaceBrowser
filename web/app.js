@@ -33,6 +33,7 @@ const folderColors = [
 const PADDING = 5;
 const MIN_SIZE = 4;
 const FONT_SIZE = 10;
+const CORNER_RADII = 3;
 
 async function triggerFolderSelect() {
     const folderPath = await eel.pick_folder()();
@@ -259,6 +260,17 @@ function formatSize(bytes) {
   return `${size.toFixed(size < 10 ? 1 : 0)} ${units[i]}`;
 }
 
+function fillRoundedRect(ctx, x, y, w, h){
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, CORNER_RADII);
+    ctx.fill();
+}
+function strokeRoundedRect(ctx, x, y, w, h){
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, CORNER_RADII);
+    ctx.stroke();
+}
+
 function drawRect(rect, drawId = true, ctxOverride = null) {
     const ctx = ctxOverride || AppState.colorCtx;
     const isSelected = rect.node === AppState.selectedNode;
@@ -266,11 +278,12 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
     ctx.fillStyle = isSelected ? "#000" : folderColors[rect.node.depth % folderColors.length];
     if (rect.node.is_free_space) ctx.fillStyle = "#fff";
 
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
+
 
     ctx.strokeStyle = "#222";
     ctx.lineWidth = 1;
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
     ctx.font = `${FONT_SIZE}px sans-serif`;
     ctx.textBaseline = "top";
@@ -339,12 +352,19 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
     if (drawId && ctx === AppState.colorCanvas.getContext("2d")) {
         const idColor = idToColor(rect.index);
         AppState.idCtx.fillStyle = `rgb(${idColor[0]},${idColor[1]},${idColor[2]})`;
-        AppState.idCtx.fillRect(
+        
+        fillRoundedRect(AppState.idCtx,
             Math.round(rect.x),
             Math.round(rect.y),
             Math.round(rect.w),
-            Math.round(rect.h)
-        );
+            Math.round(rect.h));
+
+        // AppState.idCtx.fillRect(
+        //     Math.round(rect.x),
+        //     Math.round(rect.y),
+        //     Math.round(rect.w),
+        //     Math.round(rect.h)
+        // );
     }
 }
 
@@ -361,7 +381,8 @@ function reDrawRect(rect) {
     // Creating a mask to only blit this rect
     AppState.maskCtx.clearRect(0, 0, AppState.maskCanvas.width, AppState.maskCanvas.height);
     AppState.maskCtx.fillStyle = 'rgba(0,0,0,1)';
-    AppState.maskCtx.fillRect(x, y, w, h);
+    //AppState.maskCtx.fillRect(x, y, w, h);
+    fillRoundedRect(AppState.maskCtx, x, y, w, h)
 
     AppState.maskCtx.save();
     AppState.maskCtx.globalCompositeOperation = 'destination-out';
@@ -371,7 +392,8 @@ function reDrawRect(rect) {
         for (const child of node.children) {
             if (child.rect) {
                 const cr = child.rect;
-                AppState.maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
+                //AppState.maskCtx.fillRect(cr.x, cr.y, cr.w, cr.h);
+                fillRoundedRect(AppState.maskCtx, cr.x, cr.y, cr.w, cr.h);
             }
         }
     }
@@ -534,7 +556,7 @@ function selectNode(node, dontDeselect=false){
         node = null;
     }
     
-    if (node.is_free_space) return;
+    if (node && node.is_free_space) return;
 
     previousNode = AppState.selectedNode
     AppState.selectedNode = node
