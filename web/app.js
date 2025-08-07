@@ -283,7 +283,7 @@ function drawRect(rect, drawId = true, ctxOverride = null) {
         const lineHeight = FONT_SIZE + 2;
         const totalHeight = lines.length * lineHeight;
         const yStart = rect.y + (rect.h - totalHeight) / 2;
-
+        
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const textWidth = ctx.measureText(line).width;
@@ -523,6 +523,8 @@ function selectNode(node, dontDeselect=false){
         }
         node = null;
     }
+    
+    if (node.is_free_space) return;
 
     previousNode = AppState.selectedNode
     AppState.selectedNode = node
