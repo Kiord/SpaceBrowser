@@ -33,9 +33,12 @@ pip install eel
 
 ### TODO:
  - Display enhancement
-   - Block size
    - Modification date
  - Make it actually cross-platform (Win+Linux at least)
+   - Manage platform-specific profile
+     - Excluded paths
+     - Find actual root
+     - Hidden files
  - Various optimizations
    - Avoid complete redraws
    - Use an actual rendering backend
