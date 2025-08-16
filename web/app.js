@@ -35,13 +35,33 @@ const MIN_SIZE = 4;
 const FONT_SIZE = 10;
 const CORNER_RADII = 3;
 
-async function triggerFolderSelect() {
-    const folderPath = await eel.pick_folder()();
-    if (!folderPath) return;
 
-    document.getElementById("pathInput").value = folderPath;
-    analyze();
+// --- HTTP helpers (Go backend) ---
+async function apiGetFullTree(path) {
+  const r = await fetch("/api/get_full_tree?path=" + encodeURIComponent(path));
+  return r.json();
 }
+async function apiPickFolder() {
+  const r = await fetch("/api/pick_folder");
+  return r.json(); // { path: "..." }
+}
+async function apiOpenInFileBrowser(path) {
+  await fetch("/api/open_in_file_browser", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path })
+  });
+}
+
+
+async function triggerFolderSelect() {
+  const { path } = await apiPickFolder();
+  if (!path) return;
+  document.getElementById("pathInput").value = path;
+  analyze();
+}
+
+
 
 document.getElementById("folderInput").addEventListener("change", function (event) {
     const files = event.target.files;
@@ -151,13 +171,15 @@ function setUIBusy(state) {
     });
 }
 
+
+
 function trackParents(node){
-    if (node.is_folder && node.children.length > 0){
-        for (child of node.children){
-            child.parent = node;
-            trackParents(child);
-        }
-    } 
+  if (node?.is_folder && Array.isArray(node.children) && node.children.length){
+    for (const child of node.children){
+      child.parent = node;
+      trackParents(child);
+    }
+  }
 }
 
 async function analyze() {
@@ -167,7 +189,11 @@ async function analyze() {
     setUIBusy(true);
     try {
         console.time("get_full_tree");
-        const tree = await eel.get_full_tree(path)();
+        //const tree = await eel.get_full_tree(path)();
+        //const tree = await (await fetch("/api/get_full_tree?path=" + encodeURIComponent(path))).json();
+        const tree = await apiGetFullTree(path);
+
+
         console.timeEnd("get_full_tree");
         if (tree.error) {
             console.error("Backend error:", tree.error);
@@ -561,13 +587,12 @@ function selectNode(node, dontDeselect=false){
 
 window.addEventListener("click", () => hideContextMenu());
 
+
 async function openInSystemBrowser() {
-
-    if (AppState.selectedNode){
-        await eel.open_in_file_browser(AppState.selectedNode.full_path)();
-        hideContextMenu();
-    }
-
+  if (AppState.selectedNode){
+    await apiOpenInFileBrowser(AppState.selectedNode.full_path);
+    hideContextMenu();
+  }
 }
 
 function navigateToSelected() {
