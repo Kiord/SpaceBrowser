@@ -4,17 +4,11 @@ eel.init("web")
 import tkinter as tk
 from tkinter import filedialog
 import os
-import stat
 import shutil
 import platform
 import subprocess
+from system_profile import get_system_profile, scan_entry, print_system_profile
 
-MIN_FILE_SIZE = 1024
-EXCLUDED_PATHS = ["/proc", "/dev", "/sys", "/run", "/var/lib/docker", "/var/log/lastlog", "/snap"]
-
-def reset_count():
-    FileRecord.COUNT = 0
-    DirRecord.COUNT = 0
 
 class FileRecord:
     COUNT = 0
@@ -30,42 +24,43 @@ class FileRecord:
 
 class DirRecord(FileRecord):
     COUNT = 0
-    def __init__(self, path, depth=0):
+    SKIPPED_RECORDS = {}
+
+    def __init__(self, profile, path, depth=0, reset=False):
         super().__init__(path, 0, depth)
+        
+        if reset:
+            DirRecord.COUNT = 0
+            FileRecord.COUNT = 0
+            DirRecord.SKIPPED_RECORDS = {}
+
         DirRecord.COUNT += 1
 
         self.contains = []
 
-        if os.path.islink(self.full_path):
-            return
-
         try:
             with os.scandir(self.full_path) as entries:
                 for entry in entries:
-                    p = entry.path
+                    
+                    should_skip, reason, is_dir, st = scan_entry(profile, entry)
 
-                    if p in EXCLUDED_PATHS:
+                    if should_skip:
+                        if reason in DirRecord.SKIPPED_RECORDS:
+                            DirRecord.SKIPPED_RECORDS[reason].append(entry.path)
+                        else:
+                            DirRecord.SKIPPED_RECORDS[reason] = [entry.path]
                         continue
+                   
+                    if is_dir:
+                        d = DirRecord(profile, entry.path, depth + 1)
+                        self.contains.append(d)
+                        self.size += getattr(d, "size", 0)
+                    else:
+                        size_val = profile["helpers"]["on_disk_size"](st) if profile.get("on_disk_size_enabled") else st.st_size
+                        fm = FileRecord(entry.path, size_val, depth + 1)
+                        self.contains.append(fm)
+                        self.size += int(size_val)
 
-                    try:
-                        if entry.is_symlink():
-                            continue
-
-                        if entry.is_dir(follow_symlinks=False):
-                            d = DirRecord(p, depth + 1)
-                            self.contains.append(d)
-                            self.size += d.size
-
-                        elif entry.is_file(follow_symlinks=False):
-                            stat_info = entry.stat()
-                            if MIN_FILE_SIZE > 0 and stat_info.st_size < MIN_FILE_SIZE:
-                                continue
-                            fm = FileRecord(p, stat_info.st_size, depth + 1)
-                            self.contains.append(fm)
-                            self.size += stat_info.st_size
-
-                    except Exception:
-                        continue  # skip unreadable entry
         except Exception:
             return  # skip unreadable directory
 
@@ -94,8 +89,13 @@ def get_full_tree(path):
         if not os.path.isdir(path):
             return {"error": f"Invalid path ({path})"}
         print(f"SpaceBrowsing \"{path}\"...")
-        reset_count()
-        model = DirRecord(path)
+        profile = get_system_profile(path)
+        print_system_profile(profile)
+        
+        model = DirRecord(profile, path, reset=True)
+        for key, value in DirRecord.SKIPPED_RECORDS.items():
+            print(f'Skipped {len(value)} entries for {key}')
+
         tree = model.get_full_tree()
         if model.full_path == "/":
            tree["children"].append({
