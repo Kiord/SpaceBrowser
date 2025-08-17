@@ -27,6 +27,7 @@ const AppState = {
   // current layout
   rects: [],
   selectedRectIndex: null,
+  selectedNodeId:null
 };
 
 const FONT_SIZE = 10;
@@ -116,6 +117,7 @@ async function analyze() {
     AppState.navHistory = [rootId];
     AppState.navIndex = 0;
     AppState.selectedRectIndex = null;
+    AppState.selectedNodeId = null;
 
     // immediately layout + draw
     await redraw();
@@ -166,7 +168,8 @@ function drawTreemap(rects) {
 }
 
 function drawRect(r, writeId, ctx, rectIndex) {
-  const isSelected = AppState.selectedRectIndex === rectIndex;
+  const isSelected = AppState.selectedNodeId == r.node_id;
+  if (isSelected && rectIndex >=   0) AppState.selectedRectIndex = rectIndex;
 
   // Fill
   ctx.fillStyle = isSelected ? "#000"
@@ -242,6 +245,7 @@ function selectRectByIndex(rectIndex, dontDeselect=false) {
     if (!dontDeselect) {
       const prevIdx = AppState.selectedRectIndex;
       AppState.selectedRectIndex = null;
+      AppState.selectedNodeId = null;
       if (prevIdx != null) reDrawRectByIndex(prevIdx);
     }
     return;
@@ -251,12 +255,14 @@ function selectRectByIndex(rectIndex, dontDeselect=false) {
     if (dontDeselect) return;
     const prevIdx = AppState.selectedRectIndex;
     AppState.selectedRectIndex = null;
+    AppState.selectedNodeId = null;
     if (prevIdx != null) reDrawRectByIndex(prevIdx);
     return;
   }
 
   const prevIdx = AppState.selectedRectIndex;
   AppState.selectedRectIndex = rectIndex;
+  AppState.selectedNodeId = AppState.rects[rectIndex].node_id;
   if (prevIdx != null) reDrawRectByIndex(prevIdx);
   reDrawRectByIndex(rectIndex);
 }
