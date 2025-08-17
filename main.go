@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/disk"
@@ -33,45 +34,6 @@ type Node struct {
 	// Only populated on root for convenience (UI uses these if present)
 	FileCount   int `json:"file_count,omitempty"`
 	FolderCount int `json:"folder_count,omitempty"`
-}
-
-// Scanning profile (ported from system_profile.py, simplified)
-// -----------------------------------------------------------
-
-type Profile struct {
-	PlatformSystem string
-	ExcludedPaths  []string
-	SkipHidden     bool
-	MinFileSize    int64
-	FollowSymlinks bool
-}
-
-func defaultProfile(selectedPath string) *Profile {
-	p := &Profile{
-		PlatformSystem: runtime.GOOS, // "windows" | "darwin" | "linux"
-		SkipHidden:     false,
-		MinFileSize:    1024,
-		FollowSymlinks: false,
-	}
-
-	switch runtime.GOOS {
-	case "linux":
-		p.ExcludedPaths = []string{"/proc", "/sys", "/dev", "/run", "/var/lib/docker", "/var/log/lastlog", "/snap"}
-	case "darwin":
-		p.ExcludedPaths = []string{"/System", "/private/var/vm", "/Volumes/MobileBackups", "/Library/Application Support/MobileSync/Backup"}
-	case "windows":
-		windir := os.Getenv("WINDIR")
-		if windir == "" {
-			windir = `C:\Windows`
-		}
-		p.ExcludedPaths = []string{
-			`C:\$Recycle.Bin`,
-			`C:\System Volume Information`,
-			filepath.Join(windir, "WinSxS"),
-			filepath.Join(windir, "Temp"),
-		}
-	}
-	return p
 }
 
 // ============
@@ -122,17 +84,20 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile := defaultProfile(path)
-	fileCount := 0
-	dirCount := 0
+	profile := defaultProfile()
 
-	root, err := buildTree(profile, path, 0, &fileCount, &dirCount)
+	var fileCount int64
+	var dirCount int64
+
+	// Tune the pool size. 0 = default (NumCPU*4). You can make this a flag/env.
+	scanner := NewScanner(profile, 0)
+
+	root, err := scanner.buildTree(path, 0, &fileCount, &dirCount)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Augment with free space tile if scanning the mount root
 	if isMountRoot(path) {
 		if fs, err := disk.Usage(path); err == nil {
 			free := &Node{Name: "[Free Disk Space]", Size: int64(fs.Free), IsFolder: false, IsFreeSpace: true, Depth: 0}
@@ -140,10 +105,8 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fill counts for convenience
-	root.FileCount = fileCount
-	root.FolderCount = dirCount
-
+	root.FileCount = int(fileCount)
+	root.FolderCount = int(dirCount)
 	writeJSON(w, root, http.StatusOK)
 }
 
@@ -191,14 +154,39 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 // Tree Building (ported logic)
 // ==============================
 
-func buildTree(profile *Profile, path string, depth int, fileCount, dirCount *int) (*Node, error) {
+type Scanner struct {
+	profile    *Profile
+	sem        chan struct{} // worker tokens
+	maxWorkers int
+}
+
+// NewScanner(maxWorkers<=0 => sensible default)
+func NewScanner(p *Profile, maxWorkers int) *Scanner {
+	if maxWorkers <= 0 {
+		maxWorkers = runtime.NumCPU() * 4 // good starting point for NVMe; tune for HDDs
+	}
+	return &Scanner{profile: p, sem: make(chan struct{}, maxWorkers), maxWorkers: maxWorkers}
+}
+
+// buildTree scans 'path' and all descendants.
+// Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
+func (s *Scanner) buildTree(path string, depth int, fileCount, dirCount *int64) (*Node, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
-	root := &Node{Name: baseName(abs), Size: 0, IsFolder: true, Depth: depth, FullPath: abs, Children: []*Node{}}
 
-	*dirCount++
+	// Count this directory
+	atomic.AddInt64(dirCount, 1)
+
+	root := &Node{
+		Name:     baseName(abs),
+		Size:     0,
+		IsFolder: true,
+		Depth:    depth,
+		FullPath: abs,
+		Children: make([]*Node, 0, 128),
+	}
 
 	entries, err := os.ReadDir(abs)
 	if err != nil {
@@ -206,96 +194,88 @@ func buildTree(profile *Profile, path string, depth int, fileCount, dirCount *in
 		return root, nil
 	}
 
-	for _, de := range entries {
-		full := filepath.Join(abs, de.Name())
+	// First pass: decide files vs subdirs; handle files immediately, queue subdirs.
+	type subdir struct{ full string }
+	subdirs := make([]subdir, 0, 32)
 
-		// Excludes
-		if shouldExclude(profile, full) {
+	for _, de := range entries {
+		name := de.Name()
+		full := filepath.Join(abs, name)
+
+		if shouldExclude(s.profile, full) {
 			continue
 		}
-
-		// Symlink handling
+		// Skip symlinks early (no Info() needed)
 		if de.Type()&os.ModeSymlink != 0 {
 			continue
 		}
-
-		// Hidden files
-		if profile.SkipHidden && isHidden(full) {
+		// Hidden policy
+		if s.profile.SkipHidden && isHidden(full) {
 			continue
 		}
 
+		if de.IsDir() {
+			// Defer scanning to worker pool
+			subdirs = append(subdirs, subdir{full: full})
+			continue
+		}
+
+		// For files we need size -> call Info() once
 		info, err := de.Info()
 		if err != nil {
 			continue
 		}
-
-		if info.IsDir() {
-			n, _ := buildTree(profile, full, depth+1, fileCount, dirCount)
-			root.Children = append(root.Children, n)
-			root.Size += n.Size
-			continue
-		}
-
-		// regular files only & min size
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		if profile.MinFileSize > 0 && info.Size() < profile.MinFileSize {
+		if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
 			continue
 		}
 
-		sz := info.Size() // use logical size; Python used on-disk when available
-		child := &Node{Name: de.Name(), Size: sz, IsFolder: false, Depth: depth + 1}
+		sz := info.Size() // logical size; switch to on-disk if you add st_blocks
+		child := &Node{Name: name, Size: sz, IsFolder: false, Depth: depth + 1}
 		root.Children = append(root.Children, child)
 		root.Size += sz
-		*fileCount++
+		atomic.AddInt64(fileCount, 1)
+	}
+
+	// Second pass: scan subdirectories in parallel (bounded).
+	if len(subdirs) > 0 {
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		results := make([]*Node, 0, len(subdirs))
+
+		for _, sd := range subdirs {
+			// Try to acquire a worker without blocking
+			select {
+			case s.sem <- struct{}{}:
+				wg.Add(1)
+				go func(p string) {
+					defer wg.Done()
+					defer func() { <-s.sem }()
+					n, _ := s.buildTree(p, depth+1, fileCount, dirCount)
+					mu.Lock()
+					results = append(results, n)
+					mu.Unlock()
+				}(sd.full)
+			default:
+				// Pool is full — do it synchronously to avoid deadlock
+				n, _ := s.buildTree(sd.full, depth+1, fileCount, dirCount)
+				results = append(results, n)
+			}
+		}
+
+		wg.Wait()
+		for _, n := range results {
+			root.Children = append(root.Children, n)
+			root.Size += n.Size
+		}
 	}
 
 	// Sort children by size desc (UI expects this)
 	sort.Slice(root.Children, func(i, j int) bool { return root.Children[i].Size > root.Children[j].Size })
 	return root, nil
-}
-
-func baseName(path string) string {
-	b := filepath.Base(path)
-	if b == "." || b == string(os.PathSeparator) || b == "" {
-		if runtime.GOOS == "windows" {
-			// best-effort root label (e.g., C:\)
-			vol := filepath.VolumeName(path)
-			if vol != "" {
-				return vol + "\\"
-			}
-		}
-		return "/"
-	}
-	return b
-}
-
-func shouldExclude(p *Profile, absPath string) bool {
-	cmp := func(s string) string {
-		if runtime.GOOS == "windows" {
-			return strings.ToLower(s)
-		}
-		return s
-	}
-	ap := cmp(absPath)
-	for _, ex := range p.ExcludedPaths {
-		exAbs := cmp(ex)
-		if ap == exAbs || strings.HasPrefix(ap, filepath.Clean(exAbs)+string(os.PathSeparator)) {
-			return true
-		}
-	}
-	return false
-}
-
-func isHidden(path string) bool {
-	base := filepath.Base(path)
-	if base == "" {
-		return false
-	}
-	// Simple cross-platform heuristic: leading dot
-	// (On Windows, we don't read FILE_ATTRIBUTE_HIDDEN to keep deps small.)
-	return strings.HasPrefix(base, ".")
 }
 
 // ============================
@@ -323,18 +303,4 @@ func openInFileBrowser(path string) error {
 func run(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	return cmd.Run()
-}
-
-// ===============
-// Mount root util
-// ===============
-
-func isMountRoot(path string) bool {
-	path, _ = filepath.Abs(path)
-	if runtime.GOOS == "windows" {
-		vol := filepath.VolumeName(path)
-		clean := filepath.Clean(path)
-		return strings.EqualFold(clean, vol+"\\")
-	}
-	return filepath.Clean(path) == "/"
 }
