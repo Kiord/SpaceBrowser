@@ -1,18 +1,18 @@
+// treemap.go
 package main
 
 import (
 	"math"
 )
 
-// ---------- Tunables ----------
+// Treemap rendering constants
 const (
-	treemapPad        = 5.0  // inner padding
-	treemapLabelH     = 10.0 // title strip height
-	treemapMinSidePx  = 4.0  // don't recurse/layout children if box is smaller
-	treemapMinAreaPx2 = 9.0  // children under this area get bucketed
-	treemapTopK       = 200  // keep only largest K children per dir; rest -> [Other]
+	treemapPad       = 5.0  // inner padding inside folder rects
+	treemapLabelH    = 10.0 // space reserved for the folder title strip
+	treemapMinSidePx = 4.0  // drop (do not emit) any rect whose rounded width or height is < 4 px
 )
 
+// internal stack frame for iterative traversal
 type frame struct {
 	n     *Node
 	x, y  float64
@@ -20,50 +20,55 @@ type frame struct {
 	depth int
 }
 
-// ---------- Data returned to the UI ----------
+// Rect is the draw-ready rectangle returned to the frontend.
 type Rect struct {
-	X, Y, W, H float64 `json:"x" "y" "w" "h"`
-	FullPath   string  `json:"full_path"`
-	Name       string  `json:"name"`
-	Size       int64   `json:"size"`
-	IsFolder   bool    `json:"is_folder"`
-	IsFree     bool    `json:"is_free_space"`
-	Depth      int     `json:"depth"`
-	Index      int     `json:"index"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
+
+	NodeID   int   `json:"node_id"`
+	ParentID *int  `json:"parent_id,omitempty"`
+	Children []int `json:"children,omitempty"` // indices into THIS rects array
+
+	FullPath string `json:"full_path"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	IsFolder bool   `json:"is_folder"`
+	IsFree   bool   `json:"is_free_space"`
+	Depth    int    `json:"depth"`
 }
 
-// ComputeTreemapRects lays out the entire tree rooted at 'root' into W×H.
-// It assumes each directory's Children are already size-sorted (desc) by the scanner.
+// ComputeTreemapRects lays out the subtree rooted at 'root' into a W×H rectangle.
+// Important behavior:
+//   - ALL children contribute to area scaling (so whitespace appears for tiny items),
+//   - BUT a child is only EMITTED if its FINAL ROUNDED width AND height are >= treemapMinSidePx,
+//   - Rows whose thickness would render < 4 px are skipped entirely, leaving a blank band.
 func ComputeTreemapRects(root *Node, W, H float64) []Rect {
-
-	if W <= 0 || H <= 0 || root == nil {
+	if root == nil || W <= 0 || H <= 0 {
 		return nil
 	}
-	out := make([]Rect, 0, 4096)
-	idx := 0
 
+	out := make([]Rect, 0, 4096)
 	st := make([]frame, 0, 128)
+
+	// Push root
 	st = append(st, frame{n: root, x: 0, y: 0, w: W, h: H, depth: 0})
 
 	for len(st) > 0 {
+		// Pop
 		f := st[len(st)-1]
 		st = st[:len(st)-1]
 
-		// Leaf or too small → just emit the rect
-		if f.w < treemapMinSidePx || f.h < treemapMinSidePx {
-			emitRect(&out, &idx, f.n, f.x, f.y, f.w, f.h)
-			continue
-		}
+		// Emit the container rect for this node; record its rect index for attaching children later
+		parentRectIdx := emitRect(&out, f.n, f.x, f.y, f.w, f.h)
 
-		// Emit self
-		emitRect(&out, &idx, f.n, f.x, f.y, f.w, f.h)
-
-		// No children to lay out
+		// If this node has no visible inner area or no children, continue
 		if !f.n.IsFolder || len(f.n.Children) == 0 {
 			continue
 		}
 
-		// Interior area where children live
+		// Compute interior area for children (padding + label strip)
 		ax := f.x + treemapPad
 		ay := f.y + treemapPad + treemapLabelH
 		aw := f.w - 2*treemapPad
@@ -72,88 +77,44 @@ func ComputeTreemapRects(root *Node, W, H float64) []Rect {
 			continue
 		}
 
-		// ---- Build child list with Top-K + [Other] bucket & tiny-area bucketing ----
-		// Assume input already sorted by size desc.
-		kids := f.n.Children
-		kept := kids
-		if len(kids) > treemapTopK {
-			kept = kids[:treemapTopK]
-		}
-
-		totalSize := int64(0)
-		for _, c := range kept {
+		// Build areas from ALL children (so omitted tiny ones still consume space as whitespace)
+		kids := f.n.Children // already size-sorted desc by the scanner
+		var totalSize int64
+		for _, c := range kids {
 			if c.Size > 0 {
 				totalSize += c.Size
 			}
 		}
-		// Aggregate the tail (and later tiny boxes) into "otherSize"
-		otherSize := int64(0)
-		for _, c := range kids[len(kept):] {
-			if c.Size > 0 {
-				otherSize += c.Size
-			}
-		}
-		if totalSize == 0 && otherSize == 0 {
+		if totalSize == 0 {
 			continue
 		}
 
-		// scale values → pixel areas
 		interiorArea := aw * ah
-		invTotal := 1.0
-		if totalSize+otherSize > 0 {
-			invTotal = 1.0 / float64(totalSize+otherSize)
-		}
+		invTotal := 1.0 / float64(totalSize)
 
-		// Pre-size temporary arrays (Structure-of-Arrays)
-		// areas/ptrs only for kept children; tiny ones will be bucketed into "otherSize"
-		areas := make([]float64, 0, len(kept))
-		ptrs := make([]*Node, 0, len(kept))
-
-		// threshold in pixels for tiny boxes
-		tinyThreshold := treemapMinAreaPx2
-
-		// fill areas/ptrs, bucket tiny into otherSize
-		for _, c := range kept {
+		areas := make([]float64, 0, len(kids))
+		ptrs := make([]*Node, 0, len(kids))
+		for _, c := range kids {
 			if c.Size <= 0 {
 				continue
 			}
-			a := float64(c.Size) * invTotal * interiorArea
-			if a < tinyThreshold {
-				otherSize += c.Size
-				totalSize -= c.Size
-				continue
-			}
-			areas = append(areas, a)
+			areas = append(areas, float64(c.Size)*invTotal*interiorArea)
 			ptrs = append(ptrs, c)
 		}
-
-		// If "other" is meaningful, append a synthetic box at the end
-		if otherSize > 0 {
-			a := float64(otherSize) * invTotal * interiorArea
-			areas = append(areas, a)
-			// make a lightweight synthetic node; no FullPath as it represents a bucket
-			ptrs = append(ptrs, &Node{
-				Name:        "[Other]",
-				Size:        otherSize,
-				IsFolder:    false, // treat as leaf for now; could set true if I later support expanding it
-				IsFreeSpace: false,
-				Depth:       f.depth + 1,
-				FullPath:    "",
-				Children:    nil,
-			})
+		if len(ptrs) == 0 {
+			continue
 		}
 
-		// Lay children with Squarify (O(n) pass; O(1) worst-aspect test)
-		squarifyInto(ptrs, areas, ax, ay, aw, ah, f.depth+1, &out, &idx, &st)
+		// Lay out children into the interior, recording indices of EMITTED children
+		squarifyInto(ptrs, areas, ax, ay, aw, ah, f.depth+1, parentRectIdx, &out, &st)
 	}
 
 	return out
 }
 
-// ---------- Helpers ----------
-
-// Add the rect for node n; snap to integer pixels (crisp lines)
-func emitRect(out *[]Rect, idx *int, n *Node, x, y, w, h float64) {
+// emitRect appends a Rect to 'out' using drawing-space rounding and returns its index.
+func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
+	// Snap to integer pixels for crisp rendering
 	x1 := math.Round(x)
 	y1 := math.Round(y)
 	x2 := math.Round(x + w)
@@ -161,26 +122,46 @@ func emitRect(out *[]Rect, idx *int, n *Node, x, y, w, h float64) {
 	rw := math.Max(0, x2-x1)
 	rh := math.Max(0, y2-y1)
 
+	var parentPtr *int
+	if n.ParentID >= 0 {
+		val := n.ParentID
+		parentPtr = &val
+	}
+
+	idx := len(*out)
 	*out = append(*out, Rect{
 		X: x1, Y: y1, W: rw, H: rh,
+
+		NodeID:   n.ID,
+		ParentID: parentPtr,
+		Children: nil,
+
 		FullPath: n.FullPath,
 		Name:     n.Name,
 		Size:     n.Size,
 		IsFolder: n.IsFolder,
 		IsFree:   n.IsFreeSpace,
 		Depth:    n.Depth,
-		Index:    *idx,
 	})
-	*idx++
+	return idx
 }
 
-// Squarify children into container (x,y,w,h), pushing child frames for folders.
-func squarifyInto(nodes []*Node, areas []float64, x, y, w, h float64, depth int, out *[]Rect, idx *int, st *[]frame) {
+// roundedWH returns the final pixel width/height after rounding the rect corners like emitRect.
+func roundedWH(x, y, w, h float64) (rw, rh float64) {
+	x1 := math.Round(x)
+	y1 := math.Round(y)
+	x2 := math.Round(x + w)
+	y2 := math.Round(y + h)
+	return math.Max(0, x2-x1), math.Max(0, y2-y1)
+}
+
+// squarifyInto lays out 'nodes' with given 'areas' into (x,y,w,h), appending EMITTED child rect
+// indices to out[parentRect].Children, and pushing visible folders onto the traversal stack.
+func squarifyInto(nodes []*Node, areas []float64, x, y, w, h float64, depth int, parentRect int, out *[]Rect, st *[]frame) {
 	if len(nodes) == 0 || w <= 0 || h <= 0 {
 		return
 	}
 
-	// Iterate through items with a cursor; build a row and place it when adding next would worsen worst aspect.
 	i := 0
 	cx, cy, cw, ch := x, y, w, h
 
@@ -191,11 +172,12 @@ func squarifyInto(nodes []*Node, areas []float64, x, y, w, h float64, depth int,
 		rowMin := math.MaxFloat64
 		rowMax := 0.0
 
-		L := math.Max(cw, ch) // layout along the long side
-		// Add items while worst aspect improves
+		// We lay along the long side, so the short side is the row thickness
+		L := math.Max(cw, ch)
+
+		// Greedily add until worst aspect would get worse
 		for i < len(nodes) {
 			a := areas[i]
-			// candidate stats
 			sNew := rowSum + a
 			minNew := rowMin
 			if a < minNew {
@@ -206,54 +188,60 @@ func squarifyInto(nodes []*Node, areas []float64, x, y, w, h float64, depth int,
 				maxNew = a
 			}
 
-			if rowSum > 0 { // compare with previous row stats
-				if worseAfter(rowSum, rowMin, rowMax, sNew, minNew, maxNew, L) {
-					break // placing current item would worsen row; stop here
-				}
+			if rowSum > 0 && worseAfter(rowSum, rowMin, rowMax, sNew, minNew, maxNew, L) {
+				break
 			}
-			// accept item into row
 			rowSum = sNew
 			rowMin = minNew
 			rowMax = maxNew
 			i++
 		}
 
-		// Layout the row into a strip
 		if rowSum <= 0 {
 			break
 		}
+
+		// Compute row thickness in pixels; if < 4 px after flooring, skip entire band
 		horizontal := cw >= ch
-		thickness := rowSum / L // strip thickness along the short side
+		thickness := rowSum / L
+		if math.Floor(thickness) < treemapMinSidePx {
+			if horizontal {
+				cy += thickness
+				ch -= thickness
+			} else {
+				cx += thickness
+				cw -= thickness
+			}
+			// Continue with remaining area; this leaves a blank strip (whitespace)
+			continue
+		}
+
+		// Place the row
 		if horizontal {
-			// row consumes a band at top of (cx,cy,cw,ch)
-			layoutRow(nodes[rowStart:i], areas[rowStart:i], cx, cy, cw, thickness, depth, out, idx, st, horizontal)
+			layoutRow(nodes[rowStart:i], areas[rowStart:i], cx, cy, cw, thickness, depth, parentRect, out, st, true)
 			cy += thickness
 			ch -= thickness
 		} else {
-			// column consumes a band at left
-			layoutRow(nodes[rowStart:i], areas[rowStart:i], cx, cy, thickness, ch, depth, out, idx, st, horizontal)
+			layoutRow(nodes[rowStart:i], areas[rowStart:i], cx, cy, thickness, ch, depth, parentRect, out, st, false)
 			cx += thickness
 			cw -= thickness
 		}
 
-		// Stop if the remaining container is too small
+		// Stop if what's left is too small to be meaningful
 		if cw < treemapMinSidePx || ch < treemapMinSidePx {
 			break
 		}
 	}
 }
 
-// Return true if the row's worst aspect ratio would worsen when adding next item
+// worseAfter compares the worst aspect ratio of the current row vs adding the next item.
 func worseAfter(s, amin, amax, sNew, aminNew, amaxNew, L float64) bool {
-	// previous
 	T := s / L
-	// avoid div by zero (shouldn't happen since s>0)
 	if T <= 0 || amin <= 0 {
 		return false
 	}
 	worstBefore := math.Max(amax/(T*T), (T*T)/amin)
 
-	// candidate
 	Tn := sNew / L
 	if Tn <= 0 || aminNew <= 0 {
 		return false
@@ -263,11 +251,13 @@ func worseAfter(s, amin, amax, sNew, aminNew, amaxNew, L float64) bool {
 	return worstAfter > worstBefore
 }
 
-// Place one row (or column) of boxes; push folder frames for recursive layout later (iterative).
-func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, out *[]Rect, idx *int, st *[]frame, horizontal bool) {
-	// negate padding a hair to hide hairline gaps after rounding
-	const negPad = -1.0
+// layoutRow places one row (or column) of boxes.
+// It EMITS only children with rounded width & height >= treemapMinSidePx.
+// Invisible children still consume space (offset increases), so their area becomes blank whitespace.
+func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, parentRect int, out *[]Rect, st *[]frame, horizontal bool) {
+	const negPad = -1.0 // small negative to hide hairline gaps after rounding
 
+	// Sum of areas in this row
 	total := 0.0
 	for _, a := range areas {
 		total += a
@@ -276,18 +266,19 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, ou
 		return
 	}
 
-	// length along the row; the other dimension is "thickness"
+	// Row dimensions
 	length := w
 	if !horizontal {
 		length = h
 	}
 	thickness := total / length
 
-	// accumulate along the row
+	// Place each item in the row
 	offset := 0.0
 	for k, n := range nodes {
 		breadth := areas[k] / thickness
 
+		// Compute child box
 		var bx, by, bw, bh float64
 		if horizontal {
 			bx = x + offset
@@ -301,16 +292,21 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, ou
 			bh = breadth - negPad
 		}
 
-		// Emit child rect now
-		emitRect(out, idx, n, bx+0.5*negPad, by+0.5*negPad, bw, bh)
+		// Decide emission by FINAL rounded pixel size
+		rw, rh := roundedWH(bx+0.5*negPad, by+0.5*negPad, bw, bh)
+		if rw >= treemapMinSidePx && rh >= treemapMinSidePx {
+			// Emit child rect and record its index under the parent
+			childIdx := emitRect(out, n, bx+0.5*negPad, by+0.5*negPad, bw, bh)
+			(*out)[parentRect].Children = append((*out)[parentRect].Children, childIdx)
 
-		// If it's a folder, queue its children for later (iterative traversal)
-		if n.IsFolder && len(n.Children) > 0 && bw >= treemapMinSidePx && bh >= treemapMinSidePx {
-			*st = append(*st, frame{
-				n: n, x: bx + 0.5*negPad, y: by + 0.5*negPad, w: bw, h: bh, depth: depth,
-			})
+			// If it's a folder with children, queue it for inner layout (only if visible at this level)
+			if n.IsFolder && len(n.Children) > 0 {
+				*st = append(*st, frame{
+					n: n, x: bx + 0.5*negPad, y: by + 0.5*negPad, w: bw, h: bh, depth: depth,
+				})
+			}
 		}
-
+		// Always advance offset so invisible children still consume space (blank area)
 		offset += breadth
 	}
 }
