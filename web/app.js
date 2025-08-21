@@ -85,6 +85,7 @@ window.addEventListener("load", () => {
       hideContextMenu();
     }
   });
+  
   AppState.colorCanvas.addEventListener("dblclick", (e) => {
     const { x, y } = getCanvasCoords(e);
     const rectIndex = rectIndexAtPoint(x, y);

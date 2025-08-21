@@ -1,10 +1,13 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +17,9 @@ import (
 
 	"github.com/shirou/gopsutil/v3/disk"
 )
+
+//go:embed web/*
+var embeddedWeb embed.FS
 
 // ============
 // In-memory Store
@@ -39,9 +45,12 @@ func main() {
 	mux.HandleFunc("/api/layout", handleLayout)             // layout by node_id & size
 	mux.HandleFunc("/api/open_in_file_browser", handleOpenInFileBrowser)
 
-	// Serve the existing web UI
-	webDir := http.Dir("web")
-	mux.Handle("/", http.FileServer(webDir))
+	mime.AddExtensionType(".svg", "image/svg+xml") // ensure correct content-type for SVGs
+	webRoot, err := fs.Sub(embeddedWeb, "web")
+	if err != nil {
+		log.Fatal(err)
+	}
+	mux.Handle("/", http.FileServer(http.FS(webRoot)))
 
 	addr := ":8000"
 	log.Printf("Starting Go server at http://localhost%v", addr)
