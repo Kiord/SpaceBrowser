@@ -85,12 +85,25 @@ window.addEventListener("load", () => {
       hideContextMenu();
     }
   });
+  AppState.colorCanvas.addEventListener("dblclick", (e) => {
+    const { x, y } = getCanvasCoords(e);
+    const rectIndex = rectIndexAtPoint(x, y);
 
-  window.addEventListener("resize", debounce(async () => {
-    resizeCanvas();
-    await redraw(); // re-request layout for current focus
-  }, 150));
+    selectRectByIndex(rectIndex);
+
+    navigateToSelected();
+
+    hideContextMenu();
+  });
 });
+
+window.addEventListener("resize", debounce(async () => {
+  resizeCanvas();
+  await redraw(); // re-request layout for current focus
+}, 150));
+
+
+
 
 // ---------- Analyze (scan then layout immediately) ----------
 async function analyze() {
