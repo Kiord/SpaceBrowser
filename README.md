@@ -23,16 +23,12 @@ go run .
     - Go to parent
     - backward/forward
  - Responsive
+ - Cross platform (?)
 
 ### TODO:
  - File system dialog to browse in FS
  - Display enhancement
    - Modification date
- - Make it actually cross-platform (Win+Linux at least)
-   - Manage platform-specific profile
-     - Excluded paths
-     - Find actual root
-     - Hidden files
  - Various optimizations
    - Avoid complete redraws
    - Use an actual rendering backend
