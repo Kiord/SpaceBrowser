@@ -41,6 +41,8 @@ type Scanner struct {
 	nodes     []*Node
 	nodesMu   sync.Mutex
 	idCounter int64
+	seen      map[inodeKeyT]struct{}
+	seenMu    sync.Mutex
 }
 
 // NewScanner(maxWorkers<=0 => sensible default)
@@ -48,7 +50,22 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 	if maxWorkers <= 0 {
 		maxWorkers = runtime.NumCPU() * 4 // good starting point for NVMe; tune for HDDs
 	}
-	return &Scanner{profile: p, sem: make(chan struct{}, maxWorkers), maxWorkers: maxWorkers}
+	return &Scanner{
+		profile:    p,
+		sem:        make(chan struct{}, maxWorkers),
+		maxWorkers: maxWorkers,
+		seen:       make(map[inodeKeyT]struct{}),
+	}
+}
+
+func (s *Scanner) seenOnce(k inodeKeyT) bool {
+	s.seenMu.Lock()
+	_, ok := s.seen[k]
+	if !ok {
+		s.seen[k] = struct{}{}
+	}
+	s.seenMu.Unlock()
+	return ok
 }
 
 func (s *Scanner) assignID(n *Node) int {
@@ -131,11 +148,17 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		if !info.Mode().IsRegular() {
 			continue
 		}
-		if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
+
+		sz := allocatedSize(info) // platform-specific
+
+		if s.profile.MinFileSize > 0 && sz < s.profile.MinFileSize {
 			continue
 		}
 
-		sz := info.Size()
+		if k, ok := inodeKey(info); ok && s.seenOnce(k) {
+			continue
+		}
+
 		child := &Node{
 			ParentID: root.ID,
 			Name:     name,
