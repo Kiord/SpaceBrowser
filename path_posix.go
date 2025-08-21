@@ -1,4 +1,4 @@
-//go:build !linux && !darwin && !windows
+//go:build !windows
 
 package main
 
@@ -6,11 +6,6 @@ import (
 	"os"
 	"path/filepath"
 )
-
-type inodeKeyT struct{ dev, ino uint64 }
-
-func allocatedSize(fi os.FileInfo) int64        { return fi.Size() }
-func inodeKey(fi os.FileInfo) (inodeKeyT, bool) { return inodeKeyT{}, false }
 
 func baseName(path string) string {
 	b := filepath.Base(path)
