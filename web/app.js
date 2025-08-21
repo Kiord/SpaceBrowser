@@ -167,59 +167,59 @@ function drawTreemap(rects) {
   }
 }
 
-function drawRect(r, writeId, ctx, rectIndex) {
-  const isSelected = AppState.selectedNodeId == r.node_id;
+function drawRect(rect, writeId, ctx, rectIndex) {
+  const isSelected = AppState.selectedNodeId == rect.node_id;
   if (isSelected && rectIndex >=   0) AppState.selectedRectIndex = rectIndex;
 
   // Fill
   ctx.fillStyle = isSelected ? "#000"
-    : (r.is_free_space ? "#fff" : folderColors[(r.depth || 0) % folderColors.length]);
-  fillRoundedRect(ctx, r.x, r.y, r.w, r.h);
+    : (rect.is_free_space ? "#fff" : folderColors[(rect.depth || 0) % folderColors.length]);
+  fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
   // Border
   ctx.strokeStyle = "#222";
   ctx.lineWidth = 1;
-  strokeRoundedRect(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+  strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
   // Label
   ctx.font = `${FONT_SIZE}px sans-serif`;
   ctx.textBaseline = "top";
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
-  const sizeStr = formatSize(r.size || 0);
-  if (r.is_free_space) {
+  const sizeStr = formatSize(rect.size || 0);
+  if (rect.is_free_space) {
     const lines = ["Free Space", sizeStr];
     const lineH = FONT_SIZE + 2;
     const totalH = lines.length * lineH;
-    const yStart = r.y + (r.h - totalH) / 2;
+    const yStart = rect.y + (rect.h - totalH) / 2;
     for (let i = 0; i < lines.length; i++) {
       const textWidth = ctx.measureText(lines[i]).width;
-      const xText = r.x + (r.w - textWidth) / 2;
+      const xText = rect.x + (rect.w - textWidth) / 2;
       const yText = yStart + i * lineH;
       ctx.fillText(lines[i], xText, yText);
     }
-  } else if (r.is_folder) {
-    if (r.w > 60 && r.h > 15) {
-      const label = truncateText(ctx, `${r.name} (${sizeStr})`, r.w - 6);
-      ctx.fillText(label, r.x + 4, r.y + 4);
+  } else if (rect.is_folder) {
+    if (rect.w > 60 && rect.h > 15) {
+      const label = truncateText(ctx, `${rect.name} (${sizeStr})`, rect.w - 6);
+      ctx.fillText(label, rect.x + 4, rect.y + 4);
     }
   } else {
-    if (r.w > 60 && r.h > FONT_SIZE * 2 + 6) {
-      const name = truncateText(ctx, r.name || "", r.w - 6);
+    if (rect.w > 60 && rect.h > FONT_SIZE * 2 + 6) {
+      const name = truncateText(ctx, rect.name || "", rect.w - 6);
       const lines = [name, sizeStr];
       const lineH = FONT_SIZE + 2;
       const totalH = lines.length * lineH;
-      const yStart = r.y + (r.h - totalH) / 2;
+      const yStart = rect.y + (rect.h - totalH) / 2;
       for (let i = 0; i < lines.length; i++) {
         const textWidth = ctx.measureText(lines[i]).width;
-        const xText = r.x + (r.w - textWidth) / 2;
+        const xText = rect.x + (rect.w - textWidth) / 2;
         const yText = yStart + i * lineH;
         ctx.fillText(lines[i], xText, yText);
       }
-    } else if (r.h > FONT_SIZE + 4 && r.w > 30) {
+    } else if (rect.h > FONT_SIZE + 4 && rect.w > 30) {
       const textWidth = ctx.measureText(sizeStr).width;
-      const xText = r.x + (r.w - textWidth) / 2;
-      const yText = r.y + (r.h - FONT_SIZE) / 2;
+      const xText = rect.x + (rect.w - textWidth) / 2;
+      const yText = rect.y + (rect.h - FONT_SIZE) / 2;
       ctx.fillText(sizeStr, xText, yText);
     }
   }
@@ -228,7 +228,7 @@ function drawRect(r, writeId, ctx, rectIndex) {
   if (writeId) {
     const rgb = idToColor(rectIndex);
     AppState.idCtx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    AppState.idCtx.fillRect(Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h));
+    AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
   }
 }
 
@@ -260,9 +260,13 @@ function selectRectByIndex(rectIndex, dontDeselect=false) {
     return;
   }
 
+  const rect = AppState.rects[rectIndex];
+  if (rect.is_free_space) return;
+
   const prevIdx = AppState.selectedRectIndex;
   AppState.selectedRectIndex = rectIndex;
   AppState.selectedNodeId = AppState.rects[rectIndex].node_id;
+
   if (prevIdx != null) reDrawRectByIndex(prevIdx);
   reDrawRectByIndex(rectIndex);
 }
