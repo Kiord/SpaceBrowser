@@ -1,0 +1,50 @@
+project_name: spacebrowser
+
+before:
+  hooks:
+    # Make sure modules and embedded files are tidy
+    - go mod tidy
+
+builds:
+  - id: spacebrowser
+    main: ./   # entrypoint (main.go at root)
+    binary: spacebrowser
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: release-archives
+    format: tar.gz
+    # zip is used automatically for Windows
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: Kiord
+    name: SpaceBrowser
