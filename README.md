@@ -4,16 +4,11 @@ _Uh no... my disk is full_
 
 A cross-platform file system visualizer.
 
-SpaceBrowser is an independent open-source project heavily inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1) from [Sean Werkema](https://www.werkema.com/).
+SpaceBrowser is an independent open-source project heavily inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
 
 Usage:
 ```
-python main.py
-```
-
-The only dependancy is Eel for the Python/JS interface:
-```
-pip install eel
+go run .
 ```
 
 
@@ -21,7 +16,6 @@ pip install eel
 
 ### Features
  - Treemap with SpaceMonger's style
- - File system browsing
  - Open folder in file system
  - Node selection
  - Navigation
@@ -29,9 +23,9 @@ pip install eel
     - Go to parent
     - backward/forward
  - Responsive
- - Treemap caching
 
 ### TODO:
+ - File system dialog to browse in FS
  - Display enhancement
    - Modification date
  - Make it actually cross-platform (Win+Linux at least)
@@ -42,4 +36,3 @@ pip install eel
  - Various optimizations
    - Avoid complete redraws
    - Use an actual rendering backend
- - Improve squarification
