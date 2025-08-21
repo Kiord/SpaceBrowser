@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"spacebrowser/internal/platform"
 	"sync"
 	"sync/atomic"
 )
@@ -41,7 +42,7 @@ type Scanner struct {
 	nodes     []*Node
 	nodesMu   sync.Mutex
 	idCounter int64
-	seen      map[inodeKeyT]struct{}
+	seen      map[platform.InodeKey]struct{}
 	seenMu    sync.Mutex
 }
 
@@ -54,11 +55,11 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		profile:    p,
 		sem:        make(chan struct{}, maxWorkers),
 		maxWorkers: maxWorkers,
-		seen:       make(map[inodeKeyT]struct{}),
+		seen:       make(map[platform.InodeKey]struct{}),
 	}
 }
 
-func (s *Scanner) seenOnce(k inodeKeyT) bool {
+func (s *Scanner) seenOnce(k platform.InodeKey) bool {
 	s.seenMu.Lock()
 	_, ok := s.seen[k]
 	if !ok {
@@ -99,7 +100,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 	// directory node
 	root := &Node{
 		ParentID: parentID,
-		Name:     baseName(abs),
+		Name:     platform.Impl.BaseName(abs),
 		Size:     0,
 		IsFolder: true,
 		Depth:    depth,
@@ -149,13 +150,13 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			continue
 		}
 
-		sz := allocatedSize(info) // platform-specific
+		sz := platform.Impl.AllocatedSize(info)
 
 		if s.profile.MinFileSize > 0 && sz < s.profile.MinFileSize {
 			continue
 		}
 
-		if k, ok := inodeKey(info); ok && s.seenOnce(k) {
+		if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
 			continue
 		}
 
