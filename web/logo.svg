@@ -5,18 +5,22 @@
                     x1="0" y1="0"
                     x2="500" y2="500"
                     gradientUnits="userSpaceOnUse">
-  <stop offset="0%"   stop-color="rgb(255, 0, 0)"/>
-  <stop offset="25%"  stop-color="rgb(255, 128, 0)"/>
-  <stop offset="50%"  stop-color="rgb(255, 255, 0)"/>
-  <stop offset="75%"  stop-color="rgb(128, 255, 0)"/>
-  <stop offset="100%" stop-color="rgb(0, 255, 0)"/>
+      <stop offset="0%"   stop-color="#ff9b85"/>
+      <stop offset="20%"  stop-color="#ffbe76"/>
+      <stop offset="40%"  stop-color="#ffe066"/>
+      <stop offset="60%"  stop-color="#7bed9f"/>
+      <stop offset="80%"  stop-color="#70d6ff"/>
+      <stop offset="100%" stop-color="#a29bfe"/>
     </linearGradient>
   </defs>
 
   <rect x="10" y="10" width="275" height="275"
+        rx="20" ry="20"
         fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
   <rect x="102.5" y="102.5" width="275" height="275"
+        rx="20" ry="20"
         fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
   <rect x="215" y="215" width="275" height="275"
+        rx="20" ry="20"
         fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
 </svg>
