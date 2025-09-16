@@ -38,4 +38,4 @@ go run .
 - copy path
 - fix open in browser (post bug + vscoed on linux)
 - browse path ui
-- memory leaks
+- remove + are you sure dialog
