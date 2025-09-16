@@ -14,6 +14,7 @@ type API interface {
 	BaseName(string) string
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
+	Canonicalize(string) string
 }
 
 // -------- defaults (POSIX-ish + xdg-open) --------
@@ -44,6 +45,11 @@ func (Default) OpenInFileBrowser(p string) error {
 		return exec.Command("xdg-open", p).Run()
 	}
 	return exec.Command("xdg-open", filepath.Dir(p)).Run()
+}
+
+func (Default) Canonicalize(p string) string {
+	abs, _ := filepath.Abs(p)
+	return filepath.Clean(abs)
 }
 
 // Global chosen implementation (overridden in per-OS files during init()).

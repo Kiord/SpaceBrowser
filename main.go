@@ -77,6 +77,8 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "missing 'path' query parameter")
 		return
 	}
+	path = platform.Impl.Canonicalize(path)
+
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
 		writeJSON(w, map[string]string{"error": fmt.Sprintf("Invalid path (%s)", path)}, http.StatusBadRequest)
@@ -105,7 +107,7 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 				Size:        int64(fs.Free),
 				IsFolder:    false,
 				IsFreeSpace: true,
-				Depth:       0,
+				Depth:       1,
 			}
 			root.Children = append(root.Children, free)
 		}

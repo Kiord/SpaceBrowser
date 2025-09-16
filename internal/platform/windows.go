@@ -20,11 +20,50 @@ func (Windows) BaseName(p string) string {
 	}
 	return b
 }
-func (Windows) IsMountRoot(p string) bool {
-	p, _ = filepath.Abs(p)
-	vol := filepath.VolumeName(p)
-	return strings.EqualFold(filepath.Clean(p), vol+`\\`)
+
+// Canonicalize turns a user input path into a scanning-safe, OS-correct path.
+// Key behavior: "D:" -> "D:\" (drive root), strip \\?\ for logic, normalize slashes.
+func (Windows) Canonicalize(p string) string {
+	p = strings.TrimSpace(p)
+
+	// Strip extended prefix for logic; the scanner doesn't need it.
+	if strings.HasPrefix(p, `\\?\`) {
+		p = p[4:]
+	}
+
+	// Normalize slashes
+	p = strings.ReplaceAll(p, "/", `\`)
+
+	// Bare drive letter? Make it the drive root.
+	if len(p) == 2 && p[1] == ':' && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
+		p += `\`
+	}
+
+	// UNC paths are fine; for everything else, clean (not Abs!)
+	return filepath.Clean(p)
 }
+
+func (w Windows) IsMountRoot(p string) bool {
+	// Compare against canonicalized input (no Abs; Abs would pick the drive's current dir)
+	clean := w.Canonicalize(p)
+
+	// Drive root like "D:\"
+	if vol := filepath.VolumeName(clean); vol != "" {
+		root := vol + `\`
+		return strings.EqualFold(clean, root)
+	}
+
+	// UNC share root: "\\server\share" (two components)
+	if strings.HasPrefix(clean, `\\`) {
+		parts := strings.Split(clean, `\`)
+		// ["", "", "server", "share"] or with trailing slash
+		if len(parts) == 4 || (len(parts) == 5 && parts[4] == "") {
+			return true
+		}
+	}
+	return false
+}
+
 func (Windows) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {
 		return exec.Command("explorer", "/select,", p).Run()
