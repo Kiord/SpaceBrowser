@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"os/exec"
 	"sort"
 	"spacebrowser/internal/platform"
 	"strconv"
@@ -99,7 +98,6 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add [Free Disk Space] as a child (no node_id)
 	if platform.Impl.IsMountRoot(path) {
 		if fs, err := disk.Usage(path); err == nil {
 			free := &Node{
@@ -206,30 +204,4 @@ func writeJSON(w http.ResponseWriter, v interface{}, status int) {
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, map[string]string{"error": msg}, status)
-}
-
-// ============================
-// Open in system file browser
-// ============================
-
-// func openInFileBrowser(path string) error {
-// 	switch runtime.GOOS {
-// 	case "windows":
-// 		return run("explorer", path)
-// 	case "darwin":
-// 		return run("open", path)
-// 	default:
-// 		candidates := [][]string{{"xdg-open", path}, {"nautilus", path}, {"dolphin", path}, {"thunar", path}}
-// 		for _, c := range candidates {
-// 			if err := run(c[0], c[1:]...); err == nil {
-// 				return nil
-// 			}
-// 		}
-// 		return errors.New("no file manager found (tried xdg-open, nautilus, dolphin, thunar)")
-// 	}
-// }
-
-func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	return cmd.Run()
 }
