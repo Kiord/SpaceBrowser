@@ -28,8 +28,6 @@ go run .
 ### TODO:
  - File system dialog to browse in FS
  - Seek for system default file sytem browser
- - Display enhancement
-   - Modification date
  - Optimizations
    - Avoid complete redraws
    - Use an actual rendering backend
