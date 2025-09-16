@@ -87,8 +87,7 @@ func (s *Scanner) assignID(n *Node) int {
 
 func (s *Scanner) Nodes() []*Node {
 	s.nodesMu.Lock()
-	out := make([]*Node, len(s.nodes))
-	copy(out, s.nodes)
+	out := s.nodes
 	s.nodesMu.Unlock()
 	return out
 }

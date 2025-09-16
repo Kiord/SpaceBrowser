@@ -25,9 +25,15 @@ var embeddedWeb embed.FS
 // ============
 
 type TreeStore struct {
-	root   *Node
-	nodes  []*Node // dense: nodes[id] == *Node
-	rootID int
+	root  *Node
+	nodes []*Node // dense: nodes[id] == *Node
+}
+
+func (s *TreeStore) Replace(root *Node, nodes []*Node) {
+	s.root = nil
+	s.nodes = nil
+	s.root = root
+	s.nodes = nodes
 }
 
 var store TreeStore
@@ -124,9 +130,7 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 	root.FolderCount = int(dirCount)
 
 	// Cache in memory
-	store.root = root
-	store.nodes = scanner.Nodes()
-	store.rootID = root.ID
+	store.Replace(root, scanner.Nodes())
 
 	writeJSON(w, map[string]any{
 		"ok":      true,
