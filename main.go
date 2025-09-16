@@ -79,7 +79,7 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 	}
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
-		writeJSON(w, map[string]string{"error": fmt.Sprintf("Invalid path (%s)", path)}, http.StatusOK)
+		writeJSON(w, map[string]string{"error": fmt.Sprintf("Invalid path (%s)", path)}, http.StatusBadRequest)
 		return
 	}
 
