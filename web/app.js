@@ -139,6 +139,7 @@ async function analyze() {
     console.error("analyze failed:", e);
   } finally {
     setUIBusy(false);
+    updateNavButtons();
   }
 }
 
