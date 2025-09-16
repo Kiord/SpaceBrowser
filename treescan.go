@@ -27,6 +27,10 @@ type Node struct {
 	// Only populated on root for convenience (not sent to the new front)
 	FileCount   int `json:"file_count,omitempty"`
 	FolderCount int `json:"folder_count,omitempty"`
+
+	// Only set on mount roots
+	DiskTotal int64 `json:"disk_total,omitempty"`
+	DiskFree  int64 `json:"disk_free,omitempty"`
 }
 
 // ==============================
@@ -92,10 +96,7 @@ func (s *Scanner) Nodes() []*Node {
 // buildTree scans 'path' and all descendants, assigning IDs.
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
-	}
+	abs := platform.Impl.Canonicalize(path)
 
 	// directory node
 	root := &Node{

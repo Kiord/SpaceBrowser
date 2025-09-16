@@ -37,6 +37,10 @@ type Rect struct {
 	IsFolder bool   `json:"is_folder"`
 	IsFree   bool   `json:"is_free_space"`
 	Depth    int    `json:"depth"`
+
+	// on root rect when scanning a mount
+	DiskTotal int64 `json:"disk_total,omitempty"`
+	DiskFree  int64 `json:"disk_free,omitempty"`
 }
 
 // ComputeTreemapRects lays out the subtree rooted at 'root' into a W×H rectangle.
@@ -142,6 +146,9 @@ func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
 		IsFolder: n.IsFolder,
 		IsFree:   n.IsFreeSpace,
 		Depth:    n.Depth,
+
+		DiskTotal: n.DiskTotal,
+		DiskFree:  n.DiskFree,
 	})
 	return idx
 }

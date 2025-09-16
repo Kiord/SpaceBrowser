@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"spacebrowser/internal/platform"
 	"strconv"
 	"time"
@@ -110,6 +111,13 @@ func handleGetFullTree(w http.ResponseWriter, r *http.Request) {
 				Depth:       1,
 			}
 			root.Children = append(root.Children, free)
+
+			root.DiskTotal = int64(fs.Total)
+			root.DiskFree = int64(fs.Free)
+
+			sort.Slice(root.Children, func(i, j int) bool {
+				return root.Children[i].Size > root.Children[j].Size
+			})
 		}
 	}
 

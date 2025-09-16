@@ -215,7 +215,15 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     }
   } else if (rect.is_folder) {
     if (rect.w > 60 && rect.h > 15) {
-      const label = truncateText(ctx, `${rect.name} (${sizeStr})`, rect.w - 6);
+      let display = `${rect.name} (${sizeStr})`;
+  
+      const isRoot = rect.parent_id == null;
+      if (isRoot && rect.disk_total > 0) {
+        const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
+        display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
+      }
+  
+      const label = truncateText(ctx, display, rect.w - 6);
       ctx.fillText(label, rect.x + 4, rect.y + 4);
     }
   } else {
