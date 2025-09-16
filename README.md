@@ -34,3 +34,8 @@ go run .
    - Parallelize layout generation 
    - Avoid complete redraws
    - Use an actual rendering backend
+   
+- copy path
+- fix open in browser (post bug + vscoed on linux)
+- browse path ui
+- memory leaks

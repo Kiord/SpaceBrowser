@@ -71,4 +71,17 @@ func (Windows) OpenInFileBrowser(p string) error {
 	return exec.Command("explorer", p).Run()
 }
 
+func (Windows) DefaultStartPath() string {
+	drv := os.Getenv("SystemDrive") // typically "C:"
+	if drv == "" {
+		drv = "C:"
+	}
+	p := drv + `\` // ensure root, avoids "D:" current-dir semantics
+	if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+		return p
+	}
+	// Fallback to C:\ even if SystemDrive was odd/missing
+	return `C:\`
+}
+
 func init() { Impl = Windows{} }

@@ -29,4 +29,16 @@ func (Darwin) OpenInFileBrowser(p string) error {
 	return exec.Command("open", p).Run()
 }
 
+func (Darwin) DefaultStartPath() string {
+	if fi, err := os.Stat("/Users"); err == nil && fi.IsDir() {
+		return "/Users"
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		if fi, err := os.Stat(h); err == nil && fi.IsDir() {
+			return h
+		}
+	}
+	return "/"
+}
+
 func init() { Impl = Darwin{} }

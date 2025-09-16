@@ -37,4 +37,16 @@ func (Linux) OpenInFileBrowser(p string) error {
 	return exec.Command("xdg-open", p).Run()
 }
 
+func (Linux) DefaultStartPath() string {
+	if fi, err := os.Stat("/home"); err == nil && fi.IsDir() {
+		return "/home"
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		if fi, err := os.Stat(h); err == nil && fi.IsDir() {
+			return h
+		}
+	}
+	return "/"
+}
+
 func init() { Impl = Linux{} }

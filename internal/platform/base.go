@@ -15,6 +15,7 @@ type API interface {
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
 	Canonicalize(string) string
+	DefaultStartPath() string
 }
 
 // -------- defaults (POSIX-ish + xdg-open) --------
@@ -50,6 +51,15 @@ func (Default) OpenInFileBrowser(p string) error {
 func (Default) Canonicalize(p string) string {
 	abs, _ := filepath.Abs(p)
 	return filepath.Clean(abs)
+}
+
+func (Default) DefaultStartPath() string {
+	if h, err := os.UserHomeDir(); err == nil {
+		if fi, err := os.Stat(h); err == nil && fi.IsDir() {
+			return h
+		}
+	}
+	return string(os.PathSeparator)
 }
 
 // Global chosen implementation (overridden in per-OS files during init()).

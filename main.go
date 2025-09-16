@@ -44,6 +44,7 @@ func main() {
 	mux.HandleFunc("/api/get_full_tree", handleGetFullTree) // scan & cache; returns {ok, root_id}
 	mux.HandleFunc("/api/layout", handleLayout)             // layout by node_id & size
 	mux.HandleFunc("/api/open_in_file_browser", handleOpenInFileBrowser)
+	mux.HandleFunc("/api/default_path", handleDefaultPath)
 
 	mime.AddExtensionType(".svg", "image/svg+xml") // ensure correct content-type for SVGs
 	webRoot, err := fs.Sub(embeddedWeb, "web")
@@ -185,6 +186,16 @@ func handleOpenInFileBrowser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]string{"status": "ok"}, http.StatusOK)
+}
+
+func handleDefaultPath(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, map[string]string{
+		"default_path": platform.Impl.DefaultStartPath(),
+	}, http.StatusOK)
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}, status int) {

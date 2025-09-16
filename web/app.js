@@ -98,6 +98,18 @@ window.addEventListener("load", () => {
   });
 });
 
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const res = await fetch("/api/default_path");
+    if (res.ok) {
+      const { default_path } = await res.json();
+      if (default_path) {
+        document.getElementById("pathInput").value = default_path;
+      }
+    }
+  } catch (_) { /* ignore */ }
+});
+
 window.addEventListener("resize", debounce(async () => {
   resizeCanvas();
   await redraw(); // re-request layout for current focus
