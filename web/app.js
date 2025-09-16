@@ -183,6 +183,15 @@ async function redraw() {
   updateNavButtons();
 }
 
+function formatModTime(sec) {
+  if (!sec) return "";
+  const d = new Date(sec * 1000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function drawTreemap(rects) {
   const ctx = AppState.colorCtx;
   const idc = AppState.idCtx;
@@ -214,6 +223,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
   const sizeStr = formatSize(rect.size || 0);
+
   if (rect.is_free_space) {
     const lines = ["Free Space", sizeStr];
     const lineH = FONT_SIZE + 2;
@@ -238,24 +248,49 @@ function drawRect(rect, writeId, ctx, rectIndex) {
       const label = truncateText(ctx, display, rect.w - 6);
       ctx.fillText(label, rect.x + 4, rect.y + 4);
     }
-  } else {
-    if (rect.w > 60 && rect.h > FONT_SIZE * 2 + 6) {
-      const name = truncateText(ctx, rect.name || "", rect.w - 6);
-      const lines = [name, sizeStr];
-      const lineH = FONT_SIZE + 2;
-      const totalH = lines.length * lineH;
-      const yStart = rect.y + (rect.h - totalH) / 2;
+  } else { // File
+    const m = ctx.measureText("Mg"); // tall sample
+    const ascent  = m.actualBoundingBoxAscent  ?? Math.round(FONT_SIZE * 0.8);
+    const descent = m.actualBoundingBoxDescent ?? Math.max(1, Math.round(FONT_SIZE * 0.2));
+    const textH   = ascent + descent;          // visual height of one line
+    const lineH   = textH + 2;
+    
+    function drawCenteredLines(lines) {
+      // Visual block height = N*lineH minus the extra spacing below the last line
+      const blockH = lines.length * lineH - (lineH - textH);
+      const top    = rect.y + (rect.h - blockH) / 2; // visual top of block
+      const base0  = top + ascent;                   // baseline of first line
+    
       for (let i = 0; i < lines.length; i++) {
-        const textWidth = ctx.measureText(lines[i]).width;
-        const xText = rect.x + (rect.w - textWidth) / 2;
-        const yText = yStart + i * lineH;
-        ctx.fillText(lines[i], xText, yText);
+        const text = lines[i];
+        const tw   = ctx.measureText(text).width;
+        const x    = rect.x + (rect.w - tw) / 2;
+        const y    = base0 + i * lineH;             // exact baseline per line
+        ctx.fillText(text, x, y);
       }
-    } else if (rect.h > FONT_SIZE + 4 && rect.w > 30) {
-      const textWidth = ctx.measureText(sizeStr).width;
-      const xText = rect.x + (rect.w - textWidth) / 2;
-      const yText = rect.y + (rect.h - FONT_SIZE) / 2;
-      ctx.fillText(sizeStr, xText, yText);
+    }
+    
+    // --- decide how many lines to show (name, size, date) ---
+    const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
+    
+    if (rect.w > 60 && rect.h > FONT_SIZE + 4) {
+      const name = truncateText(ctx, rect.name || "", rect.w - 6);
+      const lines = [name];
+    
+      // room for 2 lines? -> add size
+      if (rect.h > FONT_SIZE * 2 + 6) {
+        lines.push(sizeStr);
+      }
+      // room for 3 lines? -> add date
+      if (dateStr && rect.h > FONT_SIZE * 3 + 6) {
+        lines.push(dateStr);
+      }
+    
+      drawCenteredLines(lines);
+    } else if (rect.w > 30 && rect.h > FONT_SIZE + 4) {
+      // tiny tiles: name only, perfectly centered
+      const name = truncateText(ctx, rect.name || "", rect.w - 6);
+      drawCenteredLines([name]);
     }
   }
 

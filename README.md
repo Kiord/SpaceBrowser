@@ -31,7 +31,6 @@ go run .
  - Display enhancement
    - Modification date
  - Optimizations
-   - Parallelize layout generation 
    - Avoid complete redraws
    - Use an actual rendering backend
    

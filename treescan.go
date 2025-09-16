@@ -31,6 +31,8 @@ type Node struct {
 	// Only set on mount roots
 	DiskTotal int64 `json:"disk_total,omitempty"`
 	DiskFree  int64 `json:"disk_free,omitempty"`
+
+	ModTime int64 `json:"-"`
 }
 
 // ==============================
@@ -167,6 +169,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			Size:     sz,
 			IsFolder: false,
 			Depth:    depth + 1,
+			ModTime:  info.ModTime().Unix(),
 		}
 		s.assignID(child)
 
