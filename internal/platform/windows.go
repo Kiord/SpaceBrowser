@@ -26,20 +26,18 @@ func (Windows) BaseName(p string) string {
 func (Windows) Canonicalize(p string) string {
 	p = strings.TrimSpace(p)
 
-	// Strip extended prefix for logic; the scanner doesn't need it.
-	if strings.HasPrefix(p, `\\?\`) {
-		p = p[4:]
-	}
+	// Strip extended prefix
+	p = strings.TrimPrefix(p, `\\?\`)
 
 	// Normalize slashes
 	p = strings.ReplaceAll(p, "/", `\`)
 
-	// Bare drive letter? Make it the drive root.
-	if len(p) == 2 && p[1] == ':' && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
+	// Bare drive letter → root
+	if len(p) == 2 && p[1] == ':' &&
+		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
 		p += `\`
 	}
 
-	// UNC paths are fine; for everything else, clean (not Abs!)
 	return filepath.Clean(p)
 }
 
