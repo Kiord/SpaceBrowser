@@ -66,6 +66,7 @@ window.addEventListener("load", () => {
 
   resizeCanvas();
 
+
   AppState.colorCanvas.addEventListener("click", (e) => {
     const { x, y } = getCanvasCoords(e);
     const rectIndex = rectIndexAtPoint(x, y);
@@ -89,12 +90,12 @@ window.addEventListener("load", () => {
   AppState.colorCanvas.addEventListener("dblclick", (e) => {
     const { x, y } = getCanvasCoords(e);
     const rectIndex = rectIndexAtPoint(x, y);
-
-    selectRectByIndex(rectIndex);
-
-    navigateToSelected();
-
-    hideContextMenu();
+    const rect = AppState.rects[rectIndex];
+    if (!rect.is_free_space){
+      selectRectByIndex(rectIndex);
+      navigateToSelected();
+      hideContextMenu();
+    }
   });
 });
 
