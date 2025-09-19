@@ -332,7 +332,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
       }
   
-      const label = ellipsize(ctx, display, rect.w);// truncateText(ctx, display, rect.w - 6);
+      const label = ellipsize(ctx, display, rect.w);
       ctx.fillText(label, rect.x + 4, rect.y + 4);
     }
   } else { // File
@@ -529,17 +529,6 @@ function rectIndexAtPoint(x, y) {
 function fillRoundedRect(ctx, x, y, w, h) { ctx.beginPath(); ctx.roundRect(x, y, w, h, CORNER_RADII); ctx.fill(); }
 function strokeRoundedRect(ctx, x, y, w, h) { ctx.beginPath(); ctx.roundRect(x, y, w, h, CORNER_RADII); ctx.stroke(); }
 
-function truncateText(ctx, text, maxWidth) {
-  if (ctx.measureText(text).width <= maxWidth) return text;
-  const ellipsis = '…';
-  let lo = 0, hi = text.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    const s = text.slice(0, mid) + ellipsis;
-    (ctx.measureText(s).width <= maxWidth) ? (lo = mid + 1) : (hi = mid);
-  }
-  return text.slice(0, Math.max(0, lo - 1)) + ellipsis;
-}
 function formatSize(bytes) {
   if (!bytes) return '0 B';
   const u = ['B','KB','MB','GB','TB','PB']; const i = Math.floor(Math.log(bytes)/Math.log(1024));
