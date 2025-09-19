@@ -203,9 +203,88 @@ function drawTreemap(rects) {
   }
 }
 
+function textFits(ctx, text, maxw){
+  return ctx.measureText(text).width <= maxw;
+}
+
+function ellipsize(ctx, text, maxw){
+  if (!text) return '';
+  if (textFits(ctx, text, maxw)) return text;
+
+  const ell = '…';
+  if (!textFits(ctx, ell, maxw)) return ''; 
+
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const s = text.slice(0, mid) + ell;
+    textFits(ctx, s, maxw) ? (lo = mid + 1) : (hi = mid);
+  }
+  const cut = Math.max(0, lo - 1);
+  return cut <= 0 ? '' : (text.slice(0, cut) + ell)
+}
+
+function getCtxFontBounds(ctx){
+  const m = ctx.measureText("Mg"); // tall sample
+  const ascent  = m.actualBoundingBoxAscent  ?? Math.round(FONT_SIZE * 0.8);
+  const descent = m.actualBoundingBoxDescent ?? Math.max(1, Math.round(FONT_SIZE * 0.2));
+  const textH   = ascent + descent;          // visual height of one line
+  const lineH   = textH + 2;
+  return { ascent, textH, lineH};
+}
+
+function filterLinesByAvailableSpace(ctx, lines, fontBounds, maxW, maxH){
+  const { lineH, textH } = fontBounds;
+
+  if (maxW <= 0 || maxH <= 0 || !lines || !lines.length) return [];
+
+  const maxLines = Math.max(0, Math.floor((maxH + (lineH - textH)) / lineH));
+  if (maxLines <= 0) return [];
+
+  const out = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (out.length >= maxLines) break;
+
+    const spec = lines[i] || {};
+
+    if (spec.ellipsize) {
+      const text = ellipsize(ctx, spec.text, maxW);
+      if (text.length > 0)
+        out.push(text);
+    }
+    else if(textFits(ctx, spec.text, maxW)){
+      out.push(spec.text);
+    }
+  }
+
+  return out;
+}
+
+function writeCenteredLinesInRect(ctx, lines, fontBounds, rect){
+  if (!lines || !lines.length) return;
+
+  const text_lines = filterLinesByAvailableSpace(ctx, lines, fontBounds, rect.w - 2, rect.h - 2);
+
+  const { ascent, lineH, textH } = fontBounds;
+
+  const blockH = text_lines.length * lineH - (lineH - textH);
+
+  const baseY = rect.y + (rect.h - blockH) / 2 + ascent;
+
+  for (let i = 0; i < text_lines.length; i++) {
+    const t = text_lines[i];
+    if (!t) continue;
+    const tw = ctx.measureText(t).width;
+    const x  = rect.x + (rect.w - tw) / 2;  
+    const y  = baseY + i * lineH;           
+    ctx.fillText(t, x, y);
+  }
+}
+
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = AppState.selectedNodeId == rect.node_id;
-  if (isSelected && rectIndex >=   0) AppState.selectedRectIndex = rectIndex;
+  if (isSelected && rectIndex >= 0) AppState.selectedRectIndex = rectIndex;
 
   // Fill
   ctx.fillStyle = isSelected ? "#000"
@@ -217,25 +296,32 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   ctx.lineWidth = 1;
   strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
+  // ID buffer (rect index encoded as RGB)
+  if (writeId) {
+    const rgb = idToColor(rectIndex);
+    AppState.idCtx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
+  }
+
+  // Rect is too small, bye labels
+  if (rect.w < 40 || rect.h < FONT_SIZE + 4)
+    return;
+
   // Label
   ctx.font = `${FONT_SIZE}px sans-serif`;
   ctx.textBaseline = "top";
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
   const sizeStr = formatSize(rect.size || 0);
+  fontBounds = getCtxFontBounds(ctx)
 
   if (rect.is_free_space) {
-    const lines = ["Free Space", sizeStr];
-    const lineH = FONT_SIZE + 2;
-    const totalH = lines.length * lineH;
-    const yStart = rect.y + (rect.h - totalH) / 2;
-    for (let i = 0; i < lines.length; i++) {
-      const textWidth = ctx.measureText(lines[i]).width;
-      const xText = rect.x + (rect.w - textWidth) / 2;
-      const yText = yStart + i * lineH;
-      ctx.fillText(lines[i], xText, yText);
-    }
-  } else if (rect.is_folder) {
+    writeCenteredLinesInRect(ctx,  [
+      { text: "Free Space", ellipsize: false },
+      { text: sizeStr,      ellipsize: false },
+    ], fontBounds, rect);
+  } 
+  else if (rect.is_folder) {
     if (rect.w > 60 && rect.h > 15) {
       let display = `${rect.name} (${sizeStr})`;
   
@@ -245,60 +331,16 @@ function drawRect(rect, writeId, ctx, rectIndex) {
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
       }
   
-      const label = truncateText(ctx, display, rect.w - 6);
+      const label = ellipsize(ctx, display, rect.w);// truncateText(ctx, display, rect.w - 6);
       ctx.fillText(label, rect.x + 4, rect.y + 4);
     }
   } else { // File
-    const m = ctx.measureText("Mg"); // tall sample
-    const ascent  = m.actualBoundingBoxAscent  ?? Math.round(FONT_SIZE * 0.8);
-    const descent = m.actualBoundingBoxDescent ?? Math.max(1, Math.round(FONT_SIZE * 0.2));
-    const textH   = ascent + descent;          // visual height of one line
-    const lineH   = textH + 2;
-    
-    function drawCenteredLines(lines) {
-      // Visual block height = N*lineH minus the extra spacing below the last line
-      const blockH = lines.length * lineH - (lineH - textH);
-      const top    = rect.y + (rect.h - blockH) / 2; // visual top of block
-      const base0  = top + ascent;                   // baseline of first line
-    
-      for (let i = 0; i < lines.length; i++) {
-        const text = lines[i];
-        const tw   = ctx.measureText(text).width;
-        const x    = rect.x + (rect.w - tw) / 2;
-        const y    = base0 + i * lineH;             // exact baseline per line
-        ctx.fillText(text, x, y);
-      }
-    }
-    
-    // --- decide how many lines to show (name, size, date) ---
     const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
-    
-    if (rect.w > 60 && rect.h > FONT_SIZE + 4) {
-      const name = truncateText(ctx, rect.name || "", rect.w - 6);
-      const lines = [name];
-    
-      // room for 2 lines? -> add size
-      if (rect.h > FONT_SIZE * 2 + 6) {
-        lines.push(sizeStr);
-      }
-      // room for 3 lines? -> add date
-      if (dateStr && rect.h > FONT_SIZE * 3 + 6) {
-        lines.push(dateStr);
-      }
-    
-      drawCenteredLines(lines);
-    } else if (rect.w > 30 && rect.h > FONT_SIZE + 4) {
-      // tiny tiles: name only, perfectly centered
-      const name = truncateText(ctx, rect.name || "", rect.w - 6);
-      drawCenteredLines([name]);
-    }
-  }
-
-  // ID buffer (rect index encoded as RGB)
-  if (writeId) {
-    const rgb = idToColor(rectIndex);
-    AppState.idCtx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-    AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
+    writeCenteredLinesInRect(ctx,  [
+      { text: rect.name,  ellipsize: true  },
+      { text: sizeStr,    ellipsize: false },
+      { text: dateStr,    ellipsize: false },
+    ], fontBounds, rect);
   }
 }
 
