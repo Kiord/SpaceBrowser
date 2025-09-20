@@ -35,21 +35,57 @@ const CORNER_RADII = 3;
 const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe","#dfe4ea"];
 
 // ---------- API ----------
+
+
+// web/app.js
+import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath } from "./wailsjs/go/main/App.js";
+
 async function apiScan(path) {
-  const r = await fetch(`/api/get_full_tree?path=${encodeURIComponent(path)}`);
-  return r.json(); // { ok, root_id }
+  const rootId = await GetFullTree(path);
+  return { ok: true, root_id: rootId };
 }
+
 async function apiLayoutById(nodeId, w, h) {
-  const r = await fetch(`/api/layout?node_id=${nodeId}&w=${w}&h=${h}`);
-  return r.json(); // { rects: [...] }
+  const rects = await Layout(nodeId, w, h);
+  return { rects };
 }
+
 async function apiOpenInFileBrowser(path) {
-  await fetch("/api/open_in_file_browser", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path })
-  });
+  await OpenInFileBrowser(path);
 }
+
+document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("analyzeButton")?.addEventListener("click", analyze);
+  document.getElementById("triggerFolderSelectButton")?.addEventListener("click", triggerFolderSelect);
+  document.getElementById("rootButton")?.addEventListener("click", goToRoot);
+  document.getElementById("parentButton")?.addEventListener("click", goToParent);
+  document.getElementById("backwardButton")?.addEventListener("click", goBackward);
+  document.getElementById("forwardButton")?.addEventListener("click", goForward);
+
+  try {
+    const p = await DefaultPath();
+    const el = document.getElementById("pathInput");
+    if (el && p) el.value = p;
+  } catch (e) {
+    console.error(e);
+  }
+});
+
+// async function apiScan(path) {
+//   const r = await fetch(`/api/get_full_tree?path=${encodeURIComponent(path)}`);
+//   return r.json(); // { ok, root_id }
+// }
+// async function apiLayoutById(nodeId, w, h) {
+//   const r = await fetch(`/api/layout?node_id=${nodeId}&w=${w}&h=${h}`);
+//   return r.json(); // { rects: [...] }
+// }
+// async function apiOpenInFileBrowser(path) {
+//   await fetch("/api/open_in_file_browser", {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({ path })
+//   });
+// }
 
 // ---------- Boot ----------
 window.addEventListener("load", () => {
@@ -99,17 +135,17 @@ window.addEventListener("load", () => {
   });
 });
 
-document.addEventListener("DOMContentLoaded", async () => {
-  try {
-    const res = await fetch("/api/default_path");
-    if (res.ok) {
-      const { default_path } = await res.json();
-      if (default_path) {
-        document.getElementById("pathInput").value = default_path;
-      }
-    }
-  } catch (_) { /* ignore */ }
-});
+// document.addEventListener("DOMContentLoaded", async () => {
+//   try {
+//     const res = await fetch("/api/default_path");
+//     if (res.ok) {
+//       const { default_path } = await res.json();
+//       if (default_path) {
+//         document.getElementById("pathInput").value = default_path;
+//       }
+//     }
+//   } catch (_) { /* ignore */ }
+// });
 
 window.addEventListener("resize", debounce(async () => {
   resizeCanvas();
@@ -314,7 +350,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
   const sizeStr = formatSize(rect.size || 0);
-  fontBounds = getCtxFontBounds(ctx)
+  const fontBounds = getCtxFontBounds(ctx);
 
   if (rect.is_free_space) {
     writeCenteredLinesInRect(ctx,  [

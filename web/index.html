@@ -5,19 +5,20 @@
   <title>SpaceBrowser</title>
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <!-- <script src="app.js" defer></script> -->
+  <script type="module" src="./app.js"></script>
 </head>
 
 <body>
   <div class="container">
     <div class="controls">
       <input type="text" id="pathInput" placeholder="Enter folder path" />
-      <button onclick="triggerFolderSelect()">📁 Browse Folder</button>
-      <button onclick="analyze()">Analyze</button>
-      <button id="rootButton" onclick="goToRoot()" disabled>🗺️ Zoom Full</button>
-      <button id="parentButton" onclick="goToParent()" disabled>⬆️ Go to Parent</button>
-      <button id="backwardButton" onclick="goBackward()" disabled>⬅️ Back</button>
-      <button id="forwardButton" onclick="goForward()" disabled>➡️ Forward</button>
+      <button id="triggerFolderSelectButton">📁 Browse Folder</button>
+      <button id="analyzeButton">Analyze</button>
+      <button id="rootButton" disabled>🗺️ Zoom Full</button>
+      <button id="parentButton" disabled>⬆️ Go to Parent</button>
+      <button id="backwardButton" disabled>⬅️ Back</button>
+      <button id="forwardButton" disabled>➡️ Forward</button>
 
       <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;" />
     </div>
