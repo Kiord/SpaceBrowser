@@ -14,7 +14,6 @@ type App struct{ ctx context.Context }
 func NewApp() *App                         { return &App{} }
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
 
-// ===== in-memory store reused from your current server =====
 type TreeStore struct {
 	root  *Node
 	nodes []*Node // nodes[id] == *Node
@@ -24,7 +23,6 @@ func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root,
 
 var store TreeStore
 
-// ---------- Methods exposed to JS (via window.runtime.Invoke) ----------
 func (a *App) GetFullTree(path string) (int, error) {
 	if path == "" {
 		return -1, fmt.Errorf("missing path")
