@@ -14,7 +14,7 @@
 *.swn
 
 build/
-web/wailjs/
+web/wailsjs
 
 .vscode/
 .idea/
