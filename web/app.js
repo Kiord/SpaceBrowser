@@ -41,8 +41,10 @@ const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe
 import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath } from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
-  const rootId = await GetFullTree(path);
-  return { ok: true, root_id: rootId };
+  console.time("scan");
+  const res = await GetFullTree(path);
+  console.timeEnd("scan");
+  return res
 }
 
 async function apiLayoutById(nodeId, w, h) {
@@ -136,22 +138,15 @@ async function analyze() {
 
   setUIBusy(true);
   try {
-    console.time("scan");
-    const res = await apiScan(path);
-    console.timeEnd("scan");
-    if (res?.error) {
-      console.error("scan error:", res.error);
-      return;
-    }
-    const rootId = res?.root_id ?? res?.id;
-    if (rootId == null) {
-      console.error("scan: missing root_id");
-      return;
-    }
+
+    const {rootId, fileCount, dirCount} = await apiScan(path);
+    
 
     // set focus & history
     AppState.node_id = rootId;
     AppState.navHistory = [rootId];
+    AppState.fileCount = fileCount;
+    AppState.dirCount = dirCount;
     AppState.navIndex = 0;
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
@@ -327,10 +322,18 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   const fontBounds = getCtxFontBounds(ctx);
 
   if (rect.is_free_space) {
-    writeCenteredLinesInRect(ctx,  [
-      { text: "Free Space", ellipsize: false },
-      { text: sizeStr,      ellipsize: false },
-    ], fontBounds, rect);
+
+    const percent = 100 * rect.size / rect.disk_total;
+    const fileCount = AppState.fileCount ?? '?';
+    const dirCount = AppState.dirCount ?? '?';
+    const lines = [
+            {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
+            {text:`${sizeStr} Free`, ellipsize:false},
+            {text:`Files: ${fileCount}`, ellipsize:false},
+            {text:`Folders: ${dirCount}`, ellipsize:false}
+        ];
+
+    writeCenteredLinesInRect(ctx, lines, fontBounds, rect);
   } 
   else if (rect.is_folder) {
     if (rect.w > 60 && rect.h > 15) {

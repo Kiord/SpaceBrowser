@@ -24,9 +24,6 @@ type Node struct {
 	Depth       int     `json:"depth"`
 	FullPath    string  `json:"full_path,omitempty"`
 	Children    []*Node `json:"children"`
-	// Only populated on root for convenience (not sent to the new front)
-	FileCount   int `json:"file_count,omitempty"`
-	FolderCount int `json:"folder_count,omitempty"`
 
 	// Only set on mount roots
 	DiskTotal int64 `json:"disk_total,omitempty"`

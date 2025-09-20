@@ -23,9 +23,16 @@ func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root,
 
 var store TreeStore
 
-func (a *App) GetFullTree(path string) (int, error) {
+type TreeInfo struct {
+	RootID    int `json:"rootId"`
+	FileCount int `json:"fileCount"`
+	DirCount  int `json:"dirCount"`
+}
+
+func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	if path == "" {
-		return -1, fmt.Errorf("missing path")
+
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("missing path")
 	}
 	path = platform.Impl.Canonicalize(path)
 
@@ -34,7 +41,7 @@ func (a *App) GetFullTree(path string) (int, error) {
 	scanner := NewScanner(profile, 0)
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	if err != nil {
-		return -1, err
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
 	if platform.Impl.IsMountRoot(path) {
@@ -44,6 +51,7 @@ func (a *App) GetFullTree(path string) (int, error) {
 				ParentID:    root.ID,
 				Name:        "[Free Disk Space]",
 				Size:        int64(fs.Free),
+				DiskTotal:   int64(fs.Total),
 				IsFolder:    false,
 				IsFreeSpace: true,
 				Depth:       1,
@@ -59,10 +67,8 @@ func (a *App) GetFullTree(path string) (int, error) {
 		}
 	}
 
-	root.FileCount = int(files)
-	root.FolderCount = int(dirs)
 	store.Replace(root, scanner.Nodes())
-	return root.ID, nil
+	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil
 }
 
 func (a *App) Layout(nodeID, width, height int) ([]Rect, error) {
