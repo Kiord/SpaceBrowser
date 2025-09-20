@@ -71,21 +71,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-// async function apiScan(path) {
-//   const r = await fetch(`/api/get_full_tree?path=${encodeURIComponent(path)}`);
-//   return r.json(); // { ok, root_id }
-// }
-// async function apiLayoutById(nodeId, w, h) {
-//   const r = await fetch(`/api/layout?node_id=${nodeId}&w=${w}&h=${h}`);
-//   return r.json(); // { rects: [...] }
-// }
-// async function apiOpenInFileBrowser(path) {
-//   await fetch("/api/open_in_file_browser", {
-//     method: "POST",
-//     headers: { "Content-Type": "application/json" },
-//     body: JSON.stringify({ path })
-//   });
-// }
 
 // ---------- Boot ----------
 window.addEventListener("load", () => {
@@ -135,17 +120,6 @@ window.addEventListener("load", () => {
   });
 });
 
-// document.addEventListener("DOMContentLoaded", async () => {
-//   try {
-//     const res = await fetch("/api/default_path");
-//     if (res.ok) {
-//       const { default_path } = await res.json();
-//       if (default_path) {
-//         document.getElementById("pathInput").value = default_path;
-//       }
-//     }
-//   } catch (_) { /* ignore */ }
-// });
 
 window.addEventListener("resize", debounce(async () => {
   resizeCanvas();
