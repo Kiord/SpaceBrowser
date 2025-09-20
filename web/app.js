@@ -38,7 +38,7 @@ const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath } from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace} from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -63,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("parentButton")?.addEventListener("click", goToParent);
   document.getElementById("backwardButton")?.addEventListener("click", goBackward);
   document.getElementById("forwardButton")?.addEventListener("click", goForward);
+  document.getElementById("toggleFreeSpaceCheckbox")?.addEventListener("change", toggleFreeSpace);
 
   try {
     const p = await DefaultPath();
@@ -476,6 +477,22 @@ function goForward() {
     redraw();
   }
 }
+
+export async function toggleFreeSpace(e) {
+  try {
+    const checked =
+      e?.target?.checked ??
+      document.getElementById("toggleFreeSpaceCheckbox")?.checked ??
+      true;
+
+    await SetShowFreeSpace(checked);
+
+    await redraw();
+  } catch (err) {
+    console.error("toggleFreeSpace failed:", err);
+  }
+}
+
 function updateNavButtons() {
   const atRoot = AppState.navIndex === 0;
   document.getElementById("rootButton").disabled = atRoot;

@@ -33,6 +33,5 @@ SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4]
    - "delete" -> are you sure dialog
  - UI features
    - zoom level management
-   - "show free space" tick box
    - cleaner ui in general
    - handle back/forward with buttons

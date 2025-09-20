@@ -9,14 +9,21 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
-type App struct{ ctx context.Context }
+type App struct {
+	ctx           context.Context
+	showFreeSpace bool
+}
 
-func NewApp() *App                         { return &App{} }
+func NewApp() *App                         { return &App{showFreeSpace: true} }
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
 
 type TreeStore struct {
 	root  *Node
 	nodes []*Node // nodes[id] == *Node
+}
+
+func (a *App) SetShowFreeSpace(show bool) {
+	a.showFreeSpace = show
 }
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root, nodes }
@@ -82,7 +89,19 @@ func (a *App) Layout(nodeID, width, height int) ([]Rect, error) {
 	if n == nil {
 		return nil, fmt.Errorf("node not found")
 	}
-	return ComputeTreemapRects(n, float64(width), float64(height)), nil
+
+	tmp := *n
+	if !a.showFreeSpace {
+		filtered := make([]*Node, 0, len(n.Children))
+		for _, c := range n.Children {
+			if !c.IsFreeSpace { // skip only the free disk space nodes
+				filtered = append(filtered, c)
+			}
+		}
+		tmp.Children = filtered
+	}
+
+	return ComputeTreemapRects(&tmp, float64(width), float64(height)), nil
 }
 
 func (a *App) OpenInFileBrowser(path string) error {
