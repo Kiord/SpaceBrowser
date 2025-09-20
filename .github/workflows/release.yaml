@@ -6,23 +6,76 @@ on:
       - "v*.*.*" 
 
 jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: '1.22.x'   # match your go.mod
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+      - name: Linux GUI deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Prepare icons
+        shell: bash
+        run: |
+          mkdir -p build build/windows
+          [ -f assets/appicon.png ]  && cp assets/appicon.png  build/appicon.png
+          [ -f assets/appicon.icns ] && cp assets/appicon.icns build/appicon.icns
+          [ -f assets/appicon.ico ]  && cp assets/appicon.ico  build/windows/icon.ico
+
+      - name: Build Wails app
+        run: wails build -trimpath
+        shell: bash
+
+      - name: Package artifact
+        id: pkg
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF##*/}"
+          NAME="SpaceBrowser"
+          case "${{ matrix.os }}" in
+            windows-latest)
+              SRC="build/bin/spacebrowser.exe"
+              OUT="${NAME}-${VERSION}-windows-x64.exe"
+              cp "$SRC" "$OUT"
+              ;;
+            macos-latest)
+              SRC="build/bin/SpaceBrowser.app"
+              OUT="${NAME}-${VERSION}-macOS.zip"
+              ditto -c -k --sequesterRsrc --keepParent "$SRC" "$OUT"
+              ;;
+            ubuntu-latest)
+              SRC="build/bin/spacebrowser"
+              OUT="${NAME}-${VERSION}-linux-x64"
+              cp "$SRC" "$OUT"
+              chmod +x "$OUT"
+              ;;
+          esac
+          echo "artifact=$OUT" >> $GITHUB_OUTPUT
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          distribution: goreleaser
-          version: latest
-          args: release --clean
+          files: ${{ steps.pkg.outputs.artifact }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
