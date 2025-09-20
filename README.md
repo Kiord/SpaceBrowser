@@ -1,15 +1,8 @@
-_Uh no... my disk is full_
-
-# <img src="web/logo.svg " height="30">  SpaceBrowser
+# <img src="web/logo.svg " height="25">  SpaceBrowser
 
 A cross-platform file system visualizer.
 
-SpaceBrowser is an independent open-source project heavily inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
-
-Usage:
-```
-go run .
-```
+SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
 
 
 <img src="web/screenshot.jpg ">
@@ -19,20 +12,27 @@ go run .
  - Open folder in file system
  - Node selection
  - Navigation
+    - go to (double click)
     - Zoom full
     - Go to parent
     - backward/forward
  - Responsive
- - Cross platform (?)
+ - Cross platform
+   - Ubuntu/Linux
+   - Windows
+   - MacOS
 
 ### TODO:
- - File system dialog to browse in FS
  - Seek for system default file sytem browser
  - Optimizations
-   - Avoid complete redraws
    - Use an actual rendering backend
-   
-- copy path
-- fix open in browser (post bug + vscoed on linux)
-- browse path ui
-- remove + are you sure dialog
+ - Add back the context menu
+   - "go to"
+   - "copy path"
+   - "open/run" -> browse path ui
+   - "delete" -> are you sure dialog
+ - UI features
+   - zoom level management
+   - "show free space" tick box
+   - cleaner ui in general
+   - handle back/forward with buttons
