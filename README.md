@@ -5,7 +5,7 @@ A cross-platform file system visualizer.
 SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
 
 
-<img src="web/screenshot.jpg ">
+<img src="assets/screenshot.jpg ">
 
 ### Features
  - Treemap with SpaceMonger's style
