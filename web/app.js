@@ -283,8 +283,8 @@ function writeCenteredLinesInRect(ctx, lines, fontBounds, rect){
     const t = text_lines[i];
     if (!t) continue;
     const tw = ctx.measureText(t).width;
-    const x  = rect.x + (rect.w - tw) / 2;  
-    const y  = baseY + i * lineH;           
+    const x  = Math.round(rect.x + (rect.w - tw) / 2);  
+    const y  = Math.round(baseY + i * lineH);           
     ctx.fillText(t, x, y);
   }
 }
@@ -316,7 +316,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
   // Label
   ctx.font = `${FONT_SIZE}px sans-serif`;
-  ctx.textBaseline = "top";
+  ctx.textBaseline = "alphabetic";
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
   const sizeStr = formatSize(rect.size || 0);
@@ -347,7 +347,9 @@ function drawRect(rect, writeId, ctx, rectIndex) {
       }
   
       const label = ellipsize(ctx, display, rect.w);
-      ctx.fillText(label, rect.x + 4, rect.y + 4);
+      const y = Math.round(rect.y + 4 + fontBounds.ascent);
+      const x = Math.round(rect.x + 4);
+      ctx.fillText(label, x, y);
     }
   } else { // File
     const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
