@@ -13,16 +13,7 @@ type Profile struct {
 	SkipHidden     bool
 	MinFileSize    int64
 	FollowSymlinks bool
-}
-
-func isHidden(path string) bool {
-	base := filepath.Base(path)
-	if base == "" {
-		return false
-	}
-	// Simple cross-platform heuristic: leading dot
-	// (On Windows, we don't read FILE_ATTRIBUTE_HIDDEN to keep deps small.)
-	return strings.HasPrefix(base, ".")
+	SkipNetworkFS  bool
 }
 
 func shouldExclude(p *Profile, absPath string) bool {
@@ -40,6 +31,7 @@ func defaultProfile() *Profile {
 		SkipHidden:     false,
 		MinFileSize:    1024,
 		FollowSymlinks: false,
+		SkipNetworkFS:  true,
 	}
 	return p
 }

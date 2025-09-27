@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -47,6 +48,29 @@ func (Linux) DefaultStartPath() string {
 		}
 	}
 	return "/"
+}
+
+const (
+	NFS_SUPER_MAGIC    = 0x6969
+	CIFS_SUPER_MAGIC   = 0xFF534D42
+	SMB2_SUPER_MAGIC   = 0xFE534D42
+	FUSE_SUPER_MAGIC   = 0x65735546
+	AUTOFS_SUPER_MAGIC = 0x0187
+)
+
+func (Linux) IsLikelyNetworkFS(p string) bool {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(p, &st); err == nil {
+		switch uint64(st.Type) {
+		case NFS_SUPER_MAGIC, CIFS_SUPER_MAGIC, SMB2_SUPER_MAGIC, FUSE_SUPER_MAGIC, AUTOFS_SUPER_MAGIC:
+			return true
+		}
+	}
+	// user mounts
+	if strings.HasPrefix(p, "/run/user/") && strings.Contains(p, "/gvfs/") {
+		return true
+	}
+	return false
 }
 
 func init() { Impl = Linux{} }

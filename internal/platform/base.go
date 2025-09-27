@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type InodeKey struct{ Dev, Ino uint64 }
@@ -12,10 +13,12 @@ type API interface {
 	AllocatedSize(os.FileInfo) int64
 	InodeKeyOf(os.FileInfo) (InodeKey, bool)
 	BaseName(string) string
+	IsHidden(string) bool
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
 	Canonicalize(string) string
 	DefaultStartPath() string
+	IsLikelyNetworkFS(string) bool
 }
 
 // -------- defaults (POSIX-ish + xdg-open) --------
@@ -61,6 +64,16 @@ func (Default) DefaultStartPath() string {
 	}
 	return string(os.PathSeparator)
 }
+
+func (Default) IsHidden(path string) bool {
+	base := filepath.Base(path)
+	if base == "" {
+		return false
+	}
+	return strings.HasPrefix(base, ".")
+}
+
+func (Default) IsLikelyNetworkFS(string) bool { return false }
 
 // Global chosen implementation (overridden in per-OS files during init()).
 var Impl API = Default{}

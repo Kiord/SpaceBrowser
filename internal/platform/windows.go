@@ -82,4 +82,9 @@ func (Windows) DefaultStartPath() string {
 	return `C:\`
 }
 
+func (w Windows) IsLikelyNetworkFS(p string) bool {
+	clean := w.Canonicalize(p)
+	return strings.HasPrefix(clean, `\\`)
+}
+
 func init() { Impl = Windows{} }

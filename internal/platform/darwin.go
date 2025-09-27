@@ -5,6 +5,7 @@ package platform
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -39,6 +40,32 @@ func (Darwin) DefaultStartPath() string {
 		}
 	}
 	return "/"
+}
+
+func (Darwin) IsLikelyNetworkFS(p string) bool {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(p, &st); err != nil {
+		return false
+	}
+
+	fsTypeName := func(st *syscall.Statfs_t) string {
+		b := make([]byte, 0, len(st.Fstypename))
+		for _, c := range st.Fstypename {
+			if c == 0 {
+				break
+			}
+			b = append(b, byte(c))
+		}
+		return string(b)
+	}
+
+	typ := fsTypeName(&st)
+	if strings.HasPrefix(typ, "smbfs") || strings.HasPrefix(typ, "webdav") ||
+		strings.HasPrefix(typ, "nfs") || strings.HasPrefix(typ, "afpfs") ||
+		strings.Contains(typ, "fuse") {
+		return true
+	}
+	return false
 }
 
 func init() { Impl = Darwin{} }

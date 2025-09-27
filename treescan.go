@@ -130,8 +130,14 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		if de.Type()&os.ModeSymlink != 0 {
 			continue
 		}
+
+		// Skip Network FS
+		if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
+			continue
+		}
+
 		// Hidden policy
-		if s.profile.SkipHidden && isHidden(full) {
+		if s.profile.SkipHidden && platform.Impl.IsHidden(full) {
 			continue
 		}
 
