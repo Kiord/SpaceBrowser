@@ -38,7 +38,7 @@ const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace} from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder} from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -570,8 +570,13 @@ function formatSize(bytes) {
 
 // ---------- Optional folder picker (fallback) ----------
 async function triggerFolderSelect() {
-  const path = prompt("Enter a folder path to scan:");
-  if (!path) return;
-  document.getElementById("pathInput").value = path;
-  analyze();
+  try {
+    const path = await PickFolder();
+    if (!path) return;
+    document.getElementById("pathInput").value = path;
+    analyze();
+  } catch (e) {
+    // user cancelled or error
+    console.warn("folder pick cancelled or failed:", e);
+  }
 }

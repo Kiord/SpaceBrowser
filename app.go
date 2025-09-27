@@ -7,6 +7,7 @@ import (
 	"spacebrowser/internal/platform"
 
 	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -113,4 +114,20 @@ func (a *App) OpenInFileBrowser(path string) error {
 
 func (a *App) DefaultPath() string {
 	return platform.Impl.DefaultStartPath()
+}
+
+func (a *App) PickFolder() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("app not initialized")
+	}
+	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Choose a folder to analyze",
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", fmt.Errorf("cancelled")
+	}
+	return platform.Impl.Canonicalize(path), nil
 }
