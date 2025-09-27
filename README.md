@@ -23,7 +23,6 @@ SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4]
    - MacOS
 
 ### TODO:
- - Seek for system default file sytem browser
  - Optimizations
    - Use an actual rendering backend
  - Add back the context menu
