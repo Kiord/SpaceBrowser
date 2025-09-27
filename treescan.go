@@ -131,17 +131,16 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			continue
 		}
 
-		// Skip Network FS
-		if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
-			continue
-		}
-
 		// Hidden policy
 		if s.profile.SkipHidden && platform.Impl.IsHidden(full) {
 			continue
 		}
 
 		if de.IsDir() {
+			// Skip Network FS
+			if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
+				continue
+			}
 			subdirs = append(subdirs, subdir{full: full})
 			continue
 		}
