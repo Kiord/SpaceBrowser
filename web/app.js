@@ -522,6 +522,21 @@ async function openInSystemBrowser() {
   hideContextMenu();
 }
 
+document.getElementById("contextMenu").addEventListener("click", async (e) => {
+  const li = e.target.closest("li");
+  if (!li) return;
+
+  const r = getSelectedRect?.();
+  if (!r) return;
+
+  if (li.dataset.action === "open" && r.full_path) {
+    
+    await OpenInFileBrowser(r.full_path);
+  } else if (li.dataset.action === "goto") {
+    visit(r.node_id);
+  }
+});
+
 // ---------- Utilities ----------
 function getCanvasCoords(event) {
   const rect = AppState.colorCanvas.getBoundingClientRect();
