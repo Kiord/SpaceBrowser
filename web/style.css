@@ -97,3 +97,8 @@ button:disabled {
 button:disabled:hover {
   background-color: #ccc;
 }
+
+.context-menu li.disabled {
+  opacity: .45;
+  pointer-events: none;   /* also blocks clicks */
+}

@@ -104,7 +104,7 @@ window.addEventListener("load", () => {
     const rectIndex = rectIndexAtPoint(x, y);
     selectRectByIndex(rectIndex, /*dontDeselect=*/true);
     const r = getSelectedRect();
-    if (r && r.is_folder && !r.is_free_space) {
+    if (r && !r.is_free_space) {
       showContextMenu(e.pageX, e.pageY);
     } else {
       hideContextMenu();
@@ -511,6 +511,14 @@ window.addEventListener("click", () => hideContextMenu());
 function showContextMenu(x, y) {
   const m = document.getElementById("contextMenu");
   m.style.left = `${x}px`; m.style.top = `${y}px`; m.style.display = "block";
+
+  const r = getSelectedRect?.();
+  const liGo = m.querySelector('[data-action="goto"]');
+  if (liGo) {
+    if (!r?.is_folder) liGo.classList.add('disabled');
+    else liGo.classList.remove('disabled');
+  }
+
 }
 function hideContextMenu() {
   document.getElementById("contextMenu").style.display = "none";
