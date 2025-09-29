@@ -522,6 +522,47 @@ async function openInSystemBrowser() {
   hideContextMenu();
 }
 
+let lastMousePos = { x: 0, y: 0 };
+window.addEventListener("mousemove", e => { lastMousePos = { x: e.clientX, y: e.clientY }; });
+
+function showToastAt(x, y) {
+  const t = document.getElementById("toast");
+  if (!t) return;
+
+  // place near cursor with small offset, clamp to viewport
+  const pad = 8;
+  t.style.left = `${Math.max(pad, Math.min(x + pad, window.innerWidth - t.offsetWidth - pad))}px`;
+  t.style.top  = `${Math.max(pad, Math.min(y + pad, window.innerHeight - t.offsetHeight - pad))}px`;
+
+  t.style.opacity = "0.90";
+  t.style.transform = "translateY(0)";
+  clearTimeout(t._hideTimer);
+  t._hideTimer = setTimeout(() => {
+    t.style.opacity = "0";
+    t.style.transform = "translateY(6px)";
+  }, 1000);
+}
+
+async function copySelectedPathAt(pos) {
+  const r = getSelectedRect?.();
+  if (!r?.full_path) return;
+
+  try {
+    await navigator.clipboard.writeText(r.full_path);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = r.full_path;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  const p = pos || lastMousePos;
+  showToastAt(p.x, p.y);
+}
+
 document.getElementById("contextMenu").addEventListener("click", async (e) => {
   const li = e.target.closest("li");
   if (!li) return;
@@ -529,11 +570,25 @@ document.getElementById("contextMenu").addEventListener("click", async (e) => {
   const r = getSelectedRect?.();
   if (!r) return;
 
-  if (li.dataset.action === "open" && r.full_path) {
-    
+  if (li.dataset.action === "copy") {
+    await copySelectedPathAt({ x: e.clientX, y: e.clientY });
+    return;
+  }
+  if (li.dataset.action === "open" && r.full_path){
     await OpenInFileBrowser(r.full_path);
-  } else if (li.dataset.action === "goto") {
+  } 
+  else if (li.dataset.action === "goto") {
     visit(r.node_id);
+  }
+});
+
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+    const r = getSelectedRect?.();
+    if (r?.full_path) {
+      e.preventDefault();
+      copySelectedPathAt();
+    }
   }
 });
 

@@ -27,7 +27,7 @@ html, body {
 }
 
 .controls button {
-  padding: 8px 12px;
+  padding: 6px 10px;
   font-size: 14px;
   background-color: #4caf50;
   color: white;
@@ -51,6 +51,20 @@ html, body {
 }
 #colorCanvas {
   z-index: 2;
+}
+
+#toast{
+  position:fixed; 
+  padding:6px 10px;
+  background:#eee;
+  color:#000; 
+  border-radius:2px;
+  font-size:12px;
+  opacity:0; 
+  transform:translateY(6px);
+  transition:opacity .18s, transform .18s;
+  pointer-events:none;
+  z-index:10000;
 }
 
 .context-menu {
