@@ -25,10 +25,7 @@ SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4]
 ### TODO:
  - Optimizations
    - Use an actual rendering backend
- - Add back the context menu
-   - "go to"
-   - "copy path"
-   - "open/run" -> browse path ui
+ - Add to the context menu
    - "delete" -> are you sure dialog
  - UI features
    - zoom level management
