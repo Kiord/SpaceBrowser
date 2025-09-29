@@ -130,8 +130,6 @@ window.addEventListener("resize", debounce(async () => {
 }, 150));
 
 
-
-
 // ---------- Analyze (scan then layout immediately) ----------
 async function analyze() {
   const path = document.getElementById("pathInput").value?.trim();
@@ -598,6 +596,18 @@ window.addEventListener("keydown", (e) => {
       copySelectedPathAt();
     }
   }
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.key !== "Enter") return;
+
+  const pathInput = document.getElementById("pathInput");
+  if (document.activeElement === pathInput) {
+    e.preventDefault();
+    analyze();       
+    return;
+  }
+  navigateToSelected();
 });
 
 // ---------- Utilities ----------
