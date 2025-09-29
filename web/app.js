@@ -610,6 +610,11 @@ window.addEventListener("keydown", (e) => {
   navigateToSelected();
 });
 
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.key !== "Backspace" ) return;
+  goBackward();
+});
+
 // ---------- Utilities ----------
 function getCanvasCoords(event) {
   const rect = AppState.colorCanvas.getBoundingClientRect();
