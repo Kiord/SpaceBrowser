@@ -350,6 +350,8 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   const sizeStr = formatSize(rect.size || 0);
   const fontBounds = getCtxFontBounds(ctx, FONT_PX);
 
+  const anonymize = false;
+
   if (rect.is_free_space) {
     const percent = 100 * rect.size / rect.disk_total;
     const fileCount = AppState.fileCount ?? '?';
@@ -364,7 +366,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   }
   else if (rect.is_folder) {
     if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
-      let display = `${rect.name} (${sizeStr})`;
+      let display = `${anonymize ? "A folder" : rect.name} (${sizeStr})`;
       const isRoot = rect.parent_id == null;
       if (isRoot && rect.disk_total > 0) {
         const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
@@ -379,7 +381,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   else { // file
     const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
     writeCenteredLinesInRect(ctx, [
-      { text: rect.name,  ellipsize: true  },
+      { text: anonymize ? "A file" : rect.name,  ellipsize: true  },
       { text: sizeStr,    ellipsize: false },
       { text: dateStr,    ellipsize: false },
     ], fontBounds, rect);
