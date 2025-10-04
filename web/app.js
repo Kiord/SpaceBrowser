@@ -686,13 +686,19 @@ function formatSize(bytes) {
   return `${n.toFixed(n < 10 ? 1 : 0)} ${u[i]}`;
 }
 
-// ---------- Optional folder picker (fallback) ----------
+// ---------- folder picker ----------
 async function triggerFolderSelect() {
   try {
     const path = await PickFolder();
     if (!path) return;
-    document.getElementById("pathInput").value = path;
-    analyze();
+    const pathInput = document.getElementById("pathInput")
+    pathInput.value = path;
+    setTimeout(() => {
+      pathInput.focus({ preventScroll: true });
+      const n = pathInput.value.length;
+      pathInput.setSelectionRange(n, n);
+    }, 0);
+    // analyze();
   } catch (e) {
     // user cancelled or error
     console.warn("folder pick cancelled or failed:", e);

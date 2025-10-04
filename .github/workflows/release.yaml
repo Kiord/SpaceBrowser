@@ -21,7 +21,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'   # match your go.mod
+          go-version: '1.22.x'
 
       - name: Linux GUI deps
         if: matrix.os == 'ubuntu-latest'

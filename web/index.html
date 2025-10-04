@@ -5,26 +5,35 @@
   <title>SpaceBrowser</title>
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
-  <!-- <script src="app.js" defer></script> -->
   <script type="module" src="./app.js"></script>
 </head>
 
 <body>
   <div class="container">
-    <div class="controls">
-      <input type="text" id="pathInput" placeholder="Enter folder path" />
-      <button id="triggerFolderSelectButton">📁 Browse Folder</button>
-      <button id="analyzeButton">Analyze</button>
-      <button id="rootButton" disabled>🗺️ Zoom Full</button>
-      <button id="parentButton" disabled>⬆️ Go to Parent</button>
-      <button id="backwardButton" disabled>⬅️ Back</button>
-      <button id="forwardButton" disabled>➡️ Forward</button>
-      <label class="checkbox">
-        <input type="checkbox" id="toggleFreeSpaceCheckbox" checked>
-        Show free space
-      </label>
+    <div class="controls" id="topbar">
+      <div class="input-group" id="pathGroup" title="Choose a folder">
+        <button type="button" class="infield-btn" id="triggerFolderSelectButton" aria-label="Browse for folder" title="Browse for folder">
+          <svg class="icon-folder" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M10 4H4a2 2 0 0 0-2 2v3h20V8a2 2 0 0 0-2-2h-8l-2-2z"></path>
+            <path d="M22 9H2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9z"></path>
+          </svg>
+        </button>
 
-      <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;" />
+        <input type="text" id="pathInput" placeholder="Select or paste a folder path…" />
+        <button id="analyzeButton">Analyze</button>
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
+      </div>
+
+      <div class="right-group">
+        <button id="rootButton" disabled>🗺️ Zoom Full</button>
+        <button id="parentButton" disabled>⬆️ Go to Parent</button>
+        <button id="backwardButton" disabled>⬅️ Back</button>
+        <button id="forwardButton" disabled>➡️ Forward</button>
+        <label class="checkbox">
+          <input type="checkbox" id="toggleFreeSpaceCheckbox" checked>
+          Show free space
+        </label>
+      </div>
     </div>
     
     <canvas id="colorCanvas"></canvas>
