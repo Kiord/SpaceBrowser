@@ -33,7 +33,9 @@ const AppState = {
   selectedNodeId:null,
 
   //Scale
-  scale:  getScale()
+  scale:  getScale(),
+
+  pickingFolderDialogIsOpen: false
 };
 
 const FONT_SIZE = 10;
@@ -688,8 +690,19 @@ function formatSize(bytes) {
 
 // ---------- folder picker ----------
 async function triggerFolderSelect() {
+  if (AppState.pickingFolderDialogIsOpen){
+    console.log('nope!');
+    return;
+  }
+  const btn = document.getElementById('triggerFolderSelectButton');
   try {
+    
+    btn.disabled = true;
+    AppState.pickingFolderDialogIsOpen = true;
     const path = await PickFolder();
+    AppState.pickingFolderDialogIsOpen = false;
+    btn.disabled = false;
+
     if (!path) return;
     const pathInput = document.getElementById("pathInput")
     pathInput.value = path;
@@ -702,6 +715,8 @@ async function triggerFolderSelect() {
   } catch (e) {
     // user cancelled or error
     console.warn("folder pick cancelled or failed:", e);
+    AppState.pickingFolderDialogIsOpen = false;
+    btn.disabled = false;
   }
 }
 
