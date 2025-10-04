@@ -51,7 +51,7 @@ type Rect struct {
 //   - ALL children contribute to area scaling (so whitespace appears for tiny items),
 //   - BUT a child is only EMITTED if its FINAL ROUNDED width AND height are >= treemapMinSidePx,
 //   - Rows whose thickness would render < 4 px are skipped entirely, leaving a blank band.
-func ComputeTreemapRects(root *Node, W, H float64) []Rect {
+func ComputeTreemapRects(root *Node, W, H, scale float64) []Rect {
 	if root == nil || W <= 0 || H <= 0 {
 		return nil
 	}
@@ -76,11 +76,15 @@ func ComputeTreemapRects(root *Node, W, H float64) []Rect {
 		}
 
 		// Compute interior area for children (padding + label strip)
-		ax := f.x + treemapPad
-		ay := f.y + treemapPad + treemapLabelH
-		aw := f.w - 2*treemapPad
-		ah := f.h - 2*treemapPad - treemapLabelH
-		if aw < treemapMinSidePx || ah < treemapMinSidePx {
+		scaledPad := treemapPad * scale
+		scaledlabelH := treemapLabelH * scale
+		scaledMinSidePx := treemapMinSidePx * scale
+
+		ax := f.x + scaledPad
+		ay := f.y + scaledPad + scaledlabelH
+		aw := f.w - 2*scaledPad
+		ah := f.h - 2*scaledPad - scaledlabelH
+		if aw < scaledMinSidePx || ah < scaledMinSidePx {
 			continue
 		}
 

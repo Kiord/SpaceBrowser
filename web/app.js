@@ -12,6 +12,9 @@ Notes:
 - children are rect indices into the SAME rects array.
 */
 
+function getScale() {
+  return Math.max(1, window.devicePixelRatio || 1); 
+}
 const AppState = {
   // focus & history (use node_id everywhere)
   node_id: null,
@@ -27,7 +30,10 @@ const AppState = {
   // current layout
   rects: [],
   selectedRectIndex: null,
-  selectedNodeId:null
+  selectedNodeId:null,
+
+  //Scale
+  scale:  getScale()
 };
 
 const FONT_SIZE = 10;
@@ -47,8 +53,8 @@ async function apiScan(path) {
   return res
 }
 
-async function apiLayoutById(nodeId, w, h) {
-  const rects = await Layout(nodeId, w, h);
+async function apiLayoutById(nodeId, w, h, scale) {
+  const rects = await Layout(nodeId, w, h, scale);
   return { rects };
 }
 
@@ -129,6 +135,11 @@ window.addEventListener("resize", debounce(async () => {
   await redraw(); // re-request layout for current focus
 }, 150));
 
+function onScaleChanged() {
+  AppState.scale = getScale();
+}
+window.addEventListener('resize', onScaleChanged);
+
 
 // ---------- Analyze (scan then layout immediately) ----------
 async function analyze() {
@@ -169,7 +180,7 @@ async function redraw() {
   const h = AppState.colorCanvas.height;
 
   console.time("layout(fetch)");
-  const payload = await apiLayoutById(nodeId, w, h);
+  const payload = await apiLayoutById(nodeId, w, h, AppState.scale);
   console.timeEnd("layout(fetch)");
 
   const rects = payload?.rects;
@@ -229,13 +240,13 @@ function ellipsize(ctx, text, maxw){
   return cut <= 0 ? '' : (text.slice(0, cut) + ell)
 }
 
-function getCtxFontBounds(ctx){
+function getCtxFontBounds(ctx, fontPx){
   const m = ctx.measureText("Mg"); // tall sample
-  const ascent  = m.actualBoundingBoxAscent  ?? Math.round(FONT_SIZE * 0.8);
-  const descent = m.actualBoundingBoxDescent ?? Math.max(1, Math.round(FONT_SIZE * 0.2));
-  const textH   = ascent + descent;          // visual height of one line
-  const lineH   = textH + 2;
-  return { ascent, textH, lineH};
+  const ascent  = m.actualBoundingBoxAscent  ?? Math.round(fontPx * 0.8);
+  const descent = m.actualBoundingBoxDescent ?? Math.max(1, Math.round(fontPx * 0.2));
+  const textH   = ascent + descent;
+  const lineH   = textH + pxI(2);          // base gap ~2px at 1x
+  return { ascent, textH, lineH };
 }
 
 function filterLinesByAvailableSpace(ctx, lines, fontBounds, maxW, maxH){
@@ -287,71 +298,85 @@ function writeCenteredLinesInRect(ctx, lines, fontBounds, rect){
   }
 }
 
+function pxI(base) {        
+  const s = AppState.scale || 1;
+  return Math.max(1, Math.round(base * s));
+}
+function pxF(base) { 
+  const s = AppState.scale || 1;
+  return Math.max(0.5, base * s);
+}
+
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = AppState.selectedNodeId == rect.node_id;
   if (isSelected && rectIndex >= 0) AppState.selectedRectIndex = rectIndex;
 
-  // Fill
+  //  scaled UI constants  
+  const PAD          = pxI(4);            
+  const FONT_PX      = pxI(FONT_SIZE);    
+  const STROKE_PX    = pxF(1);            
+  const LABEL_MIN_W  = pxI(40);           
+  const LABEL_MIN_H  = pxI(FONT_SIZE + 4);
+  const FOLDER_W_MIN = pxI(60);           
+  const FOLDER_H_MIN = pxI(15);
+
+  // fill
   ctx.fillStyle = isSelected ? "#000"
     : (rect.is_free_space ? "#fff" : folderColors[(rect.depth || 0) % folderColors.length]);
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
-  // Border
+  // stroke
   ctx.strokeStyle = "#222";
-  ctx.lineWidth = 1;
+  ctx.lineWidth = STROKE_PX;
   strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
-  // ID buffer (rect index encoded as RGB)
+  //  ID buffer 
   if (writeId) {
     const rgb = idToColor(rectIndex);
     AppState.idCtx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
     AppState.idCtx.fillRect(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
   }
 
-  // Rect is too small, bye labels
-  if (rect.w < 40 || rect.h < FONT_SIZE + 4)
-    return;
+  //  too small for labels?
+  if (rect.w < LABEL_MIN_W || rect.h < LABEL_MIN_H) return;
 
-  // Label
-  ctx.font = `${FONT_SIZE}px sans-serif`;
+  //  text setup 
+  ctx.font = `${FONT_PX}px sans-serif`;
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = isSelected ? "#fff" : "#000";
 
   const sizeStr = formatSize(rect.size || 0);
-  const fontBounds = getCtxFontBounds(ctx);
+  const fontBounds = getCtxFontBounds(ctx, FONT_PX);
 
   if (rect.is_free_space) {
-
     const percent = 100 * rect.size / rect.disk_total;
     const fileCount = AppState.fileCount ?? '?';
     const dirCount = AppState.dirCount ?? '?';
     const lines = [
-            {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
-            {text:`${sizeStr} Free`, ellipsize:false},
-            {text:`Files: ${fileCount}`, ellipsize:false},
-            {text:`Folders: ${dirCount}`, ellipsize:false}
-        ];
-
+      {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
+      {text:`${sizeStr} Free`, ellipsize:false},
+      {text:`Files: ${fileCount}`, ellipsize:false},
+      {text:`Folders: ${dirCount}`, ellipsize:false}
+    ];
     writeCenteredLinesInRect(ctx, lines, fontBounds, rect);
-  } 
+  }
   else if (rect.is_folder) {
-    if (rect.w > 60 && rect.h > 15) {
+    if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
       let display = `${rect.name} (${sizeStr})`;
-  
       const isRoot = rect.parent_id == null;
       if (isRoot && rect.disk_total > 0) {
         const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
       }
-  
-      const label = ellipsize(ctx, display, rect.w);
-      const y = Math.round(rect.y + 4 + fontBounds.ascent);
-      const x = Math.round(rect.x + 4);
+      const label = ellipsize(ctx, display, rect.w - PAD*2);
+      const y = Math.round(rect.y + PAD + fontBounds.ascent);
+      const x = Math.round(rect.x + PAD);
       ctx.fillText(label, x, y);
     }
-  } else { // File
+  }
+  else { // file
     const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
-    writeCenteredLinesInRect(ctx,  [
+    writeCenteredLinesInRect(ctx, [
       { text: rect.name,  ellipsize: true  },
       { text: sizeStr,    ellipsize: false },
       { text: dateStr,    ellipsize: false },
@@ -359,7 +384,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   }
 }
 
-// ---------- Selection & partial redraw ----------
+//  Selection & partial redraw 
 function getSelectedRect() {
   const i = AppState.selectedRectIndex;
   return (i == null) ? null : AppState.rects?.[i] || null;

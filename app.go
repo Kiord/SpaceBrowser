@@ -79,7 +79,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil
 }
 
-func (a *App) Layout(nodeID, width, height int) ([]Rect, error) {
+func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	if nodeID < 0 || nodeID >= len(store.nodes) {
 		return nil, fmt.Errorf("invalid node_id")
 	}
@@ -102,7 +102,7 @@ func (a *App) Layout(nodeID, width, height int) ([]Rect, error) {
 		tmp.Children = filtered
 	}
 
-	return ComputeTreemapRects(&tmp, float64(width), float64(height)), nil
+	return ComputeTreemapRects(&tmp, float64(width), float64(height), scale), nil
 }
 
 func (a *App) OpenInFileBrowser(path string) error {
