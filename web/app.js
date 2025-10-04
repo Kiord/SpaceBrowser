@@ -40,6 +40,11 @@ const FONT_SIZE = 10;
 const CORNER_RADII = 3;
 const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe","#dfe4ea"];
 
+const SCALE_MIN = 0.5;
+const SCALE_MAX = 5.0;
+const SCALE_STEP_KEYS = 1.1;         
+const SCALE_SMOOTH_BASE = 1.0015;    
+
 // ---------- API ----------
 
 
@@ -95,7 +100,8 @@ window.addEventListener("load", () => {
   AppState.maskCtx = AppState.maskCanvas.getContext("2d", { alpha: true });
 
   resizeCanvas();
-
+  
+  installZoomInterception();
 
   AppState.colorCanvas.addEventListener("click", (e) => {
     const { x, y } = getCanvasCoords(e);
@@ -134,12 +140,6 @@ window.addEventListener("resize", debounce(async () => {
   resizeCanvas();
   await redraw(); // re-request layout for current focus
 }, 150));
-
-function onScaleChanged() {
-  AppState.scale = getScale();
-}
-window.addEventListener('resize', onScaleChanged);
-
 
 // ---------- Analyze (scan then layout immediately) ----------
 async function analyze() {
@@ -698,3 +698,59 @@ async function triggerFolderSelect() {
     console.warn("folder pick cancelled or failed:", e);
   }
 }
+
+
+// ========= Manual Zoom Control =========
+
+
+async function setScale(next, reason="") {
+  const old = AppState.scale || 1;
+  const clamped = Math.max(SCALE_MIN, Math.min(SCALE_MAX, next));
+  if (clamped === old) return;
+  AppState.scale = clamped;
+  console.debug(`scale ${reason}:`, old, '→', clamped, `SCALE_MIN ${SCALE_MIN}`, `SCALE_MAX ${SCALE_MAX}`);
+  
+  await redraw();
+}
+
+// Smooth factor from wheel delta (handles big/small deltas consistently)
+function factorFromWheelDelta(deltaY, deltaMode) {
+  // deltaMode: 0=pixel, 1=line, 2=page. Normalize a bit:
+  const k = (deltaMode === 1) ? 15 : (deltaMode === 2 ? 120 : 1);
+  return Math.pow(SCALE_SMOOTH_BASE, -deltaY * k);
+}
+
+function installZoomInterception(root = window) {
+  // 1) Ctrl/Cmd + wheel (desktop & trackpad pinch on Chromium)
+  root.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const f = factorFromWheelDelta(e.deltaY, e.deltaMode);
+      setScale((AppState.scale || 1) * f, 'wheel');
+    }
+  }, { passive: false, capture: true });
+
+  // 2) Ctrl/Cmd + +/-/0 (keyboard)
+  const ZOOM_KEYS = new Set(['+', '=', '-', '_', '0', 'NumpadAdd', 'NumpadSubtract', 'Numpad0']);
+  root.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const keyOrCode = ZOOM_KEYS.has(e.key) || ZOOM_KEYS.has(e.code);
+    if (!keyOrCode) return;
+
+    e.preventDefault();
+
+    // Reset
+    if (e.key === '0' || e.code === 'Numpad0') {
+      setScale(1, 'kbd-reset');
+      return;
+    }
+    // Zoom in / out
+    if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+      setScale((AppState.scale || 1) * SCALE_STEP_KEYS, 'kbd-in');
+    } else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+      setScale((AppState.scale || 1) / SCALE_STEP_KEYS, 'kbd-out');
+    }
+  }, { capture: true });
+
+}
+
