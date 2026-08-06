@@ -8,13 +8,13 @@ The project is open source and inspired by [SpaceMonger 1.4](https://github.com/
 
 ## Features
 
-- Interactive treemap for files and folders
-- Folder, parent, scan-root, back, and forward navigation
-- Optional free-space display for full-volume scans
-- Scan progress, current-path reporting, and cancellation
-- Configurable small-file aggregation, excluded paths, hidden files, symbolic links, and network filesystems
-- Context actions to navigate, open an item in the system file browser, or copy its path
-- Windows, macOS, and Linux support
+- Interactive treemap
+- Navigation
+- Optional free-space display
+- Scan progress and cancellation
+- Settings dialog
+- Context actions
+- Windows, Linux and macOS (not tested)
 
 
 ## Usage
