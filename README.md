@@ -1,4 +1,4 @@
-# <img src="web/logo.svg" height="25" alt=""> SpaceBrowser
+# <img src="web/logo.svg" height="25" width="25" alt=""> SpaceBrowser
 
 SpaceBrowser is a cross-platform disk space visualizer. It scans a folder or volume and displays its contents as a size-proportional [treemap](https://en.wikipedia.org/wiki/Treemapping), making large files and directories easy to identify.
 
