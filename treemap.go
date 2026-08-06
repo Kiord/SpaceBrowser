@@ -295,9 +295,25 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, pa
 	}
 	thickness := total / length
 
+	// Keep free space at the outer end of its row. This preserves every area and
+	// aspect ratio while ensuring the free-space tile touches the right edge of a
+	// horizontal row, or the bottom edge of a vertical column.
+	order := make([]int, 0, len(nodes))
+	for i, n := range nodes {
+		if !n.IsFreeSpace {
+			order = append(order, i)
+		}
+	}
+	for i, n := range nodes {
+		if n.IsFreeSpace {
+			order = append(order, i)
+		}
+	}
+
 	// Place each item in the row
 	offset := 0.0
-	for k, n := range nodes {
+	for _, k := range order {
+		n := nodes[k]
 		breadth := areas[k] / thickness
 
 		// Compute child box
