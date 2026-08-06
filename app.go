@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"spacebrowser/internal/platform"
+	"strings"
+	"sync"
 
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -13,9 +15,14 @@ import (
 type App struct {
 	ctx           context.Context
 	showFreeSpace bool
+	profile       Profile
+	settingsMu    sync.RWMutex
 }
 
-func NewApp() *App                         { return &App{showFreeSpace: true} }
+func NewApp() *App {
+	profile := defaultProfile()
+	return &App{showFreeSpace: true, profile: *profile}
+}
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
 
 type TreeStore struct {
@@ -24,7 +31,45 @@ type TreeStore struct {
 }
 
 func (a *App) SetShowFreeSpace(show bool) {
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
 	a.showFreeSpace = show
+}
+
+func (a *App) GetProfile() Profile {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	profile := a.profile
+	profile.ExcludedPaths = append([]string(nil), a.profile.ExcludedPaths...)
+	return profile
+}
+
+func (a *App) SetProfile(profile Profile) error {
+	if profile.MinFileSize < 0 {
+		return fmt.Errorf("minimum file size cannot be negative")
+	}
+
+	profile.PlatformSystem = defaultProfile().PlatformSystem
+	cleaned := make([]string, 0, len(profile.ExcludedPaths))
+	seen := make(map[string]struct{}, len(profile.ExcludedPaths))
+	for _, path := range profile.ExcludedPaths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		path = platform.Impl.Canonicalize(path)
+		if _, exists := seen[path]; exists {
+			continue
+		}
+		seen[path] = struct{}{}
+		cleaned = append(cleaned, path)
+	}
+	profile.ExcludedPaths = cleaned
+
+	a.settingsMu.Lock()
+	a.profile = profile
+	a.settingsMu.Unlock()
+	return nil
 }
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root, nodes }
@@ -44,9 +89,9 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	path = platform.Impl.Canonicalize(path)
 
-	profile := defaultProfile()
+	profile := a.GetProfile()
 	var files, dirs int64
-	scanner := NewScanner(profile, 0)
+	scanner := NewScanner(&profile, 0)
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	if err != nil {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
@@ -95,7 +140,10 @@ func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	}
 
 	tmp := *n
-	if !a.showFreeSpace {
+	a.settingsMu.RLock()
+	showFreeSpace := a.showFreeSpace
+	a.settingsMu.RUnlock()
+	if !showFreeSpace {
 		filtered := make([]*Node, 0, len(n.Children))
 		for _, c := range n.Children {
 			if !c.IsFreeSpace { // skip only the free disk space nodes

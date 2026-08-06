@@ -8,12 +8,12 @@ import (
 )
 
 type Profile struct {
-	PlatformSystem string
-	ExcludedPaths  []string
-	SkipHidden     bool
-	MinFileSize    int64
-	FollowSymlinks bool
-	SkipNetworkFS  bool
+	PlatformSystem string   `json:"platformSystem"`
+	ExcludedPaths  []string `json:"excludedPaths"`
+	SkipHidden     bool     `json:"skipHidden"`
+	MinFileSize    int64    `json:"minFileSize"`
+	FollowSymlinks bool     `json:"followSymlinks"`
+	SkipNetworkFS  bool     `json:"skipNetworkFS"`
 }
 
 func shouldExclude(p *Profile, absPath string) bool {

@@ -51,7 +51,7 @@ const SCALE_SMOOTH_BASE = 1.0015;
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder} from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile } from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -77,6 +77,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("backwardButton")?.addEventListener("click", goBackward);
   document.getElementById("forwardButton")?.addEventListener("click", goForward);
   document.getElementById("toggleFreeSpaceButton")?.addEventListener("click", toggleFreeSpace);
+  document.getElementById("settingsButton")?.addEventListener("click", openSettings);
+  document.getElementById("settingsForm")?.addEventListener("submit", saveSettings);
+  document.getElementById("closeSettingsButton")?.addEventListener("click", closeSettings);
+  document.getElementById("cancelSettingsButton")?.addEventListener("click", closeSettings);
+  document.getElementById("settingsMinFileSizeUnit")?.addEventListener("change", convertSettingsSizeUnit);
 
   try {
     const p = await DefaultPath();
@@ -86,6 +91,105 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error(e);
   }
 });
+
+// ---------- Settings ----------
+async function openSettings() {
+  const dialog = document.getElementById("settingsDialog");
+  const error = document.getElementById("settingsError");
+  if (!dialog || dialog.open) return;
+
+  error.textContent = "";
+  try {
+    const profile = await GetProfile();
+    document.getElementById("settingsPlatform").textContent = profile.platformSystem || "";
+    document.getElementById("settingsExcludedPaths").value = (profile.excludedPaths || []).join("\n");
+    const threshold = splitSizeIntoUnit(profile.minFileSize ?? 0);
+    const sizeInput = document.getElementById("settingsMinFileSize");
+    const unitSelect = document.getElementById("settingsMinFileSizeUnit");
+    sizeInput.value = String(threshold.value);
+    unitSelect.value = threshold.unit;
+    unitSelect.dataset.previousUnit = threshold.unit;
+    document.getElementById("settingsSkipHidden").checked = !!profile.skipHidden;
+    document.getElementById("settingsFollowSymlinks").checked = !!profile.followSymlinks;
+    document.getElementById("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
+    dialog.showModal();
+  } catch (err) {
+    console.error("loading settings failed:", err);
+  }
+}
+
+function closeSettings() {
+  const dialog = document.getElementById("settingsDialog");
+  if (dialog?.open) dialog.close();
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  const dialog = document.getElementById("settingsDialog");
+  const error = document.getElementById("settingsError");
+  const sizeValue = document.getElementById("settingsMinFileSize").valueAsNumber;
+  const sizeUnit = document.getElementById("settingsMinFileSizeUnit").value;
+  const minFileSize = sizeValue * SIZE_UNITS[sizeUnit];
+
+  if (!Number.isFinite(sizeValue) || sizeValue < 0 || !Number.isSafeInteger(minFileSize)) {
+    error.textContent = "Small-file threshold must resolve to a non-negative whole number of bytes.";
+    return;
+  }
+
+  const excludedPaths = document.getElementById("settingsExcludedPaths").value
+    .split(/\r?\n/)
+    .map(path => path.trim())
+    .filter(Boolean);
+
+  const profile = {
+    platformSystem: document.getElementById("settingsPlatform").textContent,
+    excludedPaths,
+    skipHidden: document.getElementById("settingsSkipHidden").checked,
+    minFileSize,
+    followSymlinks: document.getElementById("settingsFollowSymlinks").checked,
+    skipNetworkFS: document.getElementById("settingsSkipNetworkFS").checked,
+  };
+
+  const saveButton = e.submitter;
+  error.textContent = "";
+  if (saveButton) saveButton.disabled = true;
+  try {
+    await SetProfile(profile);
+    dialog.close();
+  } catch (err) {
+    error.textContent = String(err || "Unable to save settings.");
+  } finally {
+    if (saveButton) saveButton.disabled = false;
+  }
+}
+
+const SIZE_UNITS = {
+  B: 1,
+  KB: 1024,
+  MB: 1024 ** 2,
+  GB: 1024 ** 3,
+};
+
+function splitSizeIntoUnit(bytes) {
+  for (const unit of ["GB", "MB", "KB"]) {
+    const multiplier = SIZE_UNITS[unit];
+    if (bytes >= multiplier && bytes % multiplier === 0) {
+      return { value: bytes / multiplier, unit };
+    }
+  }
+  return { value: bytes, unit: "B" };
+}
+
+function convertSettingsSizeUnit(e) {
+  const select = e.currentTarget;
+  const input = document.getElementById("settingsMinFileSize");
+  const oldUnit = select.dataset.previousUnit || "B";
+  const bytes = input.valueAsNumber * SIZE_UNITS[oldUnit];
+  if (Number.isFinite(bytes)) {
+    input.value = String(bytes / SIZE_UNITS[select.value]);
+  }
+  select.dataset.previousUnit = select.value;
+}
 
 
 // ---------- Boot ----------

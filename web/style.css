@@ -279,3 +279,203 @@ button:disabled:hover {
   transform-origin: top left;
   will-change: transform;
 }
+
+.settings-dialog {
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  color: #333;
+  background: #fff;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.24);
+  font: 12px "Segoe UI", sans-serif;
+}
+
+.settings-dialog::backdrop {
+  background: rgba(30, 34, 38, .34);
+}
+
+.settings-dialog form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 34px);
+}
+
+.settings-header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 38px 10px 14px;
+  border-bottom: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-dialog button {
+  min-height: 28px;
+  padding: 4px 12px;
+  color: #333;
+  background: #f6f6f6;
+  border: 1px solid #c9c9c9;
+  border-radius: 2px;
+  box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.10);
+  font: 12px "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.settings-dialog button:hover {
+  background: #fff;
+  border-color: #aaa;
+}
+
+.settings-dialog .dialog-icon-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  min-height: 23px;
+  padding: 0;
+}
+
+.dialog-icon-button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: square;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-row-top {
+  align-items: start;
+}
+
+.settings-row > label {
+  font-weight: 600;
+}
+
+.settings-row output {
+  color: #555;
+  font-family: Consolas, monospace;
+}
+
+.settings-row textarea,
+.settings-row input[type="number"],
+.settings-row select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 7px;
+  color: #333;
+  background: #fff;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.06);
+  font: 12px "Segoe UI", sans-serif;
+}
+
+.settings-row textarea {
+  resize: vertical;
+  min-height: 78px;
+  font-family: Consolas, monospace;
+  line-height: 1.35;
+}
+
+.settings-row small {
+  display: block;
+  margin-top: 4px;
+  color: #777;
+}
+
+.number-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 7px;
+}
+
+.number-field select {
+  height: 29px;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 154px;
+  cursor: pointer;
+}
+
+.settings-check input {
+  appearance: none;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 1px;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.05);
+}
+
+.settings-check input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #111;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.settings-error {
+  min-height: 15px;
+  margin-left: 154px;
+  color: #a12622;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid #ddd;
+  background: #fafafa;
+}
+
+@media (max-width: 560px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .settings-check,
+  .settings-error {
+    margin-left: 0;
+  }
+}

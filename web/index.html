@@ -53,6 +53,12 @@
         </button>
         <span class="control-separator" aria-hidden="true"></span>
         <button class="toggle-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" data-tooltip="Show or hide available disk space">Free space</button>
+        <button class="nav-button" id="settingsButton" type="button" aria-label="Scan settings" data-tooltip="Scan settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
       </div>
     </div>
     
@@ -87,6 +93,63 @@
   </ul>
 
   <div id="toast">Copied path</div>  
+
+  <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
+    <form id="settingsForm">
+      <header class="settings-header">
+        <h2 id="settingsTitle">Settings</h2>
+        <button class="dialog-icon-button" id="closeSettingsButton" type="button" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18"></path>
+          </svg>
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <div class="settings-row">
+          <label>Platform</label>
+          <output id="settingsPlatform"></output>
+        </div>
+        <div class="settings-row settings-row-top">
+          <label for="settingsExcludedPaths">Excluded paths</label>
+          <div>
+            <textarea id="settingsExcludedPaths" rows="5" spellcheck="false" placeholder="One absolute path per line"></textarea>
+            <small>One path per line. Subfolders are excluded too.</small>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label for="settingsMinFileSize">Small-file threshold</label>
+          <div class="number-field">
+            <input id="settingsMinFileSize" type="number" min="0" step="any" required>
+            <select id="settingsMinFileSizeUnit" aria-label="Small-file threshold unit">
+              <option value="B">B</option>
+              <option value="KB">KB</option>
+              <option value="MB">MB</option>
+              <option value="GB">GB</option>
+            </select>
+          </div>
+        </div>
+        <label class="settings-check">
+          <input id="settingsSkipHidden" type="checkbox">
+          <span>Skip hidden files and folders</span>
+        </label>
+        <label class="settings-check">
+          <input id="settingsFollowSymlinks" type="checkbox">
+          <span>Follow symbolic links</span>
+        </label>
+        <label class="settings-check">
+          <input id="settingsSkipNetworkFS" type="checkbox">
+          <span>Skip network filesystems</span>
+        </label>
+        <div id="settingsError" class="settings-error" role="alert"></div>
+      </div>
+
+      <footer class="settings-actions">
+        <button id="cancelSettingsButton" type="button">Cancel</button>
+        <button type="submit">Save</button>
+      </footer>
+    </form>
+  </dialog>
 
 
 </body>

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sort"
 	"spacebrowser/internal/platform"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -45,11 +46,13 @@ type Scanner struct {
 	maxWorkers int
 
 	// dense array: nodes[id] == *Node
-	nodes     []*Node
-	nodesMu   sync.Mutex
-	idCounter int64
-	seen      map[platform.InodeKey]struct{}
-	seenMu    sync.Mutex
+	nodes      []*Node
+	nodesMu    sync.Mutex
+	idCounter  int64
+	seen       map[platform.InodeKey]struct{}
+	seenMu     sync.Mutex
+	seenDirs   map[string]struct{}
+	seenDirsMu sync.Mutex
 
 	smallFilesSize int64
 	smallFileCount int64
@@ -65,7 +68,26 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		sem:        make(chan struct{}, maxWorkers),
 		maxWorkers: maxWorkers,
 		seen:       make(map[platform.InodeKey]struct{}),
+		seenDirs:   make(map[string]struct{}),
 	}
+}
+
+func (s *Scanner) seenDirectory(path string) bool {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	path = platform.Impl.Canonicalize(path)
+	if runtime.GOOS == "windows" {
+		path = strings.ToLower(path)
+	}
+
+	s.seenDirsMu.Lock()
+	_, exists := s.seenDirs[path]
+	if !exists {
+		s.seenDirs[path] = struct{}{}
+	}
+	s.seenDirsMu.Unlock()
+	return exists
 }
 
 func (s *Scanner) seenOnce(k platform.InodeKey) bool {
@@ -121,6 +143,9 @@ func (s *Scanner) addSmallFilesAggregate(root *Node) {
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
 	abs := platform.Impl.Canonicalize(path)
+	if s.seenDirectory(abs) {
+		return nil, nil
+	}
 
 	// directory node
 	root := &Node{
@@ -152,9 +177,19 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		if shouldExclude(s.profile, full) {
 			continue
 		}
-		// Skip symlinks early (no Info() needed)
-		if de.Type()&os.ModeSymlink != 0 {
-			continue
+		isSymlink := de.Type()&os.ModeSymlink != 0
+		var info os.FileInfo
+		isDir := de.IsDir()
+		if isSymlink {
+			if !s.profile.FollowSymlinks {
+				continue
+			}
+			var err error
+			info, err = os.Stat(full)
+			if err != nil {
+				continue
+			}
+			isDir = info.IsDir()
 		}
 
 		// Hidden policy
@@ -162,7 +197,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			continue
 		}
 
-		if de.IsDir() {
+		if isDir {
 			// Skip Network FS
 			if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
 				continue
@@ -172,9 +207,12 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		}
 
 		// files: need size
-		info, err := de.Info()
-		if err != nil {
-			continue
+		if info == nil {
+			var err error
+			info, err = de.Info()
+			if err != nil {
+				continue
+			}
 		}
 		if !info.Mode().IsRegular() {
 			continue
@@ -224,14 +262,18 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 					defer wg.Done()
 					defer func() { <-s.sem }()
 					n, _ := s.buildTree(p, depth+1, root.ID, fileCount, dirCount)
-					mu.Lock()
-					results = append(results, n)
-					mu.Unlock()
+					if n != nil {
+						mu.Lock()
+						results = append(results, n)
+						mu.Unlock()
+					}
 				}(sd.full)
 			default:
 				// inline to avoid deadlock
 				n, _ := s.buildTree(sd.full, depth+1, root.ID, fileCount, dirCount)
-				results = append(results, n)
+				if n != nil {
+					results = append(results, n)
+				}
 			}
 		}
 
