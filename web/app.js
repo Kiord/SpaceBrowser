@@ -271,6 +271,7 @@ async function analyze() {
     await redraw();
   } catch (e) {
     console.error("analyze failed:", e);
+    showErrorToast(e);
   } finally {
     setUIBusy(false);
     updateNavButtons();
@@ -679,9 +680,11 @@ async function openInSystemBrowser() {
 let lastMousePos = { x: 0, y: 0 };
 window.addEventListener("mousemove", e => { lastMousePos = { x: e.clientX, y: e.clientY }; });
 
-function showToastAt(x, y) {
+function showToastAt(x, y, message="Copied path", duration=1000) {
   const t = document.getElementById("toast");
   if (!t) return;
+
+  t.textContent = message;
 
   // place near cursor with small offset, clamp to viewport
   const pad = 8;
@@ -694,7 +697,24 @@ function showToastAt(x, y) {
   t._hideTimer = setTimeout(() => {
     t.style.opacity = "0";
     t.style.transform = "translateY(6px)";
-  }, 1000);
+  }, duration);
+}
+
+function showErrorToast(error) {
+  let message = String(error?.message || error || "Unable to analyze this path.")
+    .replace(/^Error:\s*/i, "")
+    .trim();
+  if (message) {
+    message = message[0].toUpperCase() + message.slice(1);
+    if (!/[.!?]$/.test(message)) message += ".";
+  }
+
+  const toast = document.getElementById("toast");
+  if (!toast) return;
+  toast.textContent = message;
+  const topbarBottom = document.getElementById("topbar")?.getBoundingClientRect().bottom || 38;
+  const x = (window.innerWidth - toast.offsetWidth) / 2 - 8;
+  showToastAt(x, topbarBottom, message, 2600);
 }
 
 async function copySelectedPathAt(pos) {

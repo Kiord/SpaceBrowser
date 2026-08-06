@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"spacebrowser/internal/platform"
 	"strings"
@@ -88,6 +89,16 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("missing path")
 	}
 	path = platform.Impl.Canonicalize(path)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("this path does not exist")
+	}
+	if err != nil {
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("cannot access this path: %w", err)
+	}
+	if !info.IsDir() {
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("this path is not a folder")
+	}
 
 	profile := a.GetProfile()
 	var files, dirs int64

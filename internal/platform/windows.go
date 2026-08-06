@@ -32,8 +32,11 @@ func (Windows) Canonicalize(p string) string {
 	// Normalize slashes
 	p = strings.ReplaceAll(p, "/", `\`)
 
-	// Bare drive letter → root
-	if len(p) == 2 && p[1] == ':' &&
+	// Bare drive letter or drive designator -> root.
+	if len(p) == 1 &&
+		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
+		p += `:\`
+	} else if len(p) == 2 && p[1] == ':' &&
 		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
 		p += `\`
 	}
