@@ -415,6 +415,7 @@ function pxF(base) {
 
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = AppState.selectedNodeId == rect.node_id;
+  const isRoot = rect.parent_id == null;
   if (isSelected && rectIndex >= 0) AppState.selectedRectIndex = rectIndex;
 
   //  scaled UI constants  
@@ -428,7 +429,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
   // fill
   ctx.fillStyle = isSelected ? "#000"
-    : (rect.is_free_space ? "#fff"
+    : (rect.is_free_space || isRoot ? "#fff"
       : (rect.is_small_files ? "#e6dac5" : folderColors[(rect.depth || 0) % folderColors.length]));
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
@@ -480,7 +481,6 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   else if (rect.is_folder) {
     if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
       let display = `${anonymize ? "A folder" : rect.name} (${sizeStr})`;
-      const isRoot = rect.parent_id == null;
       if (isRoot && rect.disk_total > 0) {
         const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
