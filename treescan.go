@@ -143,7 +143,7 @@ func (s *Scanner) addSmallFilesAggregate(root *Node) {
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
 	abs := platform.Impl.Canonicalize(path)
-	if s.seenDirectory(abs) {
+	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
 		return nil, nil
 	}
 
