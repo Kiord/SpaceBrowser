@@ -1,23 +1,37 @@
-# <img src="web/logo.svg " height="25">  SpaceBrowser
+# <img src="web/logo.svg" height="25" alt=""> SpaceBrowser
 
-A cross-platform file system visualizer.
+SpaceBrowser is a cross-platform disk space visualizer. It scans a folder or volume and displays its contents as a size-proportional [treemap](https://en.wikipedia.org/wiki/Treemapping), making large files and directories easy to identify.
 
-SpaceBrowser is an independent open-source project inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
+The project is open source and inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
+
+![SpaceBrowser screenshot](assets/screenshot.jpg)
+
+## Features
+
+- Interactive treemap for files and folders
+- Folder, parent, scan-root, back, and forward navigation
+- Optional free-space display for full-volume scans
+- Scan progress, current-path reporting, and cancellation
+- Configurable small-file aggregation, excluded paths, hidden files, symbolic links, and network filesystems
+- Context actions to navigate, open an item in the system file browser, or copy its path
+- Windows, macOS, and Linux support
 
 
-<img src="assets/screenshot.jpg ">
+## Usage
 
-### Features
- - Treemap with SpaceMonger's style
- - Open folder in file system
- - Node selection
- - Navigation
-    - go to (double click)
-    - Zoom full
-    - Go to parent
-    - backward/forward
- - Responsive
- - Cross platform
-   - Ubuntu/Linux
-   - Windows
-   - MacOS
+Prebuilt versions for Windows, macOS, and Linux are available on the [Releases page](https://github.com/Kiord/SpaceBrowser/releases). Download the file for your platform and run it directly.
+
+To build SpaceBrowser from source, install Go 1.25 and the [Wails v2 development dependencies](https://wails.io/docs/gettingstarted/installation/), then run:
+
+```sh
+git clone https://github.com/Kiord/SpaceBrowser.git
+cd SpaceBrowser
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+wails build
+```
+
+The resulting application is placed in `build/bin`. For development with automatic reloads, use:
+
+```sh
+wails dev
+```
