@@ -70,6 +70,13 @@ async function apiOpenInFileBrowser(path) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("pathGroup")?.removeAttribute("title");
+  const analyzeButton = document.getElementById("analyzeButton");
+  if (analyzeButton) {
+    analyzeButton.removeAttribute("title");
+    analyzeButton.dataset.tooltip = "Scan folder";
+  }
+
   document.getElementById("analyzeButton")?.addEventListener("click", analyze);
   document.getElementById("triggerFolderSelectButton")?.addEventListener("click", triggerFolderSelect);
   document.getElementById("rootButton")?.addEventListener("click", goToRoot);
@@ -813,18 +820,19 @@ async function openInSystemBrowser() {
 let lastMousePos = { x: 0, y: 0 };
 window.addEventListener("mousemove", e => { lastMousePos = { x: e.clientX, y: e.clientY }; });
 
-function showToastAt(x, y, message="Copied path", duration=1000) {
+function showToastAt(x, y, message="Copied path", duration=1000, variant="default") {
   const t = document.getElementById("toast");
   if (!t) return;
 
   t.textContent = message;
+  t.classList.toggle("is-error", variant === "error");
 
   // place near cursor with small offset, clamp to viewport
   const pad = 8;
   t.style.left = `${Math.max(pad, Math.min(x + pad, window.innerWidth - t.offsetWidth - pad))}px`;
   t.style.top  = `${Math.max(pad, Math.min(y + pad, window.innerHeight - t.offsetHeight - pad))}px`;
 
-  t.style.opacity = "0.90";
+  t.style.opacity = "1";
   t.style.transform = "translateY(0)";
   clearTimeout(t._hideTimer);
   t._hideTimer = setTimeout(() => {
@@ -847,7 +855,7 @@ function showErrorToast(error) {
   toast.textContent = message;
   const topbarBottom = document.getElementById("topbar")?.getBoundingClientRect().bottom || 38;
   const x = (window.innerWidth - toast.offsetWidth) / 2 - 8;
-  showToastAt(x, topbarBottom, message, 2600);
+  showToastAt(x, topbarBottom, message, 2600, "error");
 }
 
 async function copySelectedPathAt(pos) {

@@ -35,6 +35,7 @@ html, body {
 }
 
 .controls button {
+  position: relative;
   min-height: 28px;
   padding: 4px 9px;
   font: 12px "Segoe UI", sans-serif;
@@ -57,7 +58,7 @@ html, body {
 }
 
 .controls button:disabled {
-  opacity: .5;
+  color: #999;
   cursor: not-allowed;
 }
 
@@ -135,8 +136,8 @@ html, body {
   max-width: 220px;
   padding: 4px 7px;
   color: #fff;
-  background: #333;
-  border: 1px solid #222;
+  background: #1f1f1f;
+  border: 1px solid #111;
   border-radius: 3px;
   box-shadow: 0 2px 5px rgba(0,0,0,.2);
   font: 11px/1.25 "Segoe UI", sans-serif;
@@ -148,6 +149,11 @@ html, body {
   transition: opacity 80ms linear, transform 80ms linear;
   transition-delay: 420ms;
   z-index: 10001;
+}
+
+.controls .browse-button[data-tooltip]::after {
+  right: auto;
+  left: 0;
 }
 
 .controls [data-tooltip]:hover::after,
@@ -175,9 +181,11 @@ html, body {
 #toast{
   position:fixed; 
   padding:6px 10px;
-  background:#eee;
-  color:#000; 
-  border: 1px solid #ccc;
+  max-width: min(420px, calc(100vw - 16px));
+  box-sizing: border-box;
+  background:#1f1f1f;
+  color:#fff;
+  border: 1px solid #111;
   border-radius:2px;
   box-shadow: 0 2px 5px rgba(0,0,0,.18);
   font-size:12px;
@@ -186,6 +194,12 @@ html, body {
   transition:opacity .18s, transform .18s;
   pointer-events:none;
   z-index:10000;
+}
+
+#toast.is-error {
+  background: #f2b8b5;
+  color: #1b1b1b;
+  border-color: #c9827d;
 }
 
 .context-menu {
@@ -227,7 +241,6 @@ button:disabled {
   background-color: #ccc;
   color: #666;
   cursor: not-allowed;
-  opacity: 0.6;
 }
 
 button:disabled:hover {

@@ -12,7 +12,7 @@
 <body>
   <div class="container">
     <div class="controls" id="topbar">
-      <div class="input-group" id="pathGroup" title="Choose a folder">
+      <div class="input-group" id="pathGroup">
         <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 8V5h7l2 3h9v11H3z"></path>
@@ -21,7 +21,7 @@
         </button>
 
         <input type="text" id="pathInput" placeholder="Select or paste a folder path…" />
-        <button id="analyzeButton">Scan</button>
+        <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
         <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
       </div>
 
