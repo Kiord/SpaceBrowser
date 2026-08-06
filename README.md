@@ -1,6 +1,14 @@
-# <img src="web/logo.svg" height="25" width="25" alt=""> SpaceBrowser
+<p align="center">
+  <img src="web/logo.svg" width="128" alt="SpaceBrowser logo">
+</p>
 
-SpaceBrowser is a cross-platform disk space visualizer. It scans a folder or volume and displays its contents as a size-proportional [treemap](https://en.wikipedia.org/wiki/Treemapping), making large files and directories easy to identify.
+<h1 align="center">SpaceBrowser</h1>
+
+<p align="center">
+  Cross-platform disk space visualizer
+</p>
+
+SpaceBrowser scans a folder or volume and displays its contents as a size-proportional [treemap](https://en.wikipedia.org/wiki/Treemapping), making large files and directories easy to identify.
 
 The project is open source and inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
 
