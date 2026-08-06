@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SpaceBrowser</title>
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
@@ -12,10 +13,10 @@
   <div class="container">
     <div class="controls" id="topbar">
       <div class="input-group" id="pathGroup" title="Choose a folder">
-        <button type="button" class="infield-btn" id="triggerFolderSelectButton" aria-label="Browse for folder" title="Browse for folder">
-          <svg class="icon-folder" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-            <path d="M10 4H4a2 2 0 0 0-2 2v3h20V8a2 2 0 0 0-2-2h-8l-2-2z"></path>
-            <path d="M22 9H2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9z"></path>
+        <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 8V5h7l2 3h9v11H3z"></path>
+            <path d="M3 9h18"></path>
           </svg>
         </button>
 
@@ -24,15 +25,34 @@
         <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
       </div>
 
-      <div class="right-group">
-        <button id="rootButton" disabled>🗺️ Zoom Full</button>
-        <button id="parentButton" disabled>⬆️ Go to Parent</button>
-        <button id="backwardButton" disabled>⬅️ Back</button>
-        <button id="forwardButton" disabled>➡️ Forward</button>
-        <label class="checkbox">
-          <input type="checkbox" id="toggleFreeSpaceCheckbox" checked>
-          Show free space
-        </label>
+      <div class="right-group" aria-label="Treemap navigation">
+        <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Alt+Left · Mouse Back" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19 12H5"></path>
+            <path d="m10 7-5 5 5 5"></path>
+          </svg>
+        </button>
+        <button class="nav-button" id="forwardButton" type="button" aria-label="Forward" data-tooltip="Forward · Alt+Right · Mouse Forward" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h14"></path>
+            <path d="m14 7 5 5-5 5"></path>
+          </svg>
+        </button>
+        <button class="nav-button" id="parentButton" type="button" aria-label="Go to parent" data-tooltip="Go to parent folder" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 19V5"></path>
+            <path d="m7 10 5-5 5 5"></path>
+          </svg>
+        </button>
+        <button class="nav-button home-button" id="rootButton" type="button" aria-label="Go to scan root" data-tooltip="Go to scan root" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 11.2 12 4l9 7.2"></path>
+            <path d="M5.5 10.2V20h13v-9.8"></path>
+            <path d="M9.5 20v-6h5v6"></path>
+          </svg>
+        </button>
+        <span class="control-separator" aria-hidden="true"></span>
+        <button class="toggle-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" data-tooltip="Show or hide available disk space">Free space</button>
       </div>
     </div>
     
@@ -43,9 +63,27 @@
     
   </div>
   <ul id="contextMenu" class="context-menu">
-    <li data-action="goto">🔍 Go to </li>
-    <li data-action="open">📂 Open in file browser</li>
-    <li data-action="copy">📋 Copy path</li>
+    <li data-action="goto">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="5.5"></circle>
+        <path d="m15 15 5 5"></path>
+      </svg>
+      <span>Go to</span>
+    </li>
+    <li data-action="open">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 8V5h7l2 3h9v11H3z"></path>
+        <path d="M3 9h18"></path>
+      </svg>
+      <span>Open in file browser</span>
+    </li>
+    <li data-action="copy">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="8" y="7" width="11" height="13"></rect>
+        <path d="M16 7V4H5v13h3"></path>
+      </svg>
+      <span>Copy path</span>
+    </li>
   </ul>
 
   <div id="toast">Copied path</div>  

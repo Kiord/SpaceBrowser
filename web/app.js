@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("parentButton")?.addEventListener("click", goToParent);
   document.getElementById("backwardButton")?.addEventListener("click", goBackward);
   document.getElementById("forwardButton")?.addEventListener("click", goForward);
-  document.getElementById("toggleFreeSpaceCheckbox")?.addEventListener("change", toggleFreeSpace);
+  document.getElementById("toggleFreeSpaceButton")?.addEventListener("click", toggleFreeSpace);
 
   try {
     const p = await DefaultPath();
@@ -508,16 +508,18 @@ function goForward() {
 }
 
 export async function toggleFreeSpace(e) {
+  const button = e?.currentTarget ?? document.getElementById("toggleFreeSpaceButton");
+  if (!button) return;
+
+  const wasChecked = button.getAttribute("aria-pressed") === "true";
+  const checked = !wasChecked;
+  button.setAttribute("aria-pressed", String(checked));
+
   try {
-    const checked =
-      e?.target?.checked ??
-      document.getElementById("toggleFreeSpaceCheckbox")?.checked ??
-      true;
-
     await SetShowFreeSpace(checked);
-
     await redraw();
   } catch (err) {
+    button.setAttribute("aria-pressed", String(wasChecked));
     console.error("toggleFreeSpace failed:", err);
   }
 }
@@ -639,10 +641,37 @@ window.addEventListener("keydown", (e) => {
   navigateToSelected();
 });
 
+// Match the navigation inputs desktop users expect from file browsers.
 window.addEventListener("keydown", (e) => {
-  if (e.isComposing || e.key !== "Backspace" ) return;
-  goBackward();
+  if (e.isComposing || !e.altKey) return;
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    goBackward();
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    goForward();
+  }
 });
+
+function isSystemNavigationButton(e) {
+  return e.button === 3 || e.button === 4;
+}
+
+window.addEventListener("mousedown", (e) => {
+  if (isSystemNavigationButton(e)) e.preventDefault();
+}, { capture: true });
+
+window.addEventListener("mouseup", (e) => {
+  if (!isSystemNavigationButton(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.button === 3) goBackward();
+  else goForward();
+}, { capture: true });
+
+window.addEventListener("auxclick", (e) => {
+  if (isSystemNavigationButton(e)) e.preventDefault();
+}, { capture: true });
 
 // ---------- Utilities ----------
 function getCanvasCoords(event) {
