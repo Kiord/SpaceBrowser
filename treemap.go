@@ -31,12 +31,15 @@ type Rect struct {
 	ParentID *int  `json:"parent_id,omitempty"`
 	Children []int `json:"children,omitempty"` // indices into THIS rects array
 
-	FullPath string `json:"full_path"`
-	Name     string `json:"name"`
-	Size     int64  `json:"size"`
-	IsFolder bool   `json:"is_folder"`
-	IsFree   bool   `json:"is_free_space"`
-	Depth    int    `json:"depth"`
+	FullPath       string `json:"full_path"`
+	Name           string `json:"name"`
+	Size           int64  `json:"size"`
+	IsFolder       bool   `json:"is_folder"`
+	IsFree         bool   `json:"is_free_space"`
+	IsSmallFiles   bool   `json:"is_small_files"`
+	SmallFileCount int64  `json:"small_file_count,omitempty"`
+	SmallFileLimit int64  `json:"small_file_limit,omitempty"`
+	Depth          int    `json:"depth"`
 
 	// on root rect when scanning a mount
 	DiskTotal int64 `json:"disk_total,omitempty"`
@@ -147,12 +150,15 @@ func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
 		ParentID: parentPtr,
 		Children: nil,
 
-		FullPath: n.FullPath,
-		Name:     n.Name,
-		Size:     n.Size,
-		IsFolder: n.IsFolder,
-		IsFree:   n.IsFreeSpace,
-		Depth:    n.Depth,
+		FullPath:       n.FullPath,
+		Name:           n.Name,
+		Size:           n.Size,
+		IsFolder:       n.IsFolder,
+		IsFree:         n.IsFreeSpace,
+		IsSmallFiles:   n.IsSmallFiles,
+		SmallFileCount: n.SmallFileCount,
+		SmallFileLimit: n.SmallFileLimit,
+		Depth:          n.Depth,
 
 		DiskTotal: n.DiskTotal,
 		DiskFree:  n.DiskFree,

@@ -118,7 +118,7 @@ window.addEventListener("load", () => {
     const rectIndex = rectIndexAtPoint(x, y);
     selectRectByIndex(rectIndex, /*dontDeselect=*/true);
     const r = getSelectedRect();
-    if (r && !r.is_free_space) {
+    if (r && !isPassiveRect(r)) {
       showContextMenu(e.pageX, e.pageY);
     } else {
       hideContextMenu();
@@ -129,7 +129,7 @@ window.addEventListener("load", () => {
     const { x, y } = getCanvasCoords(e);
     const rectIndex = rectIndexAtPoint(x, y);
     const rect = AppState.rects[rectIndex];
-    if (!rect.is_free_space){
+    if (rect && !isPassiveRect(rect)){
       selectRectByIndex(rectIndex);
       navigateToSelected();
       hideContextMenu();
@@ -324,7 +324,8 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
   // fill
   ctx.fillStyle = isSelected ? "#000"
-    : (rect.is_free_space ? "#fff" : folderColors[(rect.depth || 0) % folderColors.length]);
+    : (rect.is_free_space ? "#fff"
+      : (rect.is_small_files ? "#e6dac5" : folderColors[(rect.depth || 0) % folderColors.length]));
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
   // stroke
@@ -364,6 +365,14 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     ];
     writeCenteredLinesInRect(ctx, lines, fontBounds, rect);
   }
+  else if (rect.is_small_files) {
+    const count = Number(rect.small_file_count || 0).toLocaleString();
+    const limit = formatCompactSize(rect.small_file_limit || 0);
+    writeCenteredLinesInRect(ctx, [
+      { text: `${count} <${limit} files`, ellipsize: false },
+      { text: sizeStr, ellipsize: false },
+    ], fontBounds, rect);
+  }
   else if (rect.is_folder) {
     if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
       let display = `${anonymize ? "A folder" : rect.name} (${sizeStr})`;
@@ -394,6 +403,10 @@ function getSelectedRect() {
   return (i == null) ? null : AppState.rects?.[i] || null;
 }
 
+function isPassiveRect(rect) {
+  return !!(rect?.is_free_space || rect?.is_small_files);
+}
+
 function selectRectByIndex(rectIndex, dontDeselect=false) {
   const count = AppState.rects?.length || 0;
 
@@ -417,7 +430,7 @@ function selectRectByIndex(rectIndex, dontDeselect=false) {
   }
 
   const rect = AppState.rects[rectIndex];
-  if (rect.is_free_space) return;
+  if (isPassiveRect(rect)) return;
 
   const prevIdx = AppState.selectedRectIndex;
   AppState.selectedRectIndex = rectIndex;
@@ -460,7 +473,7 @@ function reDrawRectByIndex(idx) {
 // ---------- Navigation ----------
 function navigateToSelected() {
   const r = getSelectedRect();
-  if (!r || !r.is_folder || r.is_free_space) return;
+  if (!r || !r.is_folder || isPassiveRect(r)) return;
   visit(r.node_id);
 }
 
@@ -717,6 +730,10 @@ function formatSize(bytes) {
   const u = ['B','KB','MB','GB','TB','PB']; const i = Math.floor(Math.log(bytes)/Math.log(1024));
   const n = bytes / Math.pow(1024, i);
   return `${n.toFixed(n < 10 ? 1 : 0)} ${u[i]}`;
+}
+
+function formatCompactSize(bytes) {
+  return formatSize(bytes).replace(/\.0 (?=[A-Z])/, "").replace(" ", "");
 }
 
 // ---------- folder picker ----------

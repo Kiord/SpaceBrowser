@@ -52,6 +52,8 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
+	scanner.addSmallFilesAggregate(root)
+
 	if platform.Impl.IsMountRoot(path) {
 		if fs, err := disk.Usage(path); err == nil {
 			free := &Node{
@@ -69,11 +71,12 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 			root.DiskTotal = int64(fs.Total)
 			root.DiskFree = int64(fs.Free)
 
-			sort.Slice(root.Children, func(i, j int) bool {
-				return root.Children[i].Size > root.Children[j].Size
-			})
 		}
 	}
+
+	sort.Slice(root.Children, func(i, j int) bool {
+		return root.Children[i].Size > root.Children[j].Size
+	})
 
 	store.Replace(root, scanner.Nodes())
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil

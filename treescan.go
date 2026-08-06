@@ -15,15 +15,18 @@ import (
 // =====================
 
 type Node struct {
-	ID          int     `json:"id,omitempty"`
-	ParentID    int     `json:"parent_id,omitempty"`
-	Name        string  `json:"name"`
-	Size        int64   `json:"size"`
-	IsFolder    bool    `json:"is_folder"`
-	IsFreeSpace bool    `json:"is_free_space"`
-	Depth       int     `json:"depth"`
-	FullPath    string  `json:"full_path,omitempty"`
-	Children    []*Node `json:"children"`
+	ID             int     `json:"id,omitempty"`
+	ParentID       int     `json:"parent_id,omitempty"`
+	Name           string  `json:"name"`
+	Size           int64   `json:"size"`
+	IsFolder       bool    `json:"is_folder"`
+	IsFreeSpace    bool    `json:"is_free_space"`
+	IsSmallFiles   bool    `json:"is_small_files"`
+	SmallFileCount int64   `json:"small_file_count,omitempty"`
+	SmallFileLimit int64   `json:"small_file_limit,omitempty"`
+	Depth          int     `json:"depth"`
+	FullPath       string  `json:"full_path,omitempty"`
+	Children       []*Node `json:"children"`
 
 	// Only set on mount roots
 	DiskTotal int64 `json:"disk_total,omitempty"`
@@ -47,6 +50,9 @@ type Scanner struct {
 	idCounter int64
 	seen      map[platform.InodeKey]struct{}
 	seenMu    sync.Mutex
+
+	smallFilesSize int64
+	smallFileCount int64
 }
 
 // NewScanner(maxWorkers<=0 => sensible default)
@@ -89,6 +95,26 @@ func (s *Scanner) Nodes() []*Node {
 	out := s.nodes
 	s.nodesMu.Unlock()
 	return out
+}
+
+func (s *Scanner) addSmallFilesAggregate(root *Node) {
+	count := atomic.LoadInt64(&s.smallFileCount)
+	if root == nil || count == 0 {
+		return
+	}
+
+	size := atomic.LoadInt64(&s.smallFilesSize)
+	root.Children = append(root.Children, &Node{
+		ID:             -1,
+		ParentID:       root.ID,
+		Name:           "[Small Files]",
+		Size:           size,
+		IsSmallFiles:   true,
+		SmallFileCount: count,
+		SmallFileLimit: s.profile.MinFileSize,
+		Depth:          root.Depth + 1,
+	})
+	root.Size += size
 }
 
 // buildTree scans 'path' and all descendants, assigning IDs.
@@ -156,11 +182,15 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 
 		sz := platform.Impl.AllocatedSize(info)
 
-		if s.profile.MinFileSize > 0 && sz < s.profile.MinFileSize {
+		if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
 			continue
 		}
 
-		if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
+		// Keep small files in the totals, but collapse them into one node at scan root.
+		if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
+			atomic.AddInt64(&s.smallFilesSize, sz)
+			atomic.AddInt64(&s.smallFileCount, 1)
+			atomic.AddInt64(fileCount, 1)
 			continue
 		}
 
