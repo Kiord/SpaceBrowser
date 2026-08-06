@@ -268,7 +268,7 @@ button:disabled:hover {
 
 /* Analyze button */
 #analyzeButton {
-  min-width: 68px;
+  min-width: 48px;
 }
 #analyzeButton:hover {
   background: #fff;
