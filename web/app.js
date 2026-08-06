@@ -51,7 +51,7 @@ const SCALE_SMOOTH_BASE = 1.0015;
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile } from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile, ValidateScanPath, GetScanProgress, CancelScan } from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -82,6 +82,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("closeSettingsButton")?.addEventListener("click", closeSettings);
   document.getElementById("cancelSettingsButton")?.addEventListener("click", closeSettings);
   document.getElementById("settingsMinFileSizeUnit")?.addEventListener("change", convertSettingsSizeUnit);
+  document.getElementById("cancelScanButton")?.addEventListener("click", cancelActiveScan);
+  document.getElementById("scanDialog")?.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    cancelActiveScan();
+  });
 
   try {
     const p = await DefaultPath();
@@ -248,14 +253,139 @@ window.addEventListener("resize", debounce(async () => {
 }, 150));
 
 // ---------- Analyze (scan then layout immediately) ----------
+let scanProgressTimer = null;
+let scanProgressToken = 0;
+let scanCancelledByUser = false;
+let scanDotsTimer = null;
+
+function clearTreemapForScan() {
+  for (const ctx of [AppState.colorCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx]) {
+    if (ctx) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  AppState.rects = [];
+  AppState.node_id = null;
+  AppState.navHistory = [];
+  AppState.navIndex = -1;
+  AppState.selectedRectIndex = null;
+  AppState.selectedNodeId = null;
+  hideContextMenu();
+  updateNavButtons();
+}
+
+function startScanProgress(path) {
+  const dialog = document.getElementById("scanDialog");
+  const cancelButton = document.getElementById("cancelScanButton");
+  const progressElement = document.querySelector(".scan-progress");
+  const dotsElement = document.getElementById("scanningDots");
+  document.getElementById("scanQueryPath").textContent = path;
+  document.getElementById("scanQueryPath").title = path;
+  document.getElementById("scanCurrentPath").textContent = path;
+  document.querySelector(".scan-progress-bar").style.width = "0%";
+  progressElement.classList.add("is-indeterminate");
+  progressElement.removeAttribute("aria-valuenow");
+  document.getElementById("scanElapsedTime").textContent = "0:00";
+  document.getElementById("scanEstimate").textContent = "Estimating remaining time…";
+  cancelButton.disabled = false;
+  cancelButton.textContent = "Cancel";
+  scanCancelledByUser = false;
+  let dotCount = 1;
+  dotsElement.textContent = ".";
+  clearInterval(scanDotsTimer);
+  scanDotsTimer = setInterval(() => {
+    dotCount = dotCount % 3 + 1;
+    dotsElement.textContent = ".".repeat(dotCount);
+  }, 350);
+  if (!dialog.open) dialog.showModal();
+
+  const token = ++scanProgressToken;
+  const poll = async () => {
+    if (token !== scanProgressToken) return;
+    try {
+      const progress = await GetScanProgress();
+      if (progress?.path) {
+        document.getElementById("scanCurrentPath").textContent = progress.path;
+      }
+      const progressElement = document.querySelector(".scan-progress");
+      if (progress?.determinate) {
+        const fraction = Math.max(0, Math.min(1, Number(progress.fraction || 0)));
+        const percent = Math.round(fraction * 100);
+        progressElement.classList.remove("is-indeterminate");
+        document.querySelector(".scan-progress-bar").style.width = `${fraction * 100}%`;
+        progressElement.setAttribute("aria-valuemin", "0");
+        progressElement.setAttribute("aria-valuemax", "100");
+        progressElement.setAttribute("aria-valuenow", String(percent));
+      } else {
+        progressElement.classList.add("is-indeterminate");
+        progressElement.removeAttribute("aria-valuenow");
+      }
+      document.getElementById("scanElapsedTime").textContent = formatDuration(progress?.elapsedMilliseconds || 0);
+      document.getElementById("scanEstimate").textContent = !progress?.determinate
+        ? "Remaining time unavailable for folders"
+        : progress.remainingMilliseconds >= 0
+          ? `Remaining ~${formatDuration(progress.remainingMilliseconds, true)}`
+          : "";
+    } catch (err) {
+      console.debug("scan progress unavailable:", err);
+    } finally {
+      if (token === scanProgressToken) {
+        scanProgressTimer = setTimeout(poll, 120);
+      }
+    }
+  };
+  scanProgressTimer = setTimeout(poll, 120);
+}
+
+function formatDuration(milliseconds, roundUp = false) {
+  const rawSeconds = milliseconds / 1000;
+  const totalSeconds = Math.max(0, roundUp ? Math.ceil(rawSeconds) : Math.round(rawSeconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function stopScanProgress() {
+  scanProgressToken++;
+  clearTimeout(scanProgressTimer);
+  scanProgressTimer = null;
+  clearInterval(scanDotsTimer);
+  scanDotsTimer = null;
+  const dialog = document.getElementById("scanDialog");
+  if (dialog?.open) dialog.close();
+}
+
+async function cancelActiveScan() {
+  if (scanCancelledByUser) return;
+  scanCancelledByUser = true;
+  const button = document.getElementById("cancelScanButton");
+  button.disabled = true;
+  button.textContent = "Cancelling…";
+  try {
+    await CancelScan();
+  } catch (err) {
+    console.error("cancelling scan failed:", err);
+  }
+}
+
 async function analyze() {
   const path = document.getElementById("pathInput").value?.trim();
   if (!path) return;
 
+  let scanStarted = false;
   setUIBusy(true);
   try {
+    const canonicalPath = await ValidateScanPath(path);
+    document.getElementById("pathInput").value = canonicalPath;
+    clearTreemapForScan();
+    startScanProgress(canonicalPath);
+    scanStarted = true;
 
-    const {rootId, fileCount, dirCount} = await apiScan(path);
+    const {rootId, fileCount, dirCount} = await apiScan(canonicalPath);
+    stopScanProgress();
+    scanStarted = false;
     
 
     // set focus & history
@@ -271,8 +401,11 @@ async function analyze() {
     await redraw();
   } catch (e) {
     console.error("analyze failed:", e);
-    showErrorToast(e);
+    if (scanStarted) stopScanProgress();
+    const wasCancelled = scanCancelledByUser || /scan cancelled/i.test(String(e));
+    if (!wasCancelled) showErrorToast(e);
   } finally {
+    if (scanStarted) stopScanProgress();
     setUIBusy(false);
     updateNavButtons();
   }

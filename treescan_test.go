@@ -1,10 +1,51 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestScannerHonorsCancelledContext(t *testing.T) {
+	profile := defaultProfile()
+	scanner := NewScanner(profile, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	scanner.SetContext(ctx, nil)
+
+	var fileCount, dirCount int64
+	_, err := scanner.buildTree(t.TempDir(), 0, -1, &fileCount, &dirCount)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("buildTree error = %v, want context.Canceled", err)
+	}
+}
+
+func TestScanProgressLifecycleAndCancellation(t *testing.T) {
+	app := NewApp()
+	ctx, generation := app.beginScan("first", 0)
+
+	progress := app.GetScanProgress()
+	if !progress.Active || progress.Path != "first" {
+		t.Fatalf("initial progress = %+v", progress)
+	}
+
+	app.updateScanPath(generation, "second")
+	if got := app.GetScanProgress().Path; got != "second" {
+		t.Fatalf("updated path = %q, want second", got)
+	}
+
+	app.CancelScan()
+	if err := ctx.Err(); err == nil {
+		t.Fatal("scan context was not cancelled")
+	}
+
+	app.finishScan(generation)
+	if app.GetScanProgress().Active {
+		t.Fatal("scan remained active after finish")
+	}
+}
 
 func TestScannerAggregatesSmallFiles(t *testing.T) {
 	dir := t.TempDir()
@@ -39,6 +80,10 @@ func TestScannerAggregatesSmallFiles(t *testing.T) {
 
 	if fileCount != 4 {
 		t.Fatalf("file count = %d, want 4", fileCount)
+	}
+	processed, discovered := scanner.WorkProgress()
+	if discovered == 0 || processed != discovered {
+		t.Fatalf("work progress = %d/%d, want a completed non-empty scan", processed, discovered)
 	}
 
 	var aggregate *Node

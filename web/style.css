@@ -318,7 +318,8 @@ button:disabled:hover {
   font-weight: 600;
 }
 
-.settings-dialog button {
+.settings-dialog button,
+.scan-dialog button {
   min-height: 28px;
   padding: 4px 12px;
   color: #333;
@@ -330,7 +331,8 @@ button:disabled:hover {
   cursor: pointer;
 }
 
-.settings-dialog button:hover {
+.settings-dialog button:hover,
+.scan-dialog button:hover {
   background: #fff;
   border-color: #aaa;
 }
@@ -478,4 +480,115 @@ button:disabled:hover {
   .settings-error {
     margin-left: 0;
   }
+}
+
+.scan-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  color: #333;
+  background: #fff;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.24);
+  font: 12px "Segoe UI", sans-serif;
+}
+
+.scan-dialog::backdrop {
+  background: rgba(30, 34, 38, .34);
+}
+
+.scan-dialog-body {
+  padding: 16px;
+}
+
+.scan-title {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  min-height: 22px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.scan-query-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scanning-dots {
+  display: inline-block;
+  flex: 0 0 3ch;
+  width: 3ch;
+  font-family: Consolas, monospace;
+  text-align: left;
+}
+
+.scan-current-path {
+  height: 51px;
+  margin-top: 5px;
+  overflow: hidden;
+  color: #666;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 17px;
+  word-break: break-all;
+}
+
+.scan-progress {
+  position: relative;
+  height: 12px;
+  margin-top: 12px;
+  overflow: hidden;
+  background: #f1f1f1;
+  border: 1px solid #aaa;
+  border-radius: 1px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.09);
+}
+
+.scan-progress-bar {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+  width: 0;
+  background: #b9c3b5;
+  border: 1px solid #879381;
+  box-sizing: border-box;
+  transition: width .18s ease-out;
+}
+
+.scan-progress.is-indeterminate .scan-progress-bar {
+  width: 32%;
+  animation: scan-progress-indeterminate 1.35s ease-in-out infinite;
+  transition: none;
+}
+
+@keyframes scan-progress-indeterminate {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(320%); }
+}
+
+.scan-time {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 17px;
+  margin-top: 5px;
+  color: #777;
+  font-size: 11px;
+}
+
+.scan-time strong {
+  color: #555;
+  font-weight: 600;
+}
+
+.scan-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
 }

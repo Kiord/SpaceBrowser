@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // =====================
@@ -56,6 +58,14 @@ type Scanner struct {
 
 	smallFilesSize int64
 	smallFileCount int64
+	workDiscovered int64
+	workProcessed  int64
+	bytesProcessed int64
+
+	ctx            context.Context
+	onProgress     func(string)
+	progressMu     sync.Mutex
+	lastProgressAt time.Time
 }
 
 // NewScanner(maxWorkers<=0 => sensible default)
@@ -69,7 +79,39 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		maxWorkers: maxWorkers,
 		seen:       make(map[platform.InodeKey]struct{}),
 		seenDirs:   make(map[string]struct{}),
+		ctx:        context.Background(),
 	}
+}
+
+func (s *Scanner) SetContext(ctx context.Context, onProgress func(string)) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.ctx = ctx
+	s.onProgress = onProgress
+}
+
+func (s *Scanner) WorkProgress() (processed, discovered int64) {
+	return atomic.LoadInt64(&s.workProcessed), atomic.LoadInt64(&s.workDiscovered)
+}
+
+func (s *Scanner) BytesProcessed() int64 {
+	return atomic.LoadInt64(&s.bytesProcessed)
+}
+
+func (s *Scanner) reportProgress(path string) {
+	if s.onProgress == nil {
+		return
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	now := time.Now()
+	if !s.lastProgressAt.IsZero() && now.Sub(s.lastProgressAt) < 50*time.Millisecond {
+		return
+	}
+	s.lastProgressAt = now
+	s.onProgress(path)
 }
 
 func (s *Scanner) seenDirectory(path string) bool {
@@ -142,10 +184,17 @@ func (s *Scanner) addSmallFilesAggregate(root *Node) {
 // buildTree scans 'path' and all descendants, assigning IDs.
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
+	if err := s.ctx.Err(); err != nil {
+		return nil, err
+	}
+	if depth > 0 {
+		defer atomic.AddInt64(&s.workProcessed, 1)
+	}
 	abs := platform.Impl.Canonicalize(path)
 	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
 		return nil, nil
 	}
+	s.reportProgress(abs)
 
 	// directory node
 	root := &Node{
@@ -165,87 +214,103 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		// unreadable directory -> return empty folder
 		return root, nil
 	}
+	atomic.AddInt64(&s.workDiscovered, int64(len(entries)))
 
 	// First pass: files now, subdirs later
 	type subdir struct{ full string }
 	subdirs := make([]subdir, 0, 32)
+	var processedBatch int64
+	flushProcessed := func() {
+		if processedBatch > 0 {
+			atomic.AddInt64(&s.workProcessed, processedBatch)
+			processedBatch = 0
+		}
+	}
+	defer flushProcessed()
 
 	for _, de := range entries {
-		name := de.Name()
-		full := filepath.Join(abs, name)
-
-		if shouldExclude(s.profile, full) {
-			continue
+		if err := s.ctx.Err(); err != nil {
+			return nil, err
 		}
-		isSymlink := de.Type()&os.ModeSymlink != 0
-		var info os.FileInfo
-		isDir := de.IsDir()
-		if isSymlink {
-			if !s.profile.FollowSymlinks {
-				continue
+		completeNow := func() bool {
+			name := de.Name()
+			full := filepath.Join(abs, name)
+
+			if shouldExclude(s.profile, full) {
+				return true
 			}
-			var err error
-			info, err = os.Stat(full)
-			if err != nil {
-				continue
+			isSymlink := de.Type()&os.ModeSymlink != 0
+			var info os.FileInfo
+			isDir := de.IsDir()
+			if isSymlink {
+				if !s.profile.FollowSymlinks {
+					return true
+				}
+				var err error
+				info, err = os.Stat(full)
+				if err != nil {
+					return true
+				}
+				isDir = info.IsDir()
 			}
-			isDir = info.IsDir()
-		}
 
-		// Hidden policy
-		if s.profile.SkipHidden && platform.Impl.IsHidden(full) {
-			continue
-		}
-
-		if isDir {
-			// Skip Network FS
-			if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
-				continue
+			if s.profile.SkipHidden && platform.Impl.IsHidden(full) {
+				return true
 			}
-			subdirs = append(subdirs, subdir{full: full})
-			continue
-		}
 
-		// files: need size
-		if info == nil {
-			var err error
-			info, err = de.Info()
-			if err != nil {
-				continue
+			if isDir {
+				if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
+					return true
+				}
+				subdirs = append(subdirs, subdir{full: full})
+				return false
 			}
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
 
-		sz := platform.Impl.AllocatedSize(info)
+			if info == nil {
+				var err error
+				info, err = de.Info()
+				if err != nil {
+					return true
+				}
+			}
+			if !info.Mode().IsRegular() {
+				return true
+			}
 
-		if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
-			continue
-		}
+			sz := platform.Impl.AllocatedSize(info)
+			if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
+				return true
+			}
+			atomic.AddInt64(&s.bytesProcessed, sz)
 
-		// Keep small files in the totals, but collapse them into one node at scan root.
-		if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
-			atomic.AddInt64(&s.smallFilesSize, sz)
-			atomic.AddInt64(&s.smallFileCount, 1)
+			if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
+				atomic.AddInt64(&s.smallFilesSize, sz)
+				atomic.AddInt64(&s.smallFileCount, 1)
+				atomic.AddInt64(fileCount, 1)
+				return true
+			}
+
+			child := &Node{
+				ParentID: root.ID,
+				Name:     name,
+				FullPath: full,
+				Size:     sz,
+				IsFolder: false,
+				Depth:    depth + 1,
+				ModTime:  info.ModTime().Unix(),
+			}
+			s.assignID(child)
+			root.Children = append(root.Children, child)
+			root.Size += sz
 			atomic.AddInt64(fileCount, 1)
-			continue
+			return true
+		}()
+		if completeNow {
+			processedBatch++
+			if processedBatch >= 64 {
+				flushProcessed()
+			}
 		}
-
-		child := &Node{
-			ParentID: root.ID,
-			Name:     name,
-			FullPath: full,
-			Size:     sz,
-			IsFolder: false,
-			Depth:    depth + 1,
-			ModTime:  info.ModTime().Unix(),
-		}
-		s.assignID(child)
-
-		root.Children = append(root.Children, child)
-		root.Size += sz
-		atomic.AddInt64(fileCount, 1)
 	}
 
 	// Second pass: scan subdirectories (bounded)
@@ -255,6 +320,9 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		results := make([]*Node, 0, len(subdirs))
 
 		for _, sd := range subdirs {
+			if s.ctx.Err() != nil {
+				break
+			}
 			select {
 			case s.sem <- struct{}{}:
 				wg.Add(1)
@@ -278,10 +346,16 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		}
 
 		wg.Wait()
+		if err := s.ctx.Err(); err != nil {
+			return nil, err
+		}
 		for _, n := range results {
 			root.Children = append(root.Children, n)
 			root.Size += n.Size
 		}
+	}
+	if err := s.ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	// Sort children by size desc (UI expects this)

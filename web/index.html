@@ -151,6 +151,26 @@
     </form>
   </dialog>
 
+  <dialog id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
+    <div class="scan-dialog-body">
+      <div id="scanDialogTitle" class="scan-title">
+        <span>Scanning&nbsp;</span><span id="scanQueryPath" class="scan-query-path"></span>
+        <span id="scanningDots" class="scanning-dots" aria-hidden="true">.</span>
+      </div>
+      <div id="scanCurrentPath" class="scan-current-path"></div>
+      <div class="scan-progress" role="progressbar" aria-label="Scanning filesystem">
+        <div class="scan-progress-bar"></div>
+      </div>
+      <div class="scan-time">
+        <span>Elapsed <strong id="scanElapsedTime">0:00</strong></span>
+        <span id="scanEstimate">Estimating remaining time…</span>
+      </div>
+      <div class="scan-actions">
+        <button id="cancelScanButton" type="button">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
 
 </body>
 
