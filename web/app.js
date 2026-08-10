@@ -60,6 +60,13 @@ const DEFAULT_APPEARANCE = Object.freeze({
   cornerRadius: 0,
   reliefStrength: 0.30,
 });
+const DEFAULT_PROFILE_SETTINGS = Object.freeze({
+  excludedPaths: Object.freeze([]),
+  skipHidden: false,
+  minFileSize: 1024,
+  followSymlinks: false,
+  skipNetworkFS: true,
+});
 const AppearanceState = { ...DEFAULT_APPEARANCE };
 
 const SCALE_MIN = 0.5;
@@ -110,6 +117,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("settingsForm")?.addEventListener("submit", saveSettings);
   document.getElementById("closeSettingsButton")?.addEventListener("click", closeSettings);
   document.getElementById("cancelSettingsButton")?.addEventListener("click", closeSettings);
+  document.getElementById("restoreDefaultsButton")?.addEventListener("click", openRestoreDefaultsConfirmation);
+  document.getElementById("cancelRestoreDefaultsButton")?.addEventListener("click", closeRestoreDefaultsConfirmation);
+  document.getElementById("confirmRestoreDefaultsButton")?.addEventListener("click", restoreDefaultSettings);
+  document.getElementById("restoreDefaultsDialog")?.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    closeRestoreDefaultsConfirmation();
+  });
   document.getElementById("settingsMinFileSizeUnit")?.addEventListener("change", convertSettingsSizeUnit);
   document.querySelectorAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
@@ -199,10 +213,10 @@ function updateAppearanceFormOutputs() {
   document.getElementById("settingsReliefStrengthValue").textContent = `${(1 + relief).toFixed(2)}×`;
 }
 
-function populateAppearanceForm(appearance) {
+function populateAppearanceForm(appearance, useCurrentZoom = true) {
   const values = normalizedAppearance(appearance);
   document.getElementById("settingsPalette").value = values.palette;
-  document.getElementById("settingsZoomFactor").value = String(AppState.zoomFactor || values.zoomFactor);
+  document.getElementById("settingsZoomFactor").value = String(useCurrentZoom ? (AppState.zoomFactor || values.zoomFactor) : values.zoomFactor);
   document.getElementById("settingsCornerRadius").value = String(values.cornerRadius);
   document.getElementById("settingsReliefStrength").value = String(values.reliefStrength);
   updateAppearanceFormOutputs();
@@ -236,8 +250,35 @@ async function openSettings() {
 }
 
 function closeSettings() {
+  closeRestoreDefaultsConfirmation();
   const dialog = document.getElementById("settingsDialog");
   if (dialog?.open) dialog.close();
+}
+
+function openRestoreDefaultsConfirmation() {
+  const dialog = document.getElementById("restoreDefaultsDialog");
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function closeRestoreDefaultsConfirmation() {
+  const dialog = document.getElementById("restoreDefaultsDialog");
+  if (dialog?.open) dialog.close();
+}
+
+function restoreDefaultSettings() {
+  document.getElementById("settingsExcludedPaths").value = DEFAULT_PROFILE_SETTINGS.excludedPaths.join("\n");
+  const threshold = splitSizeIntoUnit(DEFAULT_PROFILE_SETTINGS.minFileSize);
+  const sizeInput = document.getElementById("settingsMinFileSize");
+  const unitSelect = document.getElementById("settingsMinFileSizeUnit");
+  sizeInput.value = String(threshold.value);
+  unitSelect.value = threshold.unit;
+  unitSelect.dataset.previousUnit = threshold.unit;
+  document.getElementById("settingsSkipHidden").checked = DEFAULT_PROFILE_SETTINGS.skipHidden;
+  document.getElementById("settingsFollowSymlinks").checked = DEFAULT_PROFILE_SETTINGS.followSymlinks;
+  document.getElementById("settingsSkipNetworkFS").checked = DEFAULT_PROFILE_SETTINGS.skipNetworkFS;
+  populateAppearanceForm(DEFAULT_APPEARANCE, false);
+  document.getElementById("settingsError").textContent = "";
+  closeRestoreDefaultsConfirmation();
 }
 
 async function saveSettings(e) {

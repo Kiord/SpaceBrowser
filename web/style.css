@@ -642,11 +642,44 @@ button:disabled:hover {
 
 .settings-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 6px;
   padding: 10px 14px;
   border-top: 1px solid #ddd;
   background: #fafafa;
+}
+
+.settings-actions-primary {
+  display: flex;
+  gap: 6px;
+}
+
+.confirm-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.confirm-dialog-body {
+  padding: 15px;
+}
+
+.confirm-dialog-body h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.confirm-dialog-body p {
+  margin: 0;
+  line-height: 1.45;
+  color: #555;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 15px;
 }
 
 @media (max-width: 560px) {

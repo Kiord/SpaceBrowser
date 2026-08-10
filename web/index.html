@@ -212,10 +212,24 @@
       </div>
 
       <footer class="settings-actions">
-        <button id="cancelSettingsButton" type="button">Cancel</button>
-        <button type="submit">Save</button>
+        <button id="restoreDefaultsButton" class="restore-defaults-button" type="button">Restore defaults</button>
+        <div class="settings-actions-primary">
+          <button id="cancelSettingsButton" type="button">Cancel</button>
+          <button type="submit">Save</button>
+        </div>
       </footer>
     </form>
+  </dialog>
+
+  <dialog id="restoreDefaultsDialog" class="settings-dialog confirm-dialog" aria-labelledby="restoreDefaultsTitle">
+    <div class="confirm-dialog-body">
+      <h2 id="restoreDefaultsTitle">Restore default settings?</h2>
+      <p>This will reset all General and Appearance options. Changes are applied only after you save.</p>
+      <div class="confirm-dialog-actions">
+        <button id="cancelRestoreDefaultsButton" type="button">Cancel</button>
+        <button id="confirmRestoreDefaultsButton" type="button">Restore</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
