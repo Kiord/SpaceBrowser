@@ -434,6 +434,9 @@ button:disabled:hover {
 
 .number-field select {
   height: 29px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 27px;
 }
 
 .settings-check {
