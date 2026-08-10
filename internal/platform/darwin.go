@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -32,6 +33,16 @@ func (Darwin) OpenInFileBrowser(p string) error {
 
 func (Darwin) OpenPath(p string) error {
 	return exec.Command("open", p).Run()
+}
+
+func (Darwin) MoveToTrash(p string) error {
+	const script = `on run argv
+tell application "Finder" to delete POSIX file (item 1 of argv)
+end run`
+	if err := exec.Command("osascript", "-e", script, p).Run(); err != nil {
+		return fmt.Errorf("move to Trash: %w", err)
+	}
+	return nil
 }
 
 func (Darwin) DefaultStartPath() string {

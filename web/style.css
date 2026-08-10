@@ -315,6 +315,17 @@ html, body {
   background: #f0f0f0;
 }
 
+.context-menu .context-menu-delete {
+  margin-top: 4px;
+  color: #7d2926;
+  background: #fff1f0;
+  border-top: 1px solid #edcfcc;
+}
+
+.context-menu .context-menu-delete:hover {
+  background: #f9dfdc;
+}
+
 button:disabled {
   background-color: #ccc;
   color: #666;
@@ -634,6 +645,28 @@ button:disabled:hover {
   transform: rotate(45deg);
 }
 
+.deletion-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #fff3f1;
+  border: 1px solid #edcfcc;
+  border-radius: 2px;
+}
+
+.deletion-settings h3 {
+  margin: 0;
+  color: #6e302d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.deletion-settings .settings-check {
+  margin-left: 0;
+}
+
 .settings-error {
   min-height: 15px;
   margin-left: 154px;
@@ -680,6 +713,29 @@ button:disabled:hover {
   justify-content: flex-end;
   gap: 6px;
   margin-top: 15px;
+}
+
+.delete-confirm-path {
+  max-height: 54px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: #333 !important;
+  font-weight: 600;
+}
+
+.delete-confirm-size {
+  margin-top: 8px !important;
+}
+
+.settings-dialog .danger-button {
+  color: #6f211e;
+  background: #fff0ee;
+  border-color: #d7aaa6;
+}
+
+.settings-dialog .danger-button:hover {
+  background: #f8deda;
+  border-color: #c68f8a;
 }
 
 @media (max-width: 560px) {

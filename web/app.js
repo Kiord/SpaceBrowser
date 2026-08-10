@@ -22,6 +22,7 @@ const AppState = {
   navIndex: -1,
   navSession: 0,
   browserHistoryPosition: 0,
+  scanRootPath: "",
 
   // canvases
   colorCanvas: null, colorCtx: null,
@@ -33,6 +34,7 @@ const AppState = {
   rects: [],
   selectedRectIndex: null,
   selectedNodeId:null,
+  profile: null,
 
   //Scale
   zoomFactor: 1,
@@ -66,6 +68,8 @@ const DEFAULT_PROFILE_SETTINGS = Object.freeze({
   minFileSize: 1024,
   followSymlinks: false,
   skipNetworkFS: true,
+  allowDelete: false,
+  rescanOnDelete: true,
 });
 const AppearanceState = { ...DEFAULT_APPEARANCE };
 
@@ -78,7 +82,7 @@ const SCALE_SMOOTH_BASE = 1.0015;
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, OpenPath, GetAssociatedIcon, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile, ValidateScanPath, GetScanProgress, CancelScan } from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, OpenPath, GetAssociatedIcon, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile, ValidateScanPath, GetScanProgress, CancelScan, DeleteNode } from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -124,6 +128,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     e.preventDefault();
     closeRestoreDefaultsConfirmation();
   });
+  document.getElementById("cancelDeleteButton")?.addEventListener("click", closeDeleteConfirmation);
+  document.getElementById("confirmDeleteButton")?.addEventListener("click", confirmSelectedDeletion);
+  document.getElementById("deleteConfirmDialog")?.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    closeDeleteConfirmation();
+  });
   document.getElementById("settingsMinFileSizeUnit")?.addEventListener("change", convertSettingsSizeUnit);
   document.querySelectorAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
@@ -140,6 +150,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   try {
     const profile = await GetProfile();
+    AppState.profile = profile;
     applyAppearance(profile.appearance, false);
   } catch (e) {
     console.error("loading appearance failed:", e);
@@ -230,6 +241,7 @@ async function openSettings() {
   error.textContent = "";
   try {
     const profile = await GetProfile();
+    AppState.profile = profile;
     document.getElementById("settingsPlatform").textContent = profile.platformSystem || "";
     document.getElementById("settingsExcludedPaths").value = (profile.excludedPaths || []).join("\n");
     const threshold = splitSizeIntoUnit(profile.minFileSize ?? 0);
@@ -241,6 +253,8 @@ async function openSettings() {
     document.getElementById("settingsSkipHidden").checked = !!profile.skipHidden;
     document.getElementById("settingsFollowSymlinks").checked = !!profile.followSymlinks;
     document.getElementById("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
+    document.getElementById("settingsAllowDelete").checked = !!profile.allowDelete;
+    document.getElementById("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
     populateAppearanceForm(profile.appearance);
     showSettingsTab("general");
     dialog.showModal();
@@ -276,6 +290,8 @@ function restoreDefaultSettings() {
   document.getElementById("settingsSkipHidden").checked = DEFAULT_PROFILE_SETTINGS.skipHidden;
   document.getElementById("settingsFollowSymlinks").checked = DEFAULT_PROFILE_SETTINGS.followSymlinks;
   document.getElementById("settingsSkipNetworkFS").checked = DEFAULT_PROFILE_SETTINGS.skipNetworkFS;
+  document.getElementById("settingsAllowDelete").checked = DEFAULT_PROFILE_SETTINGS.allowDelete;
+  document.getElementById("settingsRescanOnDelete").checked = DEFAULT_PROFILE_SETTINGS.rescanOnDelete;
   populateAppearanceForm(DEFAULT_APPEARANCE, false);
   document.getElementById("settingsError").textContent = "";
   closeRestoreDefaultsConfirmation();
@@ -306,6 +322,8 @@ async function saveSettings(e) {
     minFileSize,
     followSymlinks: document.getElementById("settingsFollowSymlinks").checked,
     skipNetworkFS: document.getElementById("settingsSkipNetworkFS").checked,
+    allowDelete: document.getElementById("settingsAllowDelete").checked,
+    rescanOnDelete: document.getElementById("settingsRescanOnDelete").checked,
     appearance: {
       palette: document.getElementById("settingsPalette").value,
       zoomFactor: Number(document.getElementById("settingsZoomFactor").value),
@@ -319,6 +337,7 @@ async function saveSettings(e) {
   if (saveButton) saveButton.disabled = true;
   try {
     await SetProfile(profile);
+    AppState.profile = profile;
     dialog.close();
     await applyAppearance(profile.appearance);
   } catch (err) {
@@ -566,6 +585,7 @@ async function analyze() {
 
     // set focus & history
     AppState.node_id = rootId;
+    AppState.scanRootPath = canonicalPath;
     AppState.navHistory = [rootId];
     AppState.fileCount = fileCount;
     AppState.dirCount = dirCount;
@@ -1058,6 +1078,110 @@ function updateNavButtons() {
   document.getElementById("forwardButton").disabled = AppState.navIndex >= AppState.navHistory.length - 1;
 }
 
+let pendingDeletion = null;
+let deletionInProgress = false;
+
+function trashDestinationName() {
+  return AppState.profile?.platformSystem === "windows" ? "Recycle Bin" : "Trash";
+}
+
+function requestSelectedDeletion() {
+  hideContextMenu();
+  hideRectToast();
+
+  const rect = getSelectedRect();
+  if (!rect) return;
+  if (deletionInProgress) {
+    showErrorToast("Another deletion is already in progress");
+    return;
+  }
+  if (!AppState.profile?.allowDelete) {
+    showErrorToast("Delete commands are disabled. Enable Allow delete command in Settings");
+    return;
+  }
+  if (isPassiveRect(rect) || !rect.full_path) {
+    showErrorToast("This item cannot be deleted");
+    return;
+  }
+  if (rect.node_id === AppState.node_id) {
+    showErrorToast("The current view cannot be deleted. Go to its parent first");
+    return;
+  }
+
+  pendingDeletion = {
+    nodeId: rect.node_id,
+    path: rect.full_path,
+    size: rect.size,
+  };
+  document.getElementById("deleteConfirmTitle").textContent = `Move this item to ${trashDestinationName()}?`;
+  document.getElementById("deleteConfirmPath").textContent = rect.full_path;
+  document.getElementById("deleteConfirmSize").textContent = detailedByteSize(rect.size);
+  const dialog = document.getElementById("deleteConfirmDialog");
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function closeDeleteConfirmation() {
+  if (deletionInProgress) return;
+  const dialog = document.getElementById("deleteConfirmDialog");
+  if (dialog?.open) dialog.close();
+  pendingDeletion = null;
+}
+
+function waitForNextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+function trimInvalidForwardNavigation() {
+  const hadForwardHistory = AppState.navIndex < AppState.navHistory.length - 1;
+  AppState.navHistory = AppState.navHistory.slice(0, AppState.navIndex + 1);
+  if (hadForwardHistory) pushBrowserHistoryEntry(AppState.node_id, AppState.navIndex);
+  else replaceBrowserHistoryEntry(AppState.node_id, AppState.navIndex);
+}
+
+async function confirmSelectedDeletion() {
+  if (!pendingDeletion || deletionInProgress) return;
+  const target = pendingDeletion;
+  const confirmButton = document.getElementById("confirmDeleteButton");
+  const cancelButton = document.getElementById("cancelDeleteButton");
+  deletionInProgress = true;
+  confirmButton.disabled = true;
+  cancelButton.disabled = true;
+  document.getElementById("deleteConfirmDialog")?.close();
+  pendingDeletion = null;
+  showToastAt(lastMousePos.x, lastMousePos.y, `Moving to ${trashDestinationName()}…`, 30000);
+
+  try {
+    await waitForNextPaint();
+    const result = await DeleteNode(target.nodeId);
+    document.getElementById("deleteConfirmDialog")?.close();
+    pendingDeletion = null;
+    AppState.selectedRectIndex = null;
+    AppState.selectedNodeId = null;
+
+    if (AppState.profile?.rescanOnDelete) {
+      if (AppState.scanRootPath) {
+        document.getElementById("pathInput").value = AppState.scanRootPath;
+      }
+      await analyze();
+    } else {
+      AppState.fileCount = result.fileCount;
+      AppState.dirCount = result.dirCount;
+      trimInvalidForwardNavigation();
+      await redraw();
+      updateNavButtons();
+      showToastAt(lastMousePos.x, lastMousePos.y, `Moved to ${trashDestinationName()}`, 1600);
+    }
+  } catch (err) {
+    document.getElementById("deleteConfirmDialog")?.close();
+    pendingDeletion = null;
+    showErrorToast(err);
+  } finally {
+    deletionInProgress = false;
+    confirmButton.disabled = false;
+    cancelButton.disabled = false;
+  }
+}
+
 // ---------- Context menu ----------
 window.addEventListener("click", () => hideContextMenu());
 function showContextMenu(x, y) {
@@ -1284,6 +1408,10 @@ document.getElementById("contextMenu").addEventListener("click", async (e) => {
     await copySelectedPathAt({ x: e.clientX, y: e.clientY });
     return;
   }
+  if (li.dataset.action === "delete") {
+    requestSelectedDeletion();
+    return;
+  }
   if (li.dataset.action === "open" && r.full_path){
     await OpenInFileBrowser(r.full_path);
   } 
@@ -1300,6 +1428,15 @@ window.addEventListener("keydown", (e) => {
       copySelectedPathAt();
     }
   }
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.key !== "Delete") return;
+  const target = e.target;
+  if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true'], dialog[open]")) return;
+  if (!getSelectedRect()) return;
+  e.preventDefault();
+  requestSelectedDeletion();
 });
 
 window.addEventListener("keydown", (e) => {

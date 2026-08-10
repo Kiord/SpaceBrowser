@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,29 @@ func (Linux) OpenInFileBrowser(p string) error {
 		return exec.Command("xdg-open", filepath.Dir(p)).Run()
 	}
 	return exec.Command("xdg-open", p).Run()
+}
+
+func (Linux) MoveToTrash(p string) error {
+	commands := [][]string{
+		{"gio", "trash", "--", p},
+		{"kioclient6", "move", p, "trash:/"},
+		{"kioclient5", "move", p, "trash:/"},
+	}
+	var lastErr error
+	for _, command := range commands {
+		if _, err := exec.LookPath(command[0]); err != nil {
+			continue
+		}
+		if err := exec.Command(command[0], command[1:]...).Run(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("move to Trash: %w", lastErr)
+	}
+	return fmt.Errorf("no desktop Trash service is available")
 }
 
 func (Linux) DefaultStartPath() string {

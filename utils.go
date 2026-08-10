@@ -14,6 +14,8 @@ type Profile struct {
 	MinFileSize    int64              `json:"minFileSize"`
 	FollowSymlinks bool               `json:"followSymlinks"`
 	SkipNetworkFS  bool               `json:"skipNetworkFS"`
+	AllowDelete    bool               `json:"allowDelete"`
+	RescanOnDelete bool               `json:"rescanOnDelete"`
 	Appearance     AppearanceSettings `json:"appearance"`
 }
 
@@ -49,6 +51,8 @@ func defaultProfile() *Profile {
 		MinFileSize:    1024,
 		FollowSymlinks: false,
 		SkipNetworkFS:  true,
+		AllowDelete:    false,
+		RescanOnDelete: true,
 		Appearance:     defaultAppearanceSettings(),
 	}
 	return p

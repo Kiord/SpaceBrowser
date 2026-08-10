@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,7 @@ type API interface {
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
 	OpenPath(string) error
+	MoveToTrash(string) error
 	AssociatedIcon(string, bool) ([]byte, error)
 	Canonicalize(string) string
 	DefaultStartPath() string
@@ -55,6 +57,16 @@ func (Default) OpenInFileBrowser(p string) error {
 
 func (Default) OpenPath(p string) error {
 	return exec.Command("xdg-open", p).Run()
+}
+
+func (Default) MoveToTrash(p string) error {
+	if _, err := exec.LookPath("gio"); err != nil {
+		return fmt.Errorf("no desktop Trash service is available")
+	}
+	if err := exec.Command("gio", "trash", "--", p).Run(); err != nil {
+		return fmt.Errorf("move to Trash: %w", err)
+	}
+	return nil
 }
 
 func (Default) AssociatedIcon(string, bool) ([]byte, error) { return nil, nil }

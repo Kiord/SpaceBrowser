@@ -90,6 +90,12 @@
       </svg>
       <span>Copy path</span>
     </li>
+    <li class="context-menu-delete" data-action="delete">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"></path>
+      </svg>
+      <span>Delete</span>
+    </li>
   </ul>
 
   <div id="toast">Copied path</div>  
@@ -162,6 +168,17 @@
             <input id="settingsSkipNetworkFS" type="checkbox">
             <span>Skip network filesystems</span>
           </label>
+          <section class="deletion-settings" aria-labelledby="deletionSettingsTitle">
+            <h3 id="deletionSettingsTitle">Deletion</h3>
+            <label class="settings-check">
+              <input id="settingsAllowDelete" type="checkbox">
+              <span>Allow delete command</span>
+            </label>
+            <label class="settings-check">
+              <input id="settingsRescanOnDelete" type="checkbox">
+              <span>Rescan on delete</span>
+            </label>
+          </section>
         </section>
 
         <section id="settingsAppearancePanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsAppearanceTab" data-settings-panel="appearance" hidden>
@@ -228,6 +245,18 @@
       <div class="confirm-dialog-actions">
         <button id="cancelRestoreDefaultsButton" type="button">Cancel</button>
         <button id="confirmRestoreDefaultsButton" type="button">Restore</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="deleteConfirmDialog" class="settings-dialog confirm-dialog delete-confirm-dialog" aria-labelledby="deleteConfirmTitle">
+    <div class="confirm-dialog-body">
+      <h2 id="deleteConfirmTitle">Move this item to Trash?</h2>
+      <p id="deleteConfirmPath" class="delete-confirm-path"></p>
+      <p class="delete-confirm-size">Size: <strong id="deleteConfirmSize"></strong></p>
+      <div class="confirm-dialog-actions">
+        <button id="cancelDeleteButton" type="button">Cancel</button>
+        <button id="confirmDeleteButton" class="danger-button" type="button">Delete</button>
       </div>
     </div>
   </dialog>

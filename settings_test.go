@@ -19,6 +19,8 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		MinFileSize:    1024 * 1024,
 		FollowSymlinks: true,
 		SkipNetworkFS:  false,
+		AllowDelete:    true,
+		RescanOnDelete: false,
 		Appearance: AppearanceSettings{
 			Palette:        "ocean",
 			ZoomFactor:     1.4,
@@ -43,6 +45,34 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	want.ExcludedPaths = first.GetProfile().ExcludedPaths
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted profile = %#v, want %#v", got, want)
+	}
+}
+
+func TestVersionTwoSettingsGainDefaultDeletionSettings(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{
+  "version": 2,
+  "excludedPaths": [],
+  "skipHidden": false,
+  "minFileSize": 1024,
+  "followSymlinks": false,
+  "skipNetworkFS": true,
+  "appearance": {
+    "palette": "default",
+    "zoomFactor": 1,
+    "cornerRadius": 0,
+    "reliefStrength": 0.1
+  }
+}`)
+	if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := newApp(settingsPath).GetProfile()
+	defaults := defaultProfile()
+	if got.AllowDelete != defaults.AllowDelete || got.RescanOnDelete != defaults.RescanOnDelete {
+		t.Fatalf("deletion settings = (%v, %v), want defaults (%v, %v)",
+			got.AllowDelete, got.RescanOnDelete, defaults.AllowDelete, defaults.RescanOnDelete)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const settingsFileVersion = 2
+const settingsFileVersion = 3
 
 type persistedSettings struct {
 	Version        int                `json:"version"`
@@ -16,6 +16,8 @@ type persistedSettings struct {
 	MinFileSize    int64              `json:"minFileSize"`
 	FollowSymlinks bool               `json:"followSymlinks"`
 	SkipNetworkFS  bool               `json:"skipNetworkFS"`
+	AllowDelete    bool               `json:"allowDelete"`
+	RescanOnDelete bool               `json:"rescanOnDelete"`
 	Appearance     AppearanceSettings `json:"appearance"`
 }
 
@@ -37,12 +39,19 @@ func loadSettings(path string) (Profile, error) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return Profile{}, fmt.Errorf("decode settings: %w", err)
 	}
-	if saved.Version != 1 && saved.Version != settingsFileVersion {
+	if saved.Version < 1 || saved.Version > settingsFileVersion {
 		return Profile{}, fmt.Errorf("unsupported settings version %d", saved.Version)
 	}
 	appearance := saved.Appearance
 	if saved.Version == 1 {
 		appearance = defaultAppearanceSettings()
+	}
+	allowDelete := saved.AllowDelete
+	rescanOnDelete := saved.RescanOnDelete
+	if saved.Version < 3 {
+		defaults := defaultProfile()
+		allowDelete = defaults.AllowDelete
+		rescanOnDelete = defaults.RescanOnDelete
 	}
 
 	return normalizeProfile(Profile{
@@ -51,6 +60,8 @@ func loadSettings(path string) (Profile, error) {
 		MinFileSize:    saved.MinFileSize,
 		FollowSymlinks: saved.FollowSymlinks,
 		SkipNetworkFS:  saved.SkipNetworkFS,
+		AllowDelete:    allowDelete,
+		RescanOnDelete: rescanOnDelete,
 		Appearance:     appearance,
 	})
 }
@@ -63,6 +74,8 @@ func saveSettings(path string, profile Profile) error {
 		MinFileSize:    profile.MinFileSize,
 		FollowSymlinks: profile.FollowSymlinks,
 		SkipNetworkFS:  profile.SkipNetworkFS,
+		AllowDelete:    profile.AllowDelete,
+		RescanOnDelete: profile.RescanOnDelete,
 		Appearance:     profile.Appearance,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
