@@ -94,6 +94,21 @@
 
   <div id="toast">Copied path</div>  
 
+  <div id="rectToast" class="rect-toast" role="tooltip" hidden>
+    <button id="rectToastOpen" class="rect-toast-open" type="button" aria-label="Open with default application">
+      <img id="rectToastAssociatedIcon" class="is-hidden" alt="">
+      <svg id="rectToastFallbackIcon" viewBox="0 0 24 24" aria-hidden="true">
+        <path id="rectToastFallbackShape" d="M3 8V5h7l2 3h9v11H3z"></path>
+        <path id="rectToastFallbackDetail" d="M3 9h18"></path>
+      </svg>
+    </button>
+    <div class="rect-toast-details">
+      <div class="rect-toast-path"><span id="rectToastPathPrefix"></span><strong id="rectToastName"></strong></div>
+      <span id="rectToastSize"></span>
+      <span id="rectToastCreated"></span>
+    </div>
+  </div>
+
   <dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsTitle">
     <form id="settingsForm">
       <header class="settings-header">

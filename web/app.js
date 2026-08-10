@@ -53,7 +53,7 @@ const SCALE_SMOOTH_BASE = 1.0015;
 
 
 // web/app.js
-import { GetFullTree, Layout, OpenInFileBrowser, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile, ValidateScanPath, GetScanProgress, CancelScan } from "./wailsjs/go/main/App.js";
+import { GetFullTree, Layout, OpenInFileBrowser, OpenPath, GetAssociatedIcon, DefaultPath, SetShowFreeSpace, PickFolder, GetProfile, SetProfile, ValidateScanPath, GetScanProgress, CancelScan } from "./wailsjs/go/main/App.js";
 
 async function apiScan(path) {
   console.time("scan");
@@ -255,6 +255,19 @@ window.addEventListener("load", () => {
       hideContextMenu();
     }
   });
+
+  AppState.colorCanvas.addEventListener("pointermove", updateRectToast);
+  AppState.colorCanvas.addEventListener("pointerleave", (e) => {
+    if (!e.relatedTarget?.closest?.("#rectToast")) hideRectToast();
+  });
+
+  document.getElementById("rectToastOpen")?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (hoveredRect?.full_path) await OpenPath(hoveredRect.full_path);
+  });
+  document.getElementById("rectToast")?.addEventListener("pointerleave", (e) => {
+    if (e.relatedTarget !== AppState.colorCanvas) hideRectToast();
+  });
 });
 
 
@@ -270,6 +283,7 @@ let scanCancelledByUser = false;
 let scanDotsTimer = null;
 
 function clearTreemapForScan() {
+  hideRectToast();
   for (const ctx of [AppState.colorCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx]) {
     if (ctx) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   }
@@ -427,6 +441,7 @@ async function analyze() {
 
 // ---------- Layout + Draw ----------
 async function redraw() {
+  hideRectToast();
   const nodeId = AppState.node_id;
   if (nodeId == null) return;
 
@@ -854,6 +869,136 @@ function showContextMenu(x, y) {
 }
 function hideContextMenu() {
   document.getElementById("contextMenu").style.display = "none";
+}
+
+let hoveredRect = null;
+let hoveredRectIndex = -1;
+const associatedIconCache = new Map();
+
+function rectSupportsDetailsToast(rect) {
+  return !!(rect?.full_path && rect.parent_id != null && !rect.is_free_space);
+}
+
+function detailedByteSize(bytes) {
+  return `${Number(bytes || 0).toLocaleString()} bytes`;
+}
+
+function associatedIconKey(rect) {
+  if (rect.is_folder) return "<folder>";
+  const name = String(rect.name || "").toLocaleLowerCase();
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 ? name.slice(dot) : "<file>";
+  return extension === ".exe" || extension === ".lnk" || extension === ".ico"
+    ? String(rect.full_path).toLocaleLowerCase()
+    : extension;
+}
+
+function showFallbackIcon(isFolder) {
+  const image = document.getElementById("rectToastAssociatedIcon");
+  const fallback = document.getElementById("rectToastFallbackIcon");
+  image.classList.add("is-hidden");
+  fallback.classList.remove("is-hidden");
+  document.getElementById("rectToastFallbackShape").setAttribute("d", isFolder
+    ? "M3 8V5h7l2 3h9v11H3z"
+    : "M6 3h8l4 4v14H6z");
+  document.getElementById("rectToastFallbackDetail").setAttribute("d", isFolder
+    ? "M3 9h18"
+    : "M14 3v5h5");
+}
+
+function applyAssociatedIcon(rect, icon) {
+  if (!icon || hoveredRect?.full_path !== rect.full_path) return;
+  const image = document.getElementById("rectToastAssociatedIcon");
+  image.src = icon;
+  image.classList.remove("is-hidden");
+  document.getElementById("rectToastFallbackIcon").classList.add("is-hidden");
+}
+
+function updateAssociatedIcon(rect) {
+  const key = associatedIconKey(rect);
+  const cached = associatedIconCache.get(key);
+  if (typeof cached === "string") {
+    if (cached) applyAssociatedIcon(rect, cached);
+    else showFallbackIcon(rect.is_folder);
+    return;
+  }
+
+  showFallbackIcon(rect.is_folder);
+  if (cached) {
+    cached.then(icon => applyAssociatedIcon(rect, icon));
+    return;
+  }
+
+  const request = Promise.resolve(GetAssociatedIcon(rect.full_path, !!rect.is_folder))
+    .then(icon => {
+      const value = String(icon || "");
+      associatedIconCache.set(key, value);
+      return value;
+    })
+    .catch(() => {
+      associatedIconCache.set(key, "");
+      return "";
+    });
+  associatedIconCache.set(key, request);
+  request.then(icon => applyAssociatedIcon(rect, icon));
+}
+
+function placeRectToast(x, y) {
+  const toast = document.getElementById("rectToast");
+  if (!toast || toast.hidden) return;
+
+  const pad = 8;
+  const offset = 14;
+  const width = toast.offsetWidth;
+  const height = toast.offsetHeight;
+  const left = x + offset + width <= window.innerWidth - pad
+    ? x + offset
+    : x - width - offset;
+  const top = y + offset + height <= window.innerHeight - pad
+    ? y + offset
+    : y - height - offset;
+
+  toast.style.left = `${Math.max(pad, left)}px`;
+  toast.style.top = `${Math.max(pad, top)}px`;
+}
+
+function hideRectToast() {
+  const toast = document.getElementById("rectToast");
+  if (toast) toast.hidden = true;
+  hoveredRect = null;
+  hoveredRectIndex = -1;
+}
+
+function updateRectToast(e) {
+  const { x, y } = getCanvasCoords(e);
+  const rectIndex = rectIndexAtPoint(x, y);
+  const rect = AppState.rects?.[rectIndex];
+  if (!rectSupportsDetailsToast(rect)) {
+    hideRectToast();
+    return;
+  }
+  if (rectIndex === hoveredRectIndex && !document.getElementById("rectToast")?.hidden) {
+    placeRectToast(e.clientX, e.clientY);
+    return;
+  }
+
+  hoveredRect = rect;
+  hoveredRectIndex = rectIndex;
+  const toast = document.getElementById("rectToast");
+  const name = String(rect.name || "");
+  const fullPath = String(rect.full_path);
+  const suffix = fullPath.slice(-name.length);
+  const nameIsPathSuffix = !!name && suffix.toLocaleLowerCase() === name.toLocaleLowerCase();
+  document.getElementById("rectToastPathPrefix").textContent = nameIsPathSuffix
+    ? fullPath.slice(0, -name.length)
+    : fullPath;
+  document.getElementById("rectToastName").textContent = nameIsPathSuffix ? name : "";
+  document.getElementById("rectToastSize").textContent = detailedByteSize(rect.size);
+  const date = rect.mtime ? formatModTime(rect.mtime) : "unavailable";
+  document.getElementById("rectToastCreated").textContent = `Modification date : ${date}`;
+  updateAssociatedIcon(rect);
+  toast.hidden = false;
+  placeRectToast(e.clientX, e.clientY);
 }
 
 async function openInSystemBrowser() {

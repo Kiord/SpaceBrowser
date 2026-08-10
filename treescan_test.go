@@ -109,6 +109,9 @@ func TestScannerAggregatesSmallFiles(t *testing.T) {
 	if nested == nil {
 		t.Fatal("nested folder not found")
 	}
+	if nested.ModTime == 0 {
+		t.Fatal("nested folder has no modification date")
+	}
 	nestedAggregate := directAggregate(nested)
 	if nestedAggregate == nil || nestedAggregate.SmallFileCount != 1 {
 		t.Fatalf("nested aggregate = %+v, want 1 directly contained small file", nestedAggregate)

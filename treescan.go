@@ -162,6 +162,10 @@ func (s *Scanner) Nodes() []*Node {
 // buildTree scans 'path' and all descendants, assigning IDs.
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
+	return s.buildTreeWithModTime(path, depth, parentID, fileCount, dirCount, 0)
+}
+
+func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fileCount, dirCount *int64, modTime int64) (*Node, error) {
 	if err := s.ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -183,6 +187,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 		Depth:    depth,
 		FullPath: abs,
 		Children: make([]*Node, 0, 128),
+		ModTime:  modTime,
 	}
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
@@ -195,7 +200,10 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 	atomic.AddInt64(&s.workDiscovered, int64(len(entries)))
 
 	// First pass: files now, subdirs later
-	type subdir struct{ full string }
+	type subdir struct {
+		full    string
+		modTime int64
+	}
 	subdirs := make([]subdir, 0, 32)
 	var smallFilesSize, smallFileCount int64
 	var processedBatch int64
@@ -241,7 +249,14 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 				if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
 					return true
 				}
-				subdirs = append(subdirs, subdir{full: full})
+				if info == nil {
+					info, _ = de.Info()
+				}
+				var modTime int64
+				if info != nil {
+					modTime = info.ModTime().Unix()
+				}
+				subdirs = append(subdirs, subdir{full: full, modTime: modTime})
 				return false
 			}
 
@@ -319,19 +334,19 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			select {
 			case s.sem <- struct{}{}:
 				wg.Add(1)
-				go func(p string) {
+				go func(sd subdir) {
 					defer wg.Done()
 					defer func() { <-s.sem }()
-					n, _ := s.buildTree(p, depth+1, root.ID, fileCount, dirCount)
+					n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
 					if n != nil {
 						mu.Lock()
 						results = append(results, n)
 						mu.Unlock()
 					}
-				}(sd.full)
+				}(sd)
 			default:
 				// inline to avoid deadlock
-				n, _ := s.buildTree(sd.full, depth+1, root.ID, fileCount, dirCount)
+				n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
 				if n != nil {
 					results = append(results, n)
 				}

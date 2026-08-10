@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"sort"
@@ -353,6 +354,24 @@ func (a *App) OpenInFileBrowser(path string) error {
 		return fmt.Errorf("missing path")
 	}
 	return platform.Impl.OpenInFileBrowser(path)
+}
+
+func (a *App) OpenPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("missing path")
+	}
+	return platform.Impl.OpenPath(path)
+}
+
+func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("missing path")
+	}
+	icon, err := platform.Impl.AssociatedIcon(path, isFolder)
+	if err != nil || len(icon) == 0 {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(icon), nil
 }
 
 func (a *App) DefaultPath() string {

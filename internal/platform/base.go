@@ -16,6 +16,8 @@ type API interface {
 	IsHidden(string) bool
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
+	OpenPath(string) error
+	AssociatedIcon(string, bool) ([]byte, error)
 	Canonicalize(string) string
 	DefaultStartPath() string
 	IsLikelyNetworkFS(string) bool
@@ -50,6 +52,12 @@ func (Default) OpenInFileBrowser(p string) error {
 	}
 	return exec.Command("xdg-open", filepath.Dir(p)).Run()
 }
+
+func (Default) OpenPath(p string) error {
+	return exec.Command("xdg-open", p).Run()
+}
+
+func (Default) AssociatedIcon(string, bool) ([]byte, error) { return nil, nil }
 
 func (Default) Canonicalize(p string) string {
 	abs, _ := filepath.Abs(p)

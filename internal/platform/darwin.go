@@ -30,6 +30,10 @@ func (Darwin) OpenInFileBrowser(p string) error {
 	return exec.Command("open", p).Run()
 }
 
+func (Darwin) OpenPath(p string) error {
+	return exec.Command("open", p).Run()
+}
+
 func (Darwin) DefaultStartPath() string {
 	if fi, err := os.Stat("/Users"); err == nil && fi.IsDir() {
 		return "/Users"

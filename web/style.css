@@ -202,6 +202,84 @@ html, body {
   border-color: #c9827d;
 }
 
+.rect-toast {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 16px));
+  padding: 7px 9px;
+  box-sizing: border-box;
+  background: #1f1f1f;
+  color: #fff;
+  border: 1px solid #111;
+  border-radius: 2px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .18);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+  z-index: 10000;
+}
+
+.rect-toast[hidden] {
+  display: none;
+}
+
+.rect-toast-open {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fff;
+  background: #292929;
+  border: 1px solid #777;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.rect-toast-open:hover {
+  background: #3a3a3a;
+  border-color: #aaa;
+}
+
+.rect-toast-open > [hidden] {
+  display: none !important;
+}
+
+.rect-toast-open > .is-hidden {
+  display: none !important;
+}
+
+.rect-toast-open svg {
+  grid-area: 1 / 1;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.rect-toast-open img {
+  grid-area: 1 / 1;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.rect-toast-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rect-toast-path {
+  overflow-wrap: anywhere;
+}
+
 .context-menu {
   position: absolute;
   background: white;
