@@ -42,6 +42,7 @@ const AppState = {
 
 const FONT_SIZE = 10;
 const CORNER_RADII = 3;
+const RECT_RELIEF_BRIGHTNESS = 1.10;
 const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe","#dfe4ea"];
 
 const SCALE_MIN = 0.5;
@@ -576,6 +577,50 @@ function pxF(base) {
   return Math.max(0.5, base * s);
 }
 
+function blendHexColor(hex, target, amount) {
+  let value = hex.replace("#", "");
+  if (/^[0-9a-f]{3}$/i.test(value)) value = value.split("").map(channel => channel + channel).join("");
+  if (!/^[0-9a-f]{6}$/i.test(value)) return hex;
+  const channels = [0, 2, 4].map(offset => parseInt(value.slice(offset, offset + 2), 16));
+  const blended = channels.map(channel => Math.round(channel + (target - channel) * amount));
+  return `rgb(${blended[0]}, ${blended[1]}, ${blended[2]})`;
+}
+
+function drawRectRelief(ctx, rect, fillColor) {
+  if (RECT_RELIEF_BRIGHTNESS === 1.0 || rect.w < 4 || rect.h < 4) return;
+
+  const amount = Math.min(1, Math.abs(RECT_RELIEF_BRIGHTNESS - 1));
+  const lightColor = blendHexColor(fillColor, 255, amount);
+  const darkColor = blendHexColor(fillColor, 0, amount);
+  const left = rect.x + 1.5;
+  const top = rect.y + 1.5;
+  const right = rect.x + rect.w - 1.5;
+  const bottom = rect.y + rect.h - 1.5;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.w, rect.h, CORNER_RADII);
+  ctx.clip();
+  ctx.lineWidth = 1;
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "miter";
+
+  ctx.beginPath();
+  ctx.moveTo(left, bottom);
+  ctx.lineTo(left, top);
+  ctx.lineTo(right, top);
+  ctx.strokeStyle = lightColor;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(right, top);
+  ctx.lineTo(right, bottom);
+  ctx.lineTo(left, bottom);
+  ctx.strokeStyle = darkColor;
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = AppState.selectedNodeId == rect.node_id;
   const isRoot = rect.parent_id == null;
@@ -591,15 +636,17 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   const FOLDER_H_MIN = pxI(15);
 
   // fill
-  ctx.fillStyle = isSelected ? "#000"
+  const fillColor = isSelected ? "#000000"
     : (rect.is_free_space || isRoot ? "#fff"
       : (rect.is_small_files ? "#e6dac5" : folderColors[(rect.depth || 0) % folderColors.length]));
+  ctx.fillStyle = fillColor;
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
   // stroke
   ctx.strokeStyle = "#222";
   ctx.lineWidth = STROKE_PX;
   strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+  drawRectRelief(ctx, rect, fillColor);
 
   //  ID buffer 
   if (writeId) {
@@ -697,7 +744,15 @@ function selectRectByIndex(rectIndex, dontDeselect=false) {
   }
 
   const rect = AppState.rects[rectIndex];
-  if (isPassiveRect(rect)) return;
+  if (isPassiveRect(rect)) {
+    if (!dontDeselect) {
+      const prevIdx = AppState.selectedRectIndex;
+      AppState.selectedRectIndex = null;
+      AppState.selectedNodeId = null;
+      if (prevIdx != null) reDrawRectByIndex(prevIdx);
+    }
+    return;
+  }
 
   const prevIdx = AppState.selectedRectIndex;
   AppState.selectedRectIndex = rectIndex;
