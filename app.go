@@ -50,14 +50,6 @@ func newApp(settingsPath string) *App {
 
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
 
-type TreeStore struct {
-	mu        sync.RWMutex
-	root      *Node
-	nodes     []*Node // nodes[id] == *Node
-	fileCount int
-	dirCount  int
-}
-
 func (a *App) SetShowFreeSpace(show bool) {
 	a.settingsMu.Lock()
 	defer a.settingsMu.Unlock()
@@ -141,93 +133,6 @@ func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, err
 		return AppearanceSettings{}, fmt.Errorf("relief strength must be between 0 and 0.5")
 	}
 	return appearance, nil
-}
-
-func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) {
-	s.mu.Lock()
-	s.root, s.nodes = root, nodes
-	s.fileCount, s.dirCount = fileCount, dirCount
-	s.mu.Unlock()
-}
-
-type DeleteResult struct {
-	FileCount int `json:"fileCount"`
-	DirCount  int `json:"dirCount"`
-}
-
-func (s *TreeStore) deleteNode(nodeID int, moveToTrash func(string) error) (DeleteResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
-		return DeleteResult{}, fmt.Errorf("selected item is no longer available")
-	}
-	node := s.nodes[nodeID]
-	if node.ParentID < 0 || node.FullPath == "" || node.IsFreeSpace || node.IsSmallFiles {
-		return DeleteResult{}, fmt.Errorf("the scan root and virtual items cannot be deleted")
-	}
-	if node.ParentID >= len(s.nodes) || s.nodes[node.ParentID] == nil {
-		return DeleteResult{}, fmt.Errorf("selected item's parent is no longer available")
-	}
-	if _, err := os.Lstat(node.FullPath); err != nil {
-		if os.IsNotExist(err) {
-			return DeleteResult{}, fmt.Errorf("selected path no longer exists")
-		}
-		return DeleteResult{}, fmt.Errorf("inspect selected path: %w", err)
-	}
-	if err := moveToTrash(node.FullPath); err != nil {
-		return DeleteResult{}, err
-	}
-
-	parent := s.nodes[node.ParentID]
-	for i, child := range parent.Children {
-		if child == node {
-			parent.Children = append(parent.Children[:i], parent.Children[i+1:]...)
-			break
-		}
-	}
-
-	deletedSize := node.Size
-	for current := parent; current != nil; {
-		current.Size -= deletedSize
-		if current.Size < 0 {
-			current.Size = 0
-		}
-		sort.Slice(current.Children, func(i, j int) bool {
-			return current.Children[i].Size > current.Children[j].Size
-		})
-		if current.ParentID < 0 || current.ParentID >= len(s.nodes) {
-			break
-		}
-		current = s.nodes[current.ParentID]
-	}
-
-	var deletedFiles, deletedDirs int
-	var detach func(*Node)
-	detach = func(current *Node) {
-		if current == nil {
-			return
-		}
-		if current.IsSmallFiles {
-			deletedFiles += int(current.SmallFileCount)
-		} else if !current.IsFreeSpace {
-			if current.IsFolder {
-				deletedDirs++
-			} else {
-				deletedFiles++
-			}
-		}
-		for _, child := range current.Children {
-			detach(child)
-		}
-		if current.ID >= 0 && current.ID < len(s.nodes) {
-			s.nodes[current.ID] = nil
-		}
-	}
-	detach(node)
-	s.fileCount = max(0, s.fileCount-deletedFiles)
-	s.dirCount = max(0, s.dirCount-deletedDirs)
-	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount}, nil
 }
 
 var store TreeStore
@@ -440,34 +345,10 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 }
 
 func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	if nodeID < 0 || nodeID >= len(store.nodes) {
-		return nil, fmt.Errorf("invalid node_id")
-	}
-	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("invalid width/height")
-	}
-	n := store.nodes[nodeID]
-	if n == nil {
-		return nil, fmt.Errorf("node not found")
-	}
-
-	tmp := *n
 	a.settingsMu.RLock()
 	showFreeSpace := a.showFreeSpace
 	a.settingsMu.RUnlock()
-	if !showFreeSpace {
-		filtered := make([]*Node, 0, len(n.Children))
-		for _, c := range n.Children {
-			if !c.IsFreeSpace { // skip only the free disk space nodes
-				filtered = append(filtered, c)
-			}
-		}
-		tmp.Children = filtered
-	}
-
-	return ComputeTreemapRects(&tmp, float64(width), float64(height), scale), nil
+	return store.Layout(nodeID, width, height, scale, showFreeSpace)
 }
 
 func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
@@ -482,7 +363,11 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		return DeleteResult{}, fmt.Errorf("items cannot be deleted while a scan is running")
 	}
 
-	return store.deleteNode(nodeID, platform.Impl.MoveToTrash)
+	return store.DeleteNode(nodeID, platform.Impl.MoveToTrash)
+}
+
+func (a *App) GetDefaultProfile() Profile {
+	return *defaultProfile()
 }
 
 func (a *App) OpenInFileBrowser(path string) error {

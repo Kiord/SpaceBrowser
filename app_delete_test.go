@@ -23,7 +23,7 @@ func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, folder, nested, kept}, fileCount: 4, dirCount: 2}
 
 	calledWith := ""
-	result, err := store.deleteNode(folder.ID, func(path string) error {
+	result, err := store.DeleteNode(folder.ID, func(path string) error {
 		calledWith = path
 		return nil
 	})
@@ -55,7 +55,7 @@ func TestTreeStoreDeleteNodeLeavesTreeUntouchedWhenTrashFails(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
 	wantErr := errors.New("trash unavailable")
 
-	if _, err := store.deleteNode(file.ID, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
+	if _, err := store.DeleteNode(file.ID, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
 		t.Fatalf("deleteNode() error = %v, want %v", err, wantErr)
 	}
 	if root.Size != 4 || len(root.Children) != 1 || store.nodes[file.ID] != file {
@@ -67,7 +67,7 @@ func TestTreeStoreDeleteNodeRejectsRoot(t *testing.T) {
 	root := &Node{ID: 0, ParentID: -1, Name: "root", IsFolder: true}
 	store := &TreeStore{root: root, nodes: []*Node{root}}
 	called := false
-	if _, err := store.deleteNode(root.ID, func(string) error {
+	if _, err := store.DeleteNode(root.ID, func(string) error {
 		called = true
 		return nil
 	}); err == nil {
