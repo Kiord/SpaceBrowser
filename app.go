@@ -18,6 +18,7 @@ type App struct {
 	ctx           context.Context
 	showFreeSpace bool
 	profile       Profile
+	settingsPath  string
 	settingsMu    sync.RWMutex
 
 	scanMu         sync.RWMutex
@@ -31,9 +32,20 @@ type App struct {
 }
 
 func NewApp() *App {
-	profile := defaultProfile()
-	return &App{showFreeSpace: true, profile: *profile}
+	settingsPath, _ := defaultSettingsPath()
+	return newApp(settingsPath)
 }
+
+func newApp(settingsPath string) *App {
+	profile := *defaultProfile()
+	if settingsPath != "" {
+		if savedProfile, err := loadSettings(settingsPath); err == nil {
+			profile = savedProfile
+		}
+	}
+	return &App{showFreeSpace: true, profile: profile, settingsPath: settingsPath}
+}
+
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
 
 type TreeStore struct {
@@ -56,8 +68,25 @@ func (a *App) GetProfile() Profile {
 }
 
 func (a *App) SetProfile(profile Profile) error {
+	profile, err := normalizeProfile(profile)
+	if err != nil {
+		return err
+	}
+
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	if a.settingsPath != "" {
+		if err := saveSettings(a.settingsPath, profile); err != nil {
+			return fmt.Errorf("save settings: %w", err)
+		}
+	}
+	a.profile = profile
+	return nil
+}
+
+func normalizeProfile(profile Profile) (Profile, error) {
 	if profile.MinFileSize < 0 {
-		return fmt.Errorf("minimum file size cannot be negative")
+		return Profile{}, fmt.Errorf("minimum file size cannot be negative")
 	}
 
 	profile.PlatformSystem = defaultProfile().PlatformSystem
@@ -76,11 +105,7 @@ func (a *App) SetProfile(profile Profile) error {
 		cleaned = append(cleaned, path)
 	}
 	profile.ExcludedPaths = cleaned
-
-	a.settingsMu.Lock()
-	a.profile = profile
-	a.settingsMu.Unlock()
-	return nil
+	return profile, nil
 }
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root, nodes }
