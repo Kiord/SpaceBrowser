@@ -20,6 +20,8 @@ const AppState = {
   node_id: null,
   navHistory: [],
   navIndex: -1,
+  navSession: 0,
+  browserHistoryPosition: 0,
 
   // canvases
   colorCanvas: null, colorCtx: null,
@@ -70,6 +72,8 @@ async function apiOpenInFileBrowser(path) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  replaceBrowserHistoryEntry(null, -1);
+
   document.getElementById("pathGroup")?.removeAttribute("title");
   const analyzeButton = document.getElementById("analyzeButton");
   if (analyzeButton) {
@@ -273,6 +277,8 @@ function clearTreemapForScan() {
   AppState.node_id = null;
   AppState.navHistory = [];
   AppState.navIndex = -1;
+  AppState.navSession++;
+  replaceBrowserHistoryEntry(null, -1);
   AppState.selectedRectIndex = null;
   AppState.selectedNodeId = null;
   hideContextMenu();
@@ -401,6 +407,7 @@ async function analyze() {
     AppState.fileCount = fileCount;
     AppState.dirCount = dirCount;
     AppState.navIndex = 0;
+    replaceBrowserHistoryEntry(rootId, 0);
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
 
@@ -716,6 +723,27 @@ function reDrawRectByIndex(idx) {
 }
 
 // ---------- Navigation ----------
+const HISTORY_STATE_KEY = "spacebrowserNavigation";
+
+function browserHistoryState(nodeId, navIndex) {
+  return {
+    [HISTORY_STATE_KEY]: true,
+    session: AppState.navSession,
+    nodeId,
+    navIndex,
+    position: AppState.browserHistoryPosition
+  };
+}
+
+function replaceBrowserHistoryEntry(nodeId, navIndex) {
+  window.history.replaceState(browserHistoryState(nodeId, navIndex), "");
+}
+
+function pushBrowserHistoryEntry(nodeId, navIndex) {
+  AppState.browserHistoryPosition++;
+  window.history.pushState(browserHistoryState(nodeId, navIndex), "");
+}
+
 function navigateToSelected() {
   const r = getSelectedRect();
   if (!r || !r.is_folder || isPassiveRect(r)) return;
@@ -745,25 +773,42 @@ function visit(nodeId) {
   AppState.navIndex = AppState.navHistory.length - 1;
   AppState.node_id = nodeId;
   AppState.selectedRectIndex = null;
+  pushBrowserHistoryEntry(nodeId, AppState.navIndex);
   redraw();
 }
 
 function goBackward() {
   if (AppState.navIndex > 0) {
-    AppState.navIndex--;
-    AppState.node_id = AppState.navHistory[AppState.navIndex];
-    AppState.selectedRectIndex = null;
-    redraw();
+    window.history.back();
   }
 }
 function goForward() {
   if (AppState.navIndex < AppState.navHistory.length - 1) {
-    AppState.navIndex++;
-    AppState.node_id = AppState.navHistory[AppState.navIndex];
-    AppState.selectedRectIndex = null;
-    redraw();
+    window.history.forward();
   }
 }
+
+window.addEventListener("popstate", (e) => {
+  const state = e.state;
+  const isCurrentNavigation = state?.[HISTORY_STATE_KEY]
+    && state.session === AppState.navSession
+    && Number.isInteger(state.navIndex)
+    && AppState.navHistory[state.navIndex] === state.nodeId;
+
+  if (!isCurrentNavigation) {
+    // Entries from an earlier scan may still surround the current entry. Return
+    // to the current scan without ever applying their now-invalid node IDs.
+    const stalePosition = Number(state?.position);
+    window.history.go(Number.isFinite(stalePosition) && stalePosition > AppState.browserHistoryPosition ? -1 : 1);
+    return;
+  }
+
+  AppState.browserHistoryPosition = state.position;
+  AppState.navIndex = state.navIndex;
+  AppState.node_id = state.nodeId;
+  AppState.selectedRectIndex = null;
+  redraw();
+});
 
 export async function toggleFreeSpace(e) {
   const button = e?.currentTarget ?? document.getElementById("toggleFreeSpaceButton");
@@ -930,26 +975,6 @@ window.addEventListener("keydown", (e) => {
     goForward();
   }
 });
-
-function isSystemNavigationButton(e) {
-  return e.button === 3 || e.button === 4;
-}
-
-window.addEventListener("mousedown", (e) => {
-  if (isSystemNavigationButton(e)) e.preventDefault();
-}, { capture: true });
-
-window.addEventListener("mouseup", (e) => {
-  if (!isSystemNavigationButton(e)) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.button === 3) goBackward();
-  else goForward();
-}, { capture: true });
-
-window.addEventListener("auxclick", (e) => {
-  if (isSystemNavigationButton(e)) e.preventDefault();
-}, { capture: true });
 
 // ---------- Utilities ----------
 function getCanvasCoords(event) {
