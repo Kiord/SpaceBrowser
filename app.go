@@ -267,8 +267,6 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
-	scanner.addSmallFilesAggregate(root)
-
 	if volumeUsage != nil {
 		fs := volumeUsage
 		free := &Node{

@@ -56,8 +56,6 @@ type Scanner struct {
 	seenDirs   map[string]struct{}
 	seenDirsMu sync.Mutex
 
-	smallFilesSize int64
-	smallFileCount int64
 	workDiscovered int64
 	workProcessed  int64
 	bytesProcessed int64
@@ -161,26 +159,6 @@ func (s *Scanner) Nodes() []*Node {
 	return out
 }
 
-func (s *Scanner) addSmallFilesAggregate(root *Node) {
-	count := atomic.LoadInt64(&s.smallFileCount)
-	if root == nil || count == 0 {
-		return
-	}
-
-	size := atomic.LoadInt64(&s.smallFilesSize)
-	root.Children = append(root.Children, &Node{
-		ID:             -1,
-		ParentID:       root.ID,
-		Name:           "[Small Files]",
-		Size:           size,
-		IsSmallFiles:   true,
-		SmallFileCount: count,
-		SmallFileLimit: s.profile.MinFileSize,
-		Depth:          root.Depth + 1,
-	})
-	root.Size += size
-}
-
 // buildTree scans 'path' and all descendants, assigning IDs.
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
@@ -219,6 +197,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 	// First pass: files now, subdirs later
 	type subdir struct{ full string }
 	subdirs := make([]subdir, 0, 32)
+	var smallFilesSize, smallFileCount int64
 	var processedBatch int64
 	flushProcessed := func() {
 		if processedBatch > 0 {
@@ -284,8 +263,8 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 			atomic.AddInt64(&s.bytesProcessed, sz)
 
 			if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
-				atomic.AddInt64(&s.smallFilesSize, sz)
-				atomic.AddInt64(&s.smallFileCount, 1)
+				smallFilesSize += sz
+				smallFileCount++
 				atomic.AddInt64(fileCount, 1)
 				return true
 			}
@@ -311,6 +290,20 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 				flushProcessed()
 			}
 		}
+	}
+
+	if smallFileCount > 0 {
+		root.Children = append(root.Children, &Node{
+			ID:             -1,
+			ParentID:       root.ID,
+			Name:           "[Small Files]",
+			Size:           smallFilesSize,
+			IsSmallFiles:   true,
+			SmallFileCount: smallFileCount,
+			SmallFileLimit: s.profile.MinFileSize,
+			Depth:          root.Depth + 1,
+		})
+		root.Size += smallFilesSize
 	}
 
 	// Second pass: scan subdirectories (bounded)
