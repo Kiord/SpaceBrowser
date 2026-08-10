@@ -120,42 +120,94 @@
         </button>
       </header>
 
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button id="settingsGeneralTab" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general">General</button>
+        <button id="settingsAppearanceTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAppearancePanel" data-settings-tab="appearance">Appearance</button>
+      </div>
+
       <div class="settings-body">
-        <div class="settings-row">
-          <label>Platform</label>
-          <output id="settingsPlatform"></output>
-        </div>
-        <div class="settings-row settings-row-top">
-          <label for="settingsExcludedPaths">Excluded paths</label>
-          <div>
-            <textarea id="settingsExcludedPaths" rows="5" spellcheck="false" placeholder="One absolute path per line"></textarea>
-            <small>One path per line. Subfolders are excluded too.</small>
+        <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general">
+          <div class="settings-row">
+            <label>Platform</label>
+            <output id="settingsPlatform"></output>
           </div>
-        </div>
-        <div class="settings-row">
-          <label for="settingsMinFileSize">Small-file threshold</label>
-          <div class="number-field">
-            <input id="settingsMinFileSize" type="number" min="0" step="any" required>
-            <select id="settingsMinFileSizeUnit" aria-label="Small-file threshold unit">
-              <option value="B">B</option>
-              <option value="KB">KB</option>
-              <option value="MB">MB</option>
-              <option value="GB">GB</option>
-            </select>
+          <div class="settings-row settings-row-top">
+            <label for="settingsExcludedPaths">Excluded paths</label>
+            <div>
+              <textarea id="settingsExcludedPaths" rows="5" spellcheck="false" placeholder="One absolute path per line"></textarea>
+              <small>One path per line. Subfolders are excluded too.</small>
+            </div>
           </div>
-        </div>
-        <label class="settings-check">
-          <input id="settingsSkipHidden" type="checkbox">
-          <span>Skip hidden files and folders</span>
-        </label>
-        <label class="settings-check">
-          <input id="settingsFollowSymlinks" type="checkbox">
-          <span>Follow symbolic links</span>
-        </label>
-        <label class="settings-check">
-          <input id="settingsSkipNetworkFS" type="checkbox">
-          <span>Skip network filesystems</span>
-        </label>
+          <div class="settings-row">
+            <label for="settingsMinFileSize">Small-file threshold</label>
+            <div class="number-field">
+              <input id="settingsMinFileSize" type="number" min="0" step="any" required>
+              <select id="settingsMinFileSizeUnit" aria-label="Small-file threshold unit">
+                <option value="B">B</option>
+                <option value="KB">KB</option>
+                <option value="MB">MB</option>
+                <option value="GB">GB</option>
+              </select>
+            </div>
+          </div>
+          <label class="settings-check">
+            <input id="settingsSkipHidden" type="checkbox">
+            <span>Skip hidden files and folders</span>
+          </label>
+          <label class="settings-check">
+            <input id="settingsFollowSymlinks" type="checkbox">
+            <span>Follow symbolic links</span>
+          </label>
+          <label class="settings-check">
+            <input id="settingsSkipNetworkFS" type="checkbox">
+            <span>Skip network filesystems</span>
+          </label>
+        </section>
+
+        <section id="settingsAppearancePanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsAppearanceTab" data-settings-panel="appearance" hidden>
+          <div class="settings-row settings-row-top">
+            <label for="settingsPalette">Rectangle colours</label>
+            <div>
+              <select id="settingsPalette">
+                <option value="default">Default</option>
+                <option value="legacy">SpaceMonger 1.4</option>
+                <option value="single">Single tone</option>
+                <option value="duotone">Two tone</option>
+                <option value="tricolor">Three tone</option>
+                <option value="playful">Playful</option>
+                <option value="monochrome">Monochrome</option>
+                <option value="earth">Earth</option>
+                <option value="ocean">Ocean</option>
+                <option value="retro">Retro</option>
+              </select>
+              <div id="settingsPalettePreview" class="palette-preview" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div class="settings-row range-settings-row">
+            <label for="settingsZoomFactor">Zoom factor</label>
+            <div class="range-field">
+              <input id="settingsZoomFactor" type="range" min="0.5" max="5" step="0.1">
+              <output id="settingsZoomFactorValue" for="settingsZoomFactor"></output>
+            </div>
+          </div>
+          <div class="settings-row range-settings-row">
+            <label for="settingsCornerRadius">Corner radius</label>
+            <div class="range-field">
+              <input id="settingsCornerRadius" type="range" min="0" max="10" step="1">
+              <output id="settingsCornerRadiusValue" for="settingsCornerRadius"></output>
+            </div>
+          </div>
+          <div class="settings-row range-settings-row">
+            <label for="settingsReliefStrength">Relief brightness</label>
+            <div>
+              <div class="range-field">
+                <input id="settingsReliefStrength" type="range" min="0" max="0.5" step="0.01">
+                <output id="settingsReliefStrengthValue" for="settingsReliefStrength"></output>
+              </div>
+              <small>1.00× disables the relief effect.</small>
+            </div>
+          </div>
+        </section>
         <div id="settingsError" class="settings-error" role="alert"></div>
       </div>
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"spacebrowser/internal/platform"
@@ -106,7 +107,37 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		cleaned = append(cleaned, path)
 	}
 	profile.ExcludedPaths = cleaned
+
+	appearance, err := normalizeAppearance(profile.Appearance)
+	if err != nil {
+		return Profile{}, err
+	}
+	profile.Appearance = appearance
 	return profile, nil
+}
+
+func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, error) {
+	if appearance == (AppearanceSettings{}) {
+		return defaultAppearanceSettings(), nil
+	}
+	validPalettes := map[string]bool{
+		"default": true, "legacy": true, "single": true, "duotone": true,
+		"tricolor": true, "playful": true, "monochrome": true,
+		"earth": true, "ocean": true, "retro": true,
+	}
+	if !validPalettes[appearance.Palette] {
+		return AppearanceSettings{}, fmt.Errorf("unknown colour palette %q", appearance.Palette)
+	}
+	if math.IsNaN(appearance.ZoomFactor) || math.IsInf(appearance.ZoomFactor, 0) || appearance.ZoomFactor < 0.5 || appearance.ZoomFactor > 5 {
+		return AppearanceSettings{}, fmt.Errorf("zoom factor must be between 0.5 and 5")
+	}
+	if appearance.CornerRadius < 0 || appearance.CornerRadius > 10 {
+		return AppearanceSettings{}, fmt.Errorf("corner radius must be between 0 and 10")
+	}
+	if math.IsNaN(appearance.ReliefStrength) || math.IsInf(appearance.ReliefStrength, 0) || appearance.ReliefStrength < 0 || appearance.ReliefStrength > 0.5 {
+		return AppearanceSettings{}, fmt.Errorf("relief strength must be between 0 and 0.5")
+	}
+	return appearance, nil
 }
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node) { s.root, s.nodes = root, nodes }

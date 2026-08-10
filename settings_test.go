@@ -19,6 +19,12 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		MinFileSize:    1024 * 1024,
 		FollowSymlinks: true,
 		SkipNetworkFS:  false,
+		Appearance: AppearanceSettings{
+			Palette:        "ocean",
+			ZoomFactor:     1.4,
+			CornerRadius:   6,
+			ReliefStrength: 0.18,
+		},
 	}
 	if err := first.SetProfile(want); err != nil {
 		t.Fatalf("SetProfile() error = %v", err)
@@ -37,6 +43,26 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	want.ExcludedPaths = first.GetProfile().ExcludedPaths
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted profile = %#v, want %#v", got, want)
+	}
+}
+
+func TestVersionOneSettingsGainDefaultAppearance(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{
+  "version": 1,
+  "excludedPaths": [],
+  "skipHidden": true,
+  "minFileSize": 2048,
+  "followSymlinks": false,
+  "skipNetworkFS": true
+}`)
+	if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := newApp(settingsPath).GetProfile()
+	if got.Appearance != defaultAppearanceSettings() {
+		t.Fatalf("appearance = %#v, want defaults %#v", got.Appearance, defaultAppearanceSettings())
 	}
 }
 

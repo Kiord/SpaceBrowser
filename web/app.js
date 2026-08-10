@@ -35,15 +35,32 @@ const AppState = {
   selectedNodeId:null,
 
   //Scale
-  scale:  getScale(),
+  zoomFactor: 1,
+  scale: getScale(),
 
   pickingFolderDialogIsOpen: false
 };
 
 const FONT_SIZE = 10;
-const CORNER_RADII = 3;
-const RECT_RELIEF_BRIGHTNESS = 1.10;
-const folderColors = ["#ff9b85","#ffbe76","#ffe066","#7bed9f","#70d6ff","#a29bfe","#dfe4ea"];
+const PALETTES = Object.freeze({
+  default: ["#ff9b85", "#ffbe76", "#ffe066", "#7bed9f", "#70d6ff", "#a29bfe", "#dfe4ea"],
+  legacy: ["#ff7f7f", "#ffbf7f", "#ffff00", "#7fff7f", "#7fffff", "#bfbfff", "#bfbfbf", "#ff7fff"],
+  single: ["#9fc5d8"],
+  duotone: ["#f2c078", "#78a6c8"],
+  tricolor: ["#e8846b", "#e3bf62", "#78a88b"],
+  playful: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#c77dff", "#ff8fab", "#72efdd"],
+  monochrome: ["#f0f0f0", "#dedede", "#cccccc", "#bababa", "#a8a8a8", "#969696", "#848484"],
+  earth: ["#d9c7a6", "#c3a982", "#ad8b63", "#96a17b", "#7f9168", "#b98268", "#8f7559"],
+  ocean: ["#c6e8e5", "#a8dadc", "#8ecfd1", "#73c0c5", "#78b7d0", "#91a8d0", "#a7c4bc"],
+  retro: ["#e49a78", "#e5bd63", "#a8b47d", "#78a0a8", "#a58aa8", "#c9ae88", "#87949a"],
+});
+const DEFAULT_APPEARANCE = Object.freeze({
+  palette: "default",
+  zoomFactor: 1,
+  cornerRadius: 0,
+  reliefStrength: 0.30,
+});
+const AppearanceState = { ...DEFAULT_APPEARANCE };
 
 const SCALE_MIN = 0.5;
 const SCALE_MAX = 5.0;
@@ -94,11 +111,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("closeSettingsButton")?.addEventListener("click", closeSettings);
   document.getElementById("cancelSettingsButton")?.addEventListener("click", closeSettings);
   document.getElementById("settingsMinFileSizeUnit")?.addEventListener("change", convertSettingsSizeUnit);
+  document.querySelectorAll("[data-settings-tab]").forEach(tab => {
+    tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
+  });
+  document.getElementById("settingsPalette")?.addEventListener("change", updateAppearanceFormOutputs);
+  document.getElementById("settingsZoomFactor")?.addEventListener("input", updateAppearanceFormOutputs);
+  document.getElementById("settingsCornerRadius")?.addEventListener("input", updateAppearanceFormOutputs);
+  document.getElementById("settingsReliefStrength")?.addEventListener("input", updateAppearanceFormOutputs);
   document.getElementById("cancelScanButton")?.addEventListener("click", cancelActiveScan);
   document.getElementById("scanDialog")?.addEventListener("cancel", (e) => {
     e.preventDefault();
     cancelActiveScan();
   });
+
+  try {
+    const profile = await GetProfile();
+    applyAppearance(profile.appearance, false);
+  } catch (e) {
+    console.error("loading appearance failed:", e);
+  }
 
   try {
     const p = await DefaultPath();
@@ -110,6 +141,73 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // ---------- Settings ----------
+function normalizedAppearance(appearance) {
+  const source = appearance || {};
+  const palette = PALETTES[source.palette] ? source.palette : DEFAULT_APPEARANCE.palette;
+  const relief = source.reliefStrength == null
+    ? DEFAULT_APPEARANCE.reliefStrength
+    : Number(source.reliefStrength);
+  return {
+    palette,
+    zoomFactor: Math.max(SCALE_MIN, Math.min(SCALE_MAX, Number(source.zoomFactor) || DEFAULT_APPEARANCE.zoomFactor)),
+    cornerRadius: Math.max(0, Math.min(10, Math.round(Number(source.cornerRadius) || 0))),
+    reliefStrength: Math.max(0, Math.min(0.5, Number.isFinite(relief) ? relief : DEFAULT_APPEARANCE.reliefStrength)),
+  };
+}
+
+async function applyAppearance(appearance, redrawNow = true) {
+  Object.assign(AppearanceState, normalizedAppearance(appearance));
+  AppState.zoomFactor = AppearanceState.zoomFactor;
+  AppState.scale = getScale() * AppState.zoomFactor;
+  if (redrawNow && AppState.node_id != null) await redraw();
+}
+
+function showSettingsTab(name) {
+  document.querySelectorAll("[data-settings-tab]").forEach(tab => {
+    const active = tab.dataset.settingsTab === name;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-settings-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.settingsPanel !== name;
+  });
+}
+
+function updatePalettePreview(paletteName) {
+  const preview = document.getElementById("settingsPalettePreview");
+  if (!preview) return;
+  preview.replaceChildren(...(PALETTES[paletteName] || PALETTES.default).map(color => {
+    const swatch = document.createElement("span");
+    swatch.style.backgroundColor = color;
+    return swatch;
+  }));
+}
+
+function activePalette() {
+  const palette = PALETTES[AppearanceState.palette];
+  return Array.isArray(palette) && palette.length > 0 ? palette : PALETTES.default;
+}
+
+function updateAppearanceFormOutputs() {
+  const palette = document.getElementById("settingsPalette").value;
+  const zoom = Number(document.getElementById("settingsZoomFactor").value);
+  const radius = Number(document.getElementById("settingsCornerRadius").value);
+  const relief = Number(document.getElementById("settingsReliefStrength").value);
+  updatePalettePreview(palette);
+  document.getElementById("settingsZoomFactorValue").textContent = `${zoom.toFixed(1)}×`;
+  document.getElementById("settingsCornerRadiusValue").textContent = `${radius.toFixed(0)} px`;
+  document.getElementById("settingsReliefStrengthValue").textContent = `${(1 + relief).toFixed(2)}×`;
+}
+
+function populateAppearanceForm(appearance) {
+  const values = normalizedAppearance(appearance);
+  document.getElementById("settingsPalette").value = values.palette;
+  document.getElementById("settingsZoomFactor").value = String(AppState.zoomFactor || values.zoomFactor);
+  document.getElementById("settingsCornerRadius").value = String(values.cornerRadius);
+  document.getElementById("settingsReliefStrength").value = String(values.reliefStrength);
+  updateAppearanceFormOutputs();
+}
+
 async function openSettings() {
   const dialog = document.getElementById("settingsDialog");
   const error = document.getElementById("settingsError");
@@ -129,6 +227,8 @@ async function openSettings() {
     document.getElementById("settingsSkipHidden").checked = !!profile.skipHidden;
     document.getElementById("settingsFollowSymlinks").checked = !!profile.followSymlinks;
     document.getElementById("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
+    populateAppearanceForm(profile.appearance);
+    showSettingsTab("general");
     dialog.showModal();
   } catch (err) {
     console.error("loading settings failed:", err);
@@ -165,6 +265,12 @@ async function saveSettings(e) {
     minFileSize,
     followSymlinks: document.getElementById("settingsFollowSymlinks").checked,
     skipNetworkFS: document.getElementById("settingsSkipNetworkFS").checked,
+    appearance: {
+      palette: document.getElementById("settingsPalette").value,
+      zoomFactor: Number(document.getElementById("settingsZoomFactor").value),
+      cornerRadius: Number(document.getElementById("settingsCornerRadius").value),
+      reliefStrength: Number(document.getElementById("settingsReliefStrength").value),
+    },
   };
 
   const saveButton = e.submitter;
@@ -173,6 +279,7 @@ async function saveSettings(e) {
   try {
     await SetProfile(profile);
     dialog.close();
+    await applyAppearance(profile.appearance);
   } catch (err) {
     error.textContent = String(err || "Unable to save settings.");
   } finally {
@@ -587,9 +694,10 @@ function blendHexColor(hex, target, amount) {
 }
 
 function drawRectRelief(ctx, rect, fillColor) {
-  if (RECT_RELIEF_BRIGHTNESS === 1.0 || rect.w < 4 || rect.h < 4) return;
+  const brightness = 1 + AppearanceState.reliefStrength;
+  if (brightness === 1.0 || rect.w < 4 || rect.h < 4) return;
 
-  const amount = Math.min(1, Math.abs(RECT_RELIEF_BRIGHTNESS - 1));
+  const amount = Math.min(1, Math.abs(brightness - 1));
   const lightColor = blendHexColor(fillColor, 255, amount);
   const darkColor = blendHexColor(fillColor, 0, amount);
   const left = rect.x + 1.5;
@@ -599,7 +707,7 @@ function drawRectRelief(ctx, rect, fillColor) {
 
   ctx.save();
   ctx.beginPath();
-  ctx.roundRect(rect.x, rect.y, rect.w, rect.h, CORNER_RADII);
+  addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
   ctx.clip();
   ctx.lineWidth = 1;
   ctx.lineCap = "butt";
@@ -624,6 +732,7 @@ function drawRectRelief(ctx, rect, fillColor) {
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = AppState.selectedNodeId == rect.node_id;
   const isRoot = rect.parent_id == null;
+  const palette = activePalette();
   if (isSelected && rectIndex >= 0) AppState.selectedRectIndex = rectIndex;
 
   //  scaled UI constants  
@@ -638,7 +747,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   // fill
   const fillColor = isSelected ? "#000000"
     : (rect.is_free_space || isRoot ? "#fff"
-      : (rect.is_small_files ? "#e6dac5" : folderColors[(rect.depth || 0) % folderColors.length]));
+      : (rect.is_small_files ? "#e6dac5" : palette[(rect.depth || 0) % palette.length]));
   ctx.fillStyle = fillColor;
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
@@ -1212,8 +1321,35 @@ function rectIndexAtPoint(x, y) {
   return colorToId(pixel);
 }
 
-function fillRoundedRect(ctx, x, y, w, h) { ctx.beginPath(); ctx.roundRect(x, y, w, h, CORNER_RADII); ctx.fill(); }
-function strokeRoundedRect(ctx, x, y, w, h) { ctx.beginPath(); ctx.roundRect(x, y, w, h, CORNER_RADII); ctx.stroke(); }
+function currentCornerRadius() {
+  return AppearanceState.cornerRadius * getScale();
+}
+
+function addRectPath(ctx, x, y, w, h) {
+  const radius = currentCornerRadius();
+  if (radius === 0) ctx.rect(x, y, w, h);
+  else ctx.roundRect(x, y, w, h, radius);
+}
+
+function fillRoundedRect(ctx, x, y, w, h) {
+  if (currentCornerRadius() === 0) {
+    ctx.fillRect(x, y, w, h);
+    return;
+  }
+  ctx.beginPath();
+  addRectPath(ctx, x, y, w, h);
+  ctx.fill();
+}
+
+function strokeRoundedRect(ctx, x, y, w, h) {
+  if (currentCornerRadius() === 0) {
+    ctx.strokeRect(x, y, w, h);
+    return;
+  }
+  ctx.beginPath();
+  addRectPath(ctx, x, y, w, h);
+  ctx.stroke();
+}
 
 function formatSize(bytes) {
   if (!bytes) return '0 B';
@@ -1263,10 +1399,12 @@ async function triggerFolderSelect() {
 
 
 async function setScale(next, reason="") {
-  const old = AppState.scale || 1;
+  const old = AppState.zoomFactor || 1;
   const clamped = Math.max(SCALE_MIN, Math.min(SCALE_MAX, next));
   if (clamped === old) return;
-  AppState.scale = clamped;
+  AppState.zoomFactor = clamped;
+  AppearanceState.zoomFactor = clamped;
+  AppState.scale = getScale() * clamped;
   console.debug(`scale ${reason}:`, old, '→', clamped, `SCALE_MIN ${SCALE_MIN}`, `SCALE_MAX ${SCALE_MAX}`);
   
   await redraw();
@@ -1285,7 +1423,7 @@ function installZoomInterception(root = window) {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const f = factorFromWheelDelta(e.deltaY, e.deltaMode);
-      setScale((AppState.scale || 1) * f, 'wheel');
+      setScale((AppState.zoomFactor || 1) * f, 'wheel');
     }
   }, { passive: false, capture: true });
 
@@ -1305,9 +1443,9 @@ function installZoomInterception(root = window) {
     }
     // Zoom in / out
     if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
-      setScale((AppState.scale || 1) * SCALE_STEP_KEYS, 'kbd-in');
+      setScale((AppState.zoomFactor || 1) * SCALE_STEP_KEYS, 'kbd-in');
     } else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
-      setScale((AppState.scale || 1) / SCALE_STEP_KEYS, 'kbd-out');
+      setScale((AppState.zoomFactor || 1) / SCALE_STEP_KEYS, 'kbd-out');
     }
   }, { capture: true });
 

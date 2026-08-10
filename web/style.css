@@ -409,6 +409,39 @@ button:disabled:hover {
   font-weight: 600;
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 10px;
+  background: #fafafa;
+  border-bottom: 1px solid #ccc;
+}
+
+.settings-dialog .settings-tab {
+  min-height: 31px;
+  margin: 0 0 -1px;
+  padding: 5px 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom-color: #ccc;
+  border-radius: 2px 2px 0 0;
+  box-shadow: none;
+}
+
+.settings-dialog .settings-tab:hover {
+  background: #f3f3f3;
+  border-color: transparent;
+  border-bottom-color: #ccc;
+}
+
+.settings-dialog .settings-tab.is-active {
+  position: relative;
+  background: #fff;
+  border-color: #ccc;
+  border-bottom-color: #fff;
+  font-weight: 600;
+}
+
 .settings-dialog button,
 .scan-dialog button {
   min-height: 28px;
@@ -456,6 +489,16 @@ button:disabled:hover {
   padding: 14px;
 }
 
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
 .settings-row {
   display: grid;
   grid-template-columns: 142px minmax(0, 1fr);
@@ -501,6 +544,48 @@ button:disabled:hover {
   display: block;
   margin-top: 4px;
   color: #777;
+}
+
+.palette-preview {
+  display: flex;
+  height: 18px;
+  margin-top: 7px;
+  overflow: hidden;
+  border: 1px solid #aaa;
+  border-radius: 1px;
+  box-shadow: inset 0 1px rgba(255,255,255,.35);
+}
+
+.palette-preview span {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.range-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 9px;
+}
+
+.range-field input[type="range"] {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  accent-color: #555;
+  cursor: pointer;
+}
+
+.range-field output {
+  min-width: 50px;
+  padding: 3px 5px;
+  box-sizing: border-box;
+  text-align: right;
+  color: #444;
+  background: #f7f7f7;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  font-family: Consolas, monospace;
 }
 
 .number-field {

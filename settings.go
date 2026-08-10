@@ -7,15 +7,16 @@ import (
 	"path/filepath"
 )
 
-const settingsFileVersion = 1
+const settingsFileVersion = 2
 
 type persistedSettings struct {
-	Version        int      `json:"version"`
-	ExcludedPaths  []string `json:"excludedPaths"`
-	SkipHidden     bool     `json:"skipHidden"`
-	MinFileSize    int64    `json:"minFileSize"`
-	FollowSymlinks bool     `json:"followSymlinks"`
-	SkipNetworkFS  bool     `json:"skipNetworkFS"`
+	Version        int                `json:"version"`
+	ExcludedPaths  []string           `json:"excludedPaths"`
+	SkipHidden     bool               `json:"skipHidden"`
+	MinFileSize    int64              `json:"minFileSize"`
+	FollowSymlinks bool               `json:"followSymlinks"`
+	SkipNetworkFS  bool               `json:"skipNetworkFS"`
+	Appearance     AppearanceSettings `json:"appearance"`
 }
 
 func defaultSettingsPath() (string, error) {
@@ -36,8 +37,12 @@ func loadSettings(path string) (Profile, error) {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return Profile{}, fmt.Errorf("decode settings: %w", err)
 	}
-	if saved.Version != settingsFileVersion {
+	if saved.Version != 1 && saved.Version != settingsFileVersion {
 		return Profile{}, fmt.Errorf("unsupported settings version %d", saved.Version)
+	}
+	appearance := saved.Appearance
+	if saved.Version == 1 {
+		appearance = defaultAppearanceSettings()
 	}
 
 	return normalizeProfile(Profile{
@@ -46,6 +51,7 @@ func loadSettings(path string) (Profile, error) {
 		MinFileSize:    saved.MinFileSize,
 		FollowSymlinks: saved.FollowSymlinks,
 		SkipNetworkFS:  saved.SkipNetworkFS,
+		Appearance:     appearance,
 	})
 }
 
@@ -57,6 +63,7 @@ func saveSettings(path string, profile Profile) error {
 		MinFileSize:    profile.MinFileSize,
 		FollowSymlinks: profile.FollowSymlinks,
 		SkipNetworkFS:  profile.SkipNetworkFS,
+		Appearance:     profile.Appearance,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {

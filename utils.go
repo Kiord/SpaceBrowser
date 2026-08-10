@@ -8,12 +8,29 @@ import (
 )
 
 type Profile struct {
-	PlatformSystem string   `json:"platformSystem"`
-	ExcludedPaths  []string `json:"excludedPaths"`
-	SkipHidden     bool     `json:"skipHidden"`
-	MinFileSize    int64    `json:"minFileSize"`
-	FollowSymlinks bool     `json:"followSymlinks"`
-	SkipNetworkFS  bool     `json:"skipNetworkFS"`
+	PlatformSystem string             `json:"platformSystem"`
+	ExcludedPaths  []string           `json:"excludedPaths"`
+	SkipHidden     bool               `json:"skipHidden"`
+	MinFileSize    int64              `json:"minFileSize"`
+	FollowSymlinks bool               `json:"followSymlinks"`
+	SkipNetworkFS  bool               `json:"skipNetworkFS"`
+	Appearance     AppearanceSettings `json:"appearance"`
+}
+
+type AppearanceSettings struct {
+	Palette        string  `json:"palette"`
+	ZoomFactor     float64 `json:"zoomFactor"`
+	CornerRadius   int     `json:"cornerRadius"`
+	ReliefStrength float64 `json:"reliefStrength"`
+}
+
+func defaultAppearanceSettings() AppearanceSettings {
+	return AppearanceSettings{
+		Palette:        "default",
+		ZoomFactor:     1,
+		CornerRadius:   0,
+		ReliefStrength: 0.10,
+	}
 }
 
 func shouldExclude(p *Profile, absPath string) bool {
@@ -32,6 +49,7 @@ func defaultProfile() *Profile {
 		MinFileSize:    1024,
 		FollowSymlinks: false,
 		SkipNetworkFS:  true,
+		Appearance:     defaultAppearanceSettings(),
 	}
 	return p
 }
