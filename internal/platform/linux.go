@@ -40,6 +40,88 @@ func (Linux) OpenInFileBrowser(p string) error {
 	return exec.Command("xdg-open", p).Run()
 }
 
+func (Linux) DefaultApplicationName(p string) (string, error) {
+	if _, err := exec.LookPath("xdg-mime"); err != nil {
+		return "", fmt.Errorf("xdg-mime is unavailable")
+	}
+	mimeOutput, err := exec.Command("xdg-mime", "query", "filetype", p).Output()
+	if err != nil {
+		return "", fmt.Errorf("detect file type: %w", err)
+	}
+	mimeType := strings.TrimSpace(string(mimeOutput))
+	if mimeType == "" {
+		return "", fmt.Errorf("the file type could not be detected")
+	}
+	applicationOutput, err := exec.Command("xdg-mime", "query", "default", mimeType).Output()
+	if err != nil {
+		return "", fmt.Errorf("find default application: %w", err)
+	}
+	desktopID := strings.TrimSpace(string(applicationOutput))
+	if desktopID == "" {
+		return "", fmt.Errorf("no default application is registered for %s", mimeType)
+	}
+	if name := linuxDesktopApplicationName(desktopID); name != "" {
+		return name, nil
+	}
+	name := strings.TrimSuffix(filepath.Base(desktopID), ".desktop")
+	name = strings.ReplaceAll(name, "-", " ")
+	if name == "" {
+		return "", fmt.Errorf("the default application has no display name")
+	}
+	return strings.ToUpper(name[:1]) + name[1:], nil
+}
+
+func linuxDesktopApplicationName(desktopID string) string {
+	var dataRoots []string
+	if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
+		dataRoots = append(dataRoots, dataHome)
+	} else if home, err := os.UserHomeDir(); err == nil {
+		dataRoots = append(dataRoots, filepath.Join(home, ".local", "share"))
+	}
+	dataDirs := os.Getenv("XDG_DATA_DIRS")
+	if dataDirs == "" {
+		dataDirs = "/usr/local/share:/usr/share"
+	}
+	dataRoots = append(dataRoots, filepath.SplitList(dataDirs)...)
+	for _, root := range dataRoots {
+		contents, err := os.ReadFile(filepath.Join(root, "applications", desktopID))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(contents), "\n") {
+			if strings.HasPrefix(line, "Name=") {
+				return strings.TrimSpace(strings.TrimPrefix(line, "Name="))
+			}
+		}
+	}
+	return ""
+}
+
+func (Linux) OpenWith(p string) error {
+	busctl, err := exec.LookPath("busctl")
+	if err != nil {
+		return fmt.Errorf("the desktop application chooser is unavailable")
+	}
+	file, err := os.Open(p)
+	if err != nil {
+		return fmt.Errorf("open item for application chooser: %w", err)
+	}
+	defer file.Close()
+	command := exec.Command(busctl, "--user", "--quiet", "call",
+		"org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+		"org.freedesktop.portal.OpenURI", "OpenFile",
+		"sha{sv}", "", "3", "1", "ask", "b", "true")
+	command.ExtraFiles = []*os.File{file}
+	if output, err := command.CombinedOutput(); err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("open application selector: %s", message)
+	}
+	return nil
+}
+
 func (Linux) ShowProperties(p string) error {
 	if _, err := exec.LookPath("dbus-send"); err != nil {
 		return fmt.Errorf("the desktop file manager properties service is unavailable")

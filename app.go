@@ -384,14 +384,35 @@ func (a *App) OpenPath(path string) error {
 	return platform.Impl.OpenPath(path)
 }
 
+func (a *App) GetDefaultApplicationName(path string) (string, error) {
+	if err := validateExistingPath(path); err != nil {
+		return "", err
+	}
+	return platform.Impl.DefaultApplicationName(path)
+}
+
+func (a *App) OpenWith(path string) error {
+	if err := validateExistingPath(path); err != nil {
+		return err
+	}
+	return platform.Impl.OpenWith(path)
+}
+
 func (a *App) ShowProperties(path string) error {
+	if err := validateExistingPath(path); err != nil {
+		return err
+	}
+	return platform.Impl.ShowProperties(path)
+}
+
+func validateExistingPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("missing path")
 	}
 	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("cannot show properties: %w", err)
+		return fmt.Errorf("path is unavailable: %w", err)
 	}
-	return platform.Impl.ShowProperties(path)
+	return nil
 }
 
 func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {

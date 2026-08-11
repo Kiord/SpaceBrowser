@@ -1,4 +1,11 @@
-import { DeleteNode, OpenInFileBrowser, ShowProperties } from "./wailsjs/go/main/App.js";
+import {
+  DeleteNode,
+  GetDefaultApplicationName,
+  OpenInFileBrowser,
+  OpenPath,
+  OpenWith,
+  ShowProperties,
+} from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
@@ -11,6 +18,8 @@ let getSelectedRect = () => null;
 let isPassiveRect = () => false;
 let pendingDeletion = null;
 let deletionInProgress = false;
+let contextMenuRequest = 0;
+const defaultApplicationNames = new Map();
 
 function trashDestinationName() {
   return AppState.profile?.platformSystem === "windows" ? "Recycle Bin" : "Trash";
@@ -97,13 +106,7 @@ async function confirmSelectedDeletion() {
   }
 }
 
-export function showContextMenu(x, y) {
-  const menu = byId("contextMenu");
-  const goTo = menu.querySelector('[data-action="goto"]');
-  if (goTo) goTo.classList.toggle("disabled", !getSelectedRect()?.is_folder);
-  const properties = menu.querySelector('[data-action="properties"]');
-  if (properties) properties.classList.toggle("disabled", !getSelectedRect()?.full_path || isPassiveRect(getSelectedRect()));
-
+function placeContextMenu(menu, x, y) {
   const margin = 8;
   const cursorGap = 3;
   menu.style.visibility = "hidden";
@@ -127,8 +130,65 @@ export function showContextMenu(x, y) {
   menu.style.visibility = "visible";
 }
 
+export function showContextMenu(x, y) {
+  const menu = byId("contextMenu");
+  const rect = getSelectedRect();
+  const request = ++contextMenuRequest;
+  const goTo = menu.querySelector('[data-action="goto"]');
+  if (goTo) goTo.classList.toggle("disabled", !rect?.is_folder);
+  const properties = menu.querySelector('[data-action="properties"]');
+  if (properties) properties.classList.toggle("disabled", !rect?.full_path || isPassiveRect(rect));
+  const defaultOpen = menu.querySelector('[data-action="open-default"]');
+  const defaultOpenLabel = defaultOpen?.querySelector("span");
+  if (defaultOpen) defaultOpen.hidden = !rect || rect.is_folder;
+  if (defaultOpenLabel) defaultOpenLabel.textContent = "Open with default application";
+
+  placeContextMenu(menu, x, y);
+  if (!rect || rect.is_folder || !defaultOpenLabel) return;
+
+  const cachedName = defaultApplicationNames.get(rect.full_path);
+  if (cachedName !== undefined) {
+    if (cachedName) defaultOpenLabel.textContent = `Open with ${cachedName}`;
+    placeContextMenu(menu, x, y);
+    return;
+  }
+
+  GetDefaultApplicationName(rect.full_path)
+    .then(name => {
+      const applicationName = String(name || "").trim();
+      defaultApplicationNames.set(rect.full_path, applicationName);
+      if (request !== contextMenuRequest || menu.style.display === "none" || getSelectedRect()?.full_path !== rect.full_path) return;
+      if (applicationName) defaultOpenLabel.textContent = `Open with ${applicationName}`;
+      placeContextMenu(menu, x, y);
+    })
+    .catch(() => defaultApplicationNames.set(rect.full_path, ""));
+}
+
 export function hideContextMenu() {
+  contextMenuRequest++;
   byId("contextMenu").style.display = "none";
+}
+
+async function openRectWithDefault(rect = getSelectedRect()) {
+  if (!rect?.full_path || isPassiveRect(rect)) return;
+  hideContextMenu();
+  hideRectToast();
+  try {
+    await OpenPath(rect.full_path);
+  } catch (error) {
+    showErrorToast(error);
+  }
+}
+
+async function openRectWithChooser(rect = getSelectedRect()) {
+  if (!rect?.full_path || isPassiveRect(rect)) return;
+  hideContextMenu();
+  hideRectToast();
+  try {
+    await OpenWith(rect.full_path);
+  } catch (error) {
+    showErrorToast(error);
+  }
 }
 
 async function copySelectedPathAt(position) {
@@ -161,6 +221,10 @@ async function handleContextMenuAction(event) {
     requestSelectedDeletion();
   } else if (item.dataset.action === "open" && rect.full_path) {
     await OpenInFileBrowser(rect.full_path);
+  } else if (item.dataset.action === "open-default" && !rect.is_folder) {
+    await openRectWithDefault(rect);
+  } else if (item.dataset.action === "open-with") {
+    await openRectWithChooser(rect);
   } else if (item.dataset.action === "properties" && rect.full_path && !isPassiveRect(rect)) {
     try {
       await ShowProperties(rect.full_path);
@@ -184,6 +248,15 @@ export function initFileActions(options) {
   });
   byId("contextMenu").addEventListener("click", handleContextMenuAction);
   window.addEventListener("click", hideContextMenu);
+  window.addEventListener("keydown", event => {
+    if (event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "o") return;
+    if (document.querySelector("dialog[open]")) return;
+    const rect = getSelectedRect();
+    if (!rect?.full_path || isPassiveRect(rect)) return;
+    event.preventDefault();
+    if (event.shiftKey) openRectWithChooser(rect);
+    else openRectWithDefault(rect);
+  });
   window.addEventListener("keydown", event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && getSelectedRect()?.full_path) {
       event.preventDefault();

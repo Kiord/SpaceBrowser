@@ -298,6 +298,9 @@ html, body {
   padding: 5px 14px;
   cursor: pointer;
 }
+.context-menu li[hidden] {
+  display: none;
+}
 .context-menu li svg {
   display: block;
   flex: 0 0 16px;

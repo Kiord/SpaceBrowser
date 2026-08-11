@@ -35,6 +35,38 @@ func (Darwin) OpenPath(p string) error {
 	return exec.Command("open", p).Run()
 }
 
+func (Darwin) DefaultApplicationName(p string) (string, error) {
+	const script = `on run argv
+set applicationAlias to default application of (info for POSIX file (item 1 of argv))
+return name of (info for applicationAlias)
+end run`
+	output, err := exec.Command("osascript", "-e", script, p).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("find default application: %s", strings.TrimSpace(string(output)))
+	}
+	name := strings.TrimSpace(string(output))
+	if name == "" {
+		return "", fmt.Errorf("the default application has no display name")
+	}
+	return strings.TrimSuffix(name, ".app"), nil
+}
+
+func (Darwin) OpenWith(p string) error {
+	const script = `on run argv
+set chosenApplication to choose application with title "Open With" with prompt "Choose an application:"
+tell application "Finder" to open (POSIX file (item 1 of argv) as alias) using chosenApplication
+end run`
+	output, err := exec.Command("osascript", "-e", script, p).CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if strings.Contains(message, "(-128)") {
+			return nil
+		}
+		return fmt.Errorf("open application selector: %s", message)
+	}
+	return nil
+}
+
 func (Darwin) ShowProperties(p string) error {
 	const script = `on run argv
 tell application "Finder"
