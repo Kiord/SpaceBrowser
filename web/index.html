@@ -26,13 +26,13 @@
       </div>
 
       <div class="right-group" aria-label="Treemap navigation">
-        <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Alt+Left · Mouse Back" disabled>
+        <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Mouse Back" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M19 12H5"></path>
             <path d="m10 7-5 5 5 5"></path>
           </svg>
         </button>
-        <button class="nav-button" id="forwardButton" type="button" aria-label="Forward" data-tooltip="Forward · Alt+Right · Mouse Forward" disabled>
+        <button class="nav-button" id="forwardButton" type="button" aria-label="Forward" data-tooltip="Forward · Mouse Forward" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M5 12h14"></path>
             <path d="m14 7 5 5-5 5"></path>
@@ -149,6 +149,7 @@
       <div class="settings-tabs" role="tablist" aria-label="Settings sections">
         <button id="settingsGeneralTab" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general">General</button>
         <button id="settingsAppearanceTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAppearancePanel" data-settings-tab="appearance">Appearance</button>
+        <button id="settingsKeyBindingsTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsKeyBindingsPanel" data-settings-tab="key-bindings">Key bindings</button>
       </div>
 
       <div class="settings-body">
@@ -245,6 +246,33 @@
             </div>
           </div>
         </section>
+        <section id="settingsKeyBindingsPanel" class="settings-panel key-bindings-panel" role="tabpanel" aria-labelledby="settingsKeyBindingsTab" data-settings-panel="key-bindings" hidden>
+          <p class="key-bindings-help">Click a binding, then press a key or shortcut. Press Backspace or Delete to clear it, or Escape to cancel.</p>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingBack">Back</label>
+            <button id="keyBindingBack" class="key-binding-button" type="button" data-key-binding="back"><span>Unassigned</span></button>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingForward">Forward</label>
+            <button id="keyBindingForward" class="key-binding-button" type="button" data-key-binding="forward"><span>Unassigned</span></button>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingParent">Parent folder</label>
+            <button id="keyBindingParent" class="key-binding-button" type="button" data-key-binding="parent"><span>Unassigned</span></button>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingRoot">Go to scan root</label>
+            <button id="keyBindingRoot" class="key-binding-button" type="button" data-key-binding="root"><span>Unassigned</span></button>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingOpen">Open</label>
+            <button id="keyBindingOpen" class="key-binding-button" type="button" data-key-binding="open"><span>Ctrl+O</span></button>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingOpenWith">Open with...</label>
+            <button id="keyBindingOpenWith" class="key-binding-button" type="button" data-key-binding="openWith"><span>Ctrl+Shift+O</span></button>
+          </div>
+        </section>
         <div id="settingsError" class="settings-error" role="alert"></div>
       </div>
 
@@ -261,7 +289,7 @@
   <dialog id="restoreDefaultsDialog" class="settings-dialog confirm-dialog" aria-labelledby="restoreDefaultsTitle">
     <div class="confirm-dialog-body">
       <h2 id="restoreDefaultsTitle">Restore default settings?</h2>
-      <p>This will reset all General and Appearance options. Changes are applied only after you save.</p>
+      <p>This will reset all General, Appearance, and Key bindings options. Changes are applied only after you save.</p>
       <div class="confirm-dialog-actions">
         <button id="cancelRestoreDefaultsButton" type="button">Cancel</button>
         <button id="confirmRestoreDefaultsButton" type="button">Restore</button>

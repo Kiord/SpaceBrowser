@@ -27,6 +27,14 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 			CornerRadius:   6,
 			ReliefStrength: 0.18,
 		},
+		KeyBindings: KeyBindings{
+			Back:     "Alt+Left",
+			Forward:  "Alt+Right",
+			Parent:   "P",
+			Root:     "R",
+			Open:     "Ctrl+O",
+			OpenWith: "Ctrl+Shift+O",
+		},
 	}
 	if err := first.SetProfile(want); err != nil {
 		t.Fatalf("SetProfile() error = %v", err)
@@ -45,6 +53,48 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	want.ExcludedPaths = first.GetProfile().ExcludedPaths
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted profile = %#v, want %#v", got, want)
+	}
+}
+
+func TestVersionThreeSettingsGainDefaultKeyBindings(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{
+  "version": 3,
+  "excludedPaths": [],
+  "skipHidden": false,
+  "minFileSize": 1024,
+  "followSymlinks": false,
+  "skipNetworkFS": true,
+  "allowDelete": false,
+  "rescanOnDelete": true,
+  "appearance": {
+    "palette": "default",
+    "zoomFactor": 1,
+    "cornerRadius": 0,
+    "reliefStrength": 0.1
+  }
+}`)
+	if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := newApp(settingsPath).GetProfile()
+	if got.KeyBindings != defaultKeyBindings() {
+		t.Fatalf("key bindings = %#v, want defaults %#v", got.KeyBindings, defaultKeyBindings())
+	}
+}
+
+func TestEmptyKeyBindingsRemainUnassigned(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	app := newApp(settingsPath)
+	profile := app.GetProfile()
+	profile.KeyBindings = KeyBindings{}
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatalf("SetProfile() error = %v", err)
+	}
+
+	if got := newApp(settingsPath).GetProfile().KeyBindings; got != (KeyBindings{}) {
+		t.Fatalf("key bindings = %#v, want all bindings unassigned", got)
 	}
 }
 

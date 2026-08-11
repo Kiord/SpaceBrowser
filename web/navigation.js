@@ -1,5 +1,6 @@
 import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
+import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
 import { AppState } from "./state.js";
 
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
@@ -119,13 +120,13 @@ export function initNavigation(options) {
   byId("toggleFreeSpaceButton").addEventListener("click", toggleFreeSpace);
   window.addEventListener("popstate", handlePopState);
   window.addEventListener("keydown", event => {
-    if (event.isComposing || !event.altKey) return;
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      goBackward();
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      goForward();
-    }
+    if (!shortcutCanRun(event)) return;
+    const bindings = AppState.profile?.keyBindings;
+    if (eventMatchesShortcut(event, bindings?.back)) goBackward();
+    else if (eventMatchesShortcut(event, bindings?.forward)) goForward();
+    else if (eventMatchesShortcut(event, bindings?.parent)) goToParent();
+    else if (eventMatchesShortcut(event, bindings?.root)) goToRoot();
+    else return;
+    event.preventDefault();
   });
 }

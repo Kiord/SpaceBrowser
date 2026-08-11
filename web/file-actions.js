@@ -8,6 +8,7 @@ import {
 } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
+import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
 import { hideRectToast, mousePosition, showErrorToast, showToastAt } from "./notifications.js";
 import { analyze } from "./scan.js";
@@ -249,12 +250,15 @@ export function initFileActions(options) {
   byId("contextMenu").addEventListener("click", handleContextMenuAction);
   window.addEventListener("click", hideContextMenu);
   window.addEventListener("keydown", event => {
-    if (event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "o") return;
-    if (document.querySelector("dialog[open]")) return;
+    if (!shortcutCanRun(event)) return;
+    const bindings = AppState.profile?.keyBindings;
+    const openWith = eventMatchesShortcut(event, bindings?.openWith);
+    const open = eventMatchesShortcut(event, bindings?.open);
+    if (!openWith && !open) return;
     const rect = getSelectedRect();
     if (!rect?.full_path || isPassiveRect(rect)) return;
     event.preventDefault();
-    if (event.shiftKey) openRectWithChooser(rect);
+    if (openWith) openRectWithChooser(rect);
     else openRectWithDefault(rect);
   });
   window.addEventListener("keydown", event => {

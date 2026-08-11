@@ -108,7 +108,18 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		return Profile{}, err
 	}
 	profile.Appearance = appearance
+	profile.KeyBindings = normalizeKeyBindings(profile.KeyBindings)
 	return profile, nil
+}
+
+func normalizeKeyBindings(bindings KeyBindings) KeyBindings {
+	bindings.Back = strings.TrimSpace(bindings.Back)
+	bindings.Forward = strings.TrimSpace(bindings.Forward)
+	bindings.Parent = strings.TrimSpace(bindings.Parent)
+	bindings.Root = strings.TrimSpace(bindings.Root)
+	bindings.Open = strings.TrimSpace(bindings.Open)
+	bindings.OpenWith = strings.TrimSpace(bindings.OpenWith)
+	return bindings
 }
 
 func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, error) {

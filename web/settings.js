@@ -1,6 +1,7 @@
 import { GetDefaultProfile, GetProfile, SetProfile } from "./wailsjs/go/main/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
+import { shortcutFromEvent } from "./key-bindings.js";
 import {
   AppState,
   AppearanceState,
@@ -12,6 +13,17 @@ import {
 } from "./state.js";
 
 let redraw = async () => {};
+let draftKeyBindings = {};
+let capturingBindingButton = null;
+
+const KEY_BINDING_LABELS = Object.freeze({
+  back: "Back",
+  forward: "Forward",
+  parent: "Parent folder",
+  root: "Go to scan root",
+  open: "Open",
+  openWith: "Open with...",
+});
 
 function defaultAppearance() {
   return AppState.defaultProfile?.appearance || AppearanceState;
@@ -39,6 +51,7 @@ export async function applyAppearance(appearance, redrawNow = true) {
 }
 
 function showSettingsTab(name) {
+  stopKeyBindingCapture();
   queryAll("[data-settings-tab]").forEach(tab => {
     const active = tab.dataset.settingsTab === name;
     tab.classList.toggle("is-active", active);
@@ -47,6 +60,67 @@ function showSettingsTab(name) {
   queryAll("[data-settings-panel]").forEach(panel => {
     panel.hidden = panel.dataset.settingsPanel !== name;
   });
+}
+
+function normalizedKeyBindings(bindings) {
+  const source = bindings || {};
+  return Object.fromEntries(Object.keys(KEY_BINDING_LABELS).map(name => [name, String(source[name] || "").trim()]));
+}
+
+function renderKeyBindingButton(button) {
+  const binding = draftKeyBindings[button.dataset.keyBinding] || "";
+  button.querySelector("span").textContent = binding || "Unassigned";
+  button.setAttribute("aria-label", `${KEY_BINDING_LABELS[button.dataset.keyBinding]}: ${binding || "Unassigned"}`);
+}
+
+function populateKeyBindingsForm(bindings) {
+  stopKeyBindingCapture();
+  draftKeyBindings = normalizedKeyBindings(bindings);
+  queryAll("[data-key-binding]").forEach(renderKeyBindingButton);
+}
+
+function stopKeyBindingCapture() {
+  if (!capturingBindingButton) return;
+  capturingBindingButton.classList.remove("is-capturing");
+  renderKeyBindingButton(capturingBindingButton);
+  capturingBindingButton = null;
+}
+
+function beginKeyBindingCapture(button) {
+  stopKeyBindingCapture();
+  capturingBindingButton = button;
+  button.classList.add("is-capturing");
+  button.querySelector("span").textContent = "Press a key...";
+  byId("settingsError").textContent = "";
+}
+
+function captureKeyBinding(event) {
+  if (!capturingBindingButton) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.repeat) return;
+  if (event.key === "Escape") {
+    stopKeyBindingCapture();
+    return;
+  }
+
+  const name = capturingBindingButton.dataset.keyBinding;
+  if (event.key === "Backspace" || event.key === "Delete") {
+    draftKeyBindings[name] = "";
+    stopKeyBindingCapture();
+    return;
+  }
+
+  const shortcut = shortcutFromEvent(event);
+  if (!shortcut) return;
+  const conflict = Object.entries(draftKeyBindings).find(([otherName, binding]) => otherName !== name && binding === shortcut);
+  if (conflict) {
+    byId("settingsError").textContent = `${shortcut} is already assigned to ${KEY_BINDING_LABELS[conflict[0]]}.`;
+    stopKeyBindingCapture();
+    return;
+  }
+  draftKeyBindings[name] = shortcut;
+  stopKeyBindingCapture();
 }
 
 function updatePalettePreview(paletteName) {
@@ -90,6 +164,7 @@ function populateProfileForm(profile, useCurrentZoom = true) {
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
   populateAppearanceForm(profile.appearance, useCurrentZoom);
+  populateKeyBindingsForm(profile.keyBindings);
 }
 
 async function ensureDefaultProfile() {
@@ -125,6 +200,7 @@ function closeRestoreDefaultsConfirmation() {
 }
 
 function closeSettings() {
+  stopKeyBindingCapture();
   closeRestoreDefaultsConfirmation();
   const dialog = byId("settingsDialog");
   if (dialog.open) dialog.close();
@@ -144,6 +220,7 @@ async function restoreDefaultSettings() {
 
 async function saveSettings(event) {
   event.preventDefault();
+  stopKeyBindingCapture();
   const dialog = byId("settingsDialog");
   const error = byId("settingsError");
   const sizeValue = byId("settingsMinFileSize").valueAsNumber;
@@ -170,6 +247,7 @@ async function saveSettings(event) {
       cornerRadius: Number(byId("settingsCornerRadius").value),
       reliefStrength: Number(byId("settingsReliefStrength").value),
     },
+    keyBindings: normalizedKeyBindings(draftKeyBindings),
   };
 
   const saveButton = event.submitter;
@@ -213,6 +291,10 @@ export function initSettings(options) {
   queryAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
   });
+  queryAll("[data-key-binding]").forEach(button => {
+    button.addEventListener("click", () => beginKeyBindingCapture(button));
+  });
+  window.addEventListener("keydown", captureKeyBinding, true);
   byId("settingsPalette").addEventListener("change", updateAppearanceFormOutputs);
   byId("settingsZoomFactor").addEventListener("input", updateAppearanceFormOutputs);
   byId("settingsCornerRadius").addEventListener("input", updateAppearanceFormOutputs);

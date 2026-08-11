@@ -17,6 +17,7 @@ type Profile struct {
 	AllowDelete    bool               `json:"allowDelete"`
 	RescanOnDelete bool               `json:"rescanOnDelete"`
 	Appearance     AppearanceSettings `json:"appearance"`
+	KeyBindings    KeyBindings        `json:"keyBindings"`
 }
 
 type AppearanceSettings struct {
@@ -24,6 +25,22 @@ type AppearanceSettings struct {
 	ZoomFactor     float64 `json:"zoomFactor"`
 	CornerRadius   int     `json:"cornerRadius"`
 	ReliefStrength float64 `json:"reliefStrength"`
+}
+
+type KeyBindings struct {
+	Back     string `json:"back"`
+	Forward  string `json:"forward"`
+	Parent   string `json:"parent"`
+	Root     string `json:"root"`
+	Open     string `json:"open"`
+	OpenWith string `json:"openWith"`
+}
+
+func defaultKeyBindings() KeyBindings {
+	return KeyBindings{
+		Open:     "Ctrl+O",
+		OpenWith: "Ctrl+Shift+O",
+	}
 }
 
 func defaultAppearanceSettings() AppearanceSettings {
@@ -54,6 +71,7 @@ func defaultProfile() *Profile {
 		AllowDelete:    false,
 		RescanOnDelete: true,
 		Appearance:     defaultAppearanceSettings(),
+		KeyBindings:    defaultKeyBindings(),
 	}
 	return p
 }

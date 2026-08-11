@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const settingsFileVersion = 3
+const settingsFileVersion = 4
 
 type persistedSettings struct {
 	Version        int                `json:"version"`
@@ -19,6 +19,7 @@ type persistedSettings struct {
 	AllowDelete    bool               `json:"allowDelete"`
 	RescanOnDelete bool               `json:"rescanOnDelete"`
 	Appearance     AppearanceSettings `json:"appearance"`
+	KeyBindings    KeyBindings        `json:"keyBindings"`
 }
 
 func defaultSettingsPath() (string, error) {
@@ -53,6 +54,10 @@ func loadSettings(path string) (Profile, error) {
 		allowDelete = defaults.AllowDelete
 		rescanOnDelete = defaults.RescanOnDelete
 	}
+	keyBindings := saved.KeyBindings
+	if saved.Version < 4 {
+		keyBindings = defaultKeyBindings()
+	}
 
 	return normalizeProfile(Profile{
 		ExcludedPaths:  saved.ExcludedPaths,
@@ -63,6 +68,7 @@ func loadSettings(path string) (Profile, error) {
 		AllowDelete:    allowDelete,
 		RescanOnDelete: rescanOnDelete,
 		Appearance:     appearance,
+		KeyBindings:    keyBindings,
 	})
 }
 
@@ -77,6 +83,7 @@ func saveSettings(path string, profile Profile) error {
 		AllowDelete:    profile.AllowDelete,
 		RescanOnDelete: profile.RescanOnDelete,
 		Appearance:     profile.Appearance,
+		KeyBindings:    profile.KeyBindings,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {
