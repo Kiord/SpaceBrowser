@@ -54,7 +54,7 @@ To build SpaceBrowser from source, install Go 1.25 and the [Wails v2 development
 ```sh
 git clone https://github.com/Kiord/SpaceBrowser.git
 cd SpaceBrowser
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 wails build
 ```
 
