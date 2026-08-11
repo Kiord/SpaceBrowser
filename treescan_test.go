@@ -3,10 +3,64 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestScannerCollectsWideTreeConcurrently(t *testing.T) {
+	const branchCount = 256
+	dir := t.TempDir()
+	for i := 0; i < branchCount; i++ {
+		branch := filepath.Join(dir, fmt.Sprintf("branch-%03d", i))
+		if err := os.Mkdir(branch, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(branch, "content.bin"), []byte{byte(i)}, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 8)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(dir, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(root.Children); got != branchCount {
+		t.Fatalf("root child count = %d, want %d", got, branchCount)
+	}
+	if fileCount != branchCount || dirCount != branchCount+1 {
+		t.Fatalf("scan counts = %d files and %d directories, want %d and %d", fileCount, dirCount, branchCount, branchCount+1)
+	}
+
+	seenBranches := make(map[string]struct{}, branchCount)
+	for _, branch := range root.Children {
+		if !branch.IsFolder || len(branch.Children) != 1 {
+			t.Fatalf("invalid branch node: %+v", branch)
+		}
+		seenBranches[branch.Name] = struct{}{}
+	}
+	if len(seenBranches) != branchCount {
+		t.Fatalf("unique branch count = %d, want %d", len(seenBranches), branchCount)
+	}
+
+	nodes := scanner.Nodes()
+	wantNodes := 1 + branchCount*2
+	if len(nodes) != wantNodes {
+		t.Fatalf("node count = %d, want %d", len(nodes), wantNodes)
+	}
+	for id, node := range nodes {
+		if node == nil || node.ID != id {
+			t.Fatalf("node index %d contains %+v", id, node)
+		}
+	}
+}
 
 func TestScannerHonorsCancelledContext(t *testing.T) {
 	profile := defaultProfile()

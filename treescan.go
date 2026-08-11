@@ -326,6 +326,14 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		results := make([]*Node, 0, len(subdirs))
+		appendResult := func(node *Node) {
+			if node == nil {
+				return
+			}
+			mu.Lock()
+			results = append(results, node)
+			mu.Unlock()
+		}
 
 		for _, sd := range subdirs {
 			if s.ctx.Err() != nil {
@@ -338,18 +346,12 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					defer wg.Done()
 					defer func() { <-s.sem }()
 					n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
-					if n != nil {
-						mu.Lock()
-						results = append(results, n)
-						mu.Unlock()
-					}
+					appendResult(n)
 				}(sd)
 			default:
 				// inline to avoid deadlock
 				n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
-				if n != nil {
-					results = append(results, n)
-				}
+				appendResult(n)
 			}
 		}
 
