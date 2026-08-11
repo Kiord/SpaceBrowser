@@ -5,22 +5,32 @@ import { navigateToSelected, updateNavButtons } from "./navigation.js";
 import { hideRectToast, initNotifications } from "./notifications.js";
 import { AppState, AppearanceState, FONT_SIZE, activePalette, getScale } from "./state.js";
 
+let redrawGeneration = 0;
+
 async function apiLayoutById(nodeId, w, h, scale) {
   const rects = await Layout(nodeId, w, h, scale);
   return { rects };
 }
 
 export async function redraw() {
+  const generation = ++redrawGeneration;
   hideRectToast();
   const nodeId = AppState.node_id;
   if (nodeId == null) return;
 
   const w = AppState.colorCanvas.width;
   const h = AppState.colorCanvas.height;
+  const scale = AppState.scale;
 
   console.time("layout(fetch)");
-  const payload = await apiLayoutById(nodeId, w, h, AppState.scale);
+  const payload = await apiLayoutById(nodeId, w, h, scale);
   console.timeEnd("layout(fetch)");
+
+  const stateChanged = AppState.node_id !== nodeId
+    || AppState.colorCanvas.width !== w
+    || AppState.colorCanvas.height !== h
+    || AppState.scale !== scale;
+  if (generation !== redrawGeneration || stateChanged) return;
 
   const rects = payload?.rects;
   if (!Array.isArray(rects)) {
