@@ -400,6 +400,11 @@ button:disabled:hover {
   font: 12px "Segoe UI", sans-serif;
 }
 
+#settingsDialog {
+  height: min(600px, calc(100vh - 32px));
+  overflow: hidden;
+}
+
 .settings-dialog::backdrop {
   background: rgba(30, 34, 38, .34);
 }
@@ -408,6 +413,18 @@ button:disabled:hover {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 34px);
+}
+
+#settingsDialog form {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+#settingsDialog .settings-header,
+#settingsDialog .settings-tabs,
+#settingsDialog .settings-actions {
+  flex: 0 0 auto;
 }
 
 .settings-header {
@@ -500,9 +517,12 @@ button:disabled:hover {
 
 .settings-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 11px;
+  min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 14px;
 }
 
