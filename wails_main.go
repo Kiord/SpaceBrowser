@@ -3,6 +3,7 @@ package main
 
 import (
 	"embed"
+	"fmt"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -20,7 +21,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "SpaceBrowser",
+		Title:     fmt.Sprintf("SpaceBrowser %s", applicationVersion()),
 		Width:     1200,
 		Height:    800,
 		OnStartup: app.Startup,
