@@ -1,4 +1,4 @@
-import { GetAssociatedIcon, OpenPath } from "./wailsjs/go/main/App.js";
+import { GetAssociatedIcon } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize, formatModTime } from "./format.js";
 import { AppState } from "./state.js";
@@ -161,14 +161,5 @@ export function initNotifications(options) {
     mousePosition.y = event.clientY;
   });
   AppState.colorCanvas.addEventListener("pointermove", updateRectToast);
-  AppState.colorCanvas.addEventListener("pointerleave", event => {
-    if (!event.relatedTarget?.closest?.("#rectToast")) hideRectToast();
-  });
-  byId("rectToastOpen").addEventListener("click", async event => {
-    event.stopPropagation();
-    if (hoveredRect?.full_path) await OpenPath(hoveredRect.full_path);
-  });
-  byId("rectToast").addEventListener("pointerleave", event => {
-    if (event.relatedTarget !== AppState.colorCanvas) hideRectToast();
-  });
+  AppState.colorCanvas.addEventListener("pointerleave", hideRectToast);
 }
