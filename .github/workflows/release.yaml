@@ -43,6 +43,12 @@ jobs:
           [ -f assets/appicon.icns ] && cp assets/appicon.icns build/appicon.icns
           [ -f assets/appicon.ico ]  && cp assets/appicon.ico  build/windows/icon.ico
 
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python -c 'import json, pathlib, sys; path = pathlib.Path("wails.json"); config = json.loads(path.read_text()); config["info"]["productVersion"] = sys.argv[1]; path.write_text(json.dumps(config, indent=2) + "\n")' "$VERSION"
+
       - name: Build Wails app
         run: wails build -trimpath -tags webkit2_41
         shell: bash

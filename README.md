@@ -16,12 +16,16 @@ The project is open source and inspired by [SpaceMonger 1.4](https://github.com/
 
 ## Features
 
-- Interactive treemap
-- Navigation
+- Interactive, customizable treemap
+- Native back/forward navigation
 - Optional free-space display
-- Scan progress and cancellation
-- Settings dialog
-- Context actions
+- Scan progress, estimate, and cancellation
+- Persistent settings and custom config location
+- Appearance presets and controls
+- Rebindable keyboard shortcuts
+- File details with system icons
+- Open, Open with, and Properties actions
+- Optional deletion with confirmation
 - Windows, Linux and macOS (not tested)
 
 
@@ -42,4 +46,13 @@ The resulting application is placed in `build/bin`. For development with automat
 
 ```sh
 wails dev
+```
+
+## Trigger a new release
+
+Create and push a version tag. The release build derives its version from the tag:
+
+```sh
+git tag -a vX.X.X -m "Release vX.X.X"
+git push origin vX.X.X
 ```

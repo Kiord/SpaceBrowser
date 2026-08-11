@@ -14,8 +14,8 @@ func applicationVersion() string {
 			ProductVersion string `json:"productVersion"`
 		} `json:"info"`
 	}
-	if err := json.Unmarshal(wailsConfiguration, &configuration); err != nil || configuration.Info.ProductVersion == "" {
-		return "unknown"
+	if err := json.Unmarshal(wailsConfiguration, &configuration); err != nil || configuration.Info.ProductVersion == "" || configuration.Info.ProductVersion == "0.0.0" {
+		return "dev"
 	}
 	return configuration.Info.ProductVersion
 }
