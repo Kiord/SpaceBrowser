@@ -384,6 +384,16 @@ func (a *App) OpenPath(path string) error {
 	return platform.Impl.OpenPath(path)
 }
 
+func (a *App) ShowProperties(path string) error {
+	if path == "" {
+		return fmt.Errorf("missing path")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("cannot show properties: %w", err)
+	}
+	return platform.Impl.ShowProperties(path)
+}
+
 func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("missing path")

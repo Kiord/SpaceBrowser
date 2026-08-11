@@ -320,6 +320,11 @@ html, body {
   background: #f9dfdc;
 }
 
+.context-menu .context-menu-properties {
+  margin-top: 4px;
+  border-top: 1px solid #ddd;
+}
+
 button:disabled {
   background-color: #ccc;
   color: #666;

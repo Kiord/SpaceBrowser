@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,20 @@ func (Linux) OpenInFileBrowser(p string) error {
 		return exec.Command("xdg-open", filepath.Dir(p)).Run()
 	}
 	return exec.Command("xdg-open", p).Run()
+}
+
+func (Linux) ShowProperties(p string) error {
+	if _, err := exec.LookPath("dbus-send"); err != nil {
+		return fmt.Errorf("the desktop file manager properties service is unavailable")
+	}
+	uri := (&url.URL{Scheme: "file", Path: p}).String()
+	if err := exec.Command("dbus-send", "--session",
+		"--dest=org.freedesktop.FileManager1", "--type=method_call", "--print-reply",
+		"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItemProperties",
+		"array:string:"+uri, "string:").Run(); err != nil {
+		return fmt.Errorf("show filesystem properties: %w", err)
+	}
+	return nil
 }
 
 func (Linux) MoveToTrash(p string) error {

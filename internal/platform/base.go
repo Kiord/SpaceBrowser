@@ -18,6 +18,7 @@ type API interface {
 	IsMountRoot(string) bool
 	OpenInFileBrowser(string) error
 	OpenPath(string) error
+	ShowProperties(string) error
 	MoveToTrash(string) error
 	AssociatedIcon(string, bool) ([]byte, error)
 	Canonicalize(string) string
@@ -57,6 +58,10 @@ func (Default) OpenInFileBrowser(p string) error {
 
 func (Default) OpenPath(p string) error {
 	return exec.Command("xdg-open", p).Run()
+}
+
+func (Default) ShowProperties(string) error {
+	return fmt.Errorf("filesystem properties are not supported on this platform")
 }
 
 func (Default) MoveToTrash(p string) error {

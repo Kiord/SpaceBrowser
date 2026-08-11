@@ -35,6 +35,19 @@ func (Darwin) OpenPath(p string) error {
 	return exec.Command("open", p).Run()
 }
 
+func (Darwin) ShowProperties(p string) error {
+	const script = `on run argv
+tell application "Finder"
+activate
+open information window of (POSIX file (item 1 of argv) as alias)
+end tell
+end run`
+	if err := exec.Command("osascript", "-e", script, p).Run(); err != nil {
+		return fmt.Errorf("show filesystem properties: %w", err)
+	}
+	return nil
+}
+
 func (Darwin) MoveToTrash(p string) error {
 	const script = `on run argv
 tell application "Finder" to delete POSIX file (item 1 of argv)

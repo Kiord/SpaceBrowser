@@ -1,4 +1,4 @@
-import { DeleteNode, OpenInFileBrowser } from "./wailsjs/go/main/App.js";
+import { DeleteNode, OpenInFileBrowser, ShowProperties } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
@@ -104,6 +104,8 @@ export function showContextMenu(x, y) {
   menu.style.display = "block";
   const goTo = menu.querySelector('[data-action="goto"]');
   if (goTo) goTo.classList.toggle("disabled", !getSelectedRect()?.is_folder);
+  const properties = menu.querySelector('[data-action="properties"]');
+  if (properties) properties.classList.toggle("disabled", !getSelectedRect()?.full_path || isPassiveRect(getSelectedRect()));
 }
 
 export function hideContextMenu() {
@@ -140,6 +142,12 @@ async function handleContextMenuAction(event) {
     requestSelectedDeletion();
   } else if (item.dataset.action === "open" && rect.full_path) {
     await OpenInFileBrowser(rect.full_path);
+  } else if (item.dataset.action === "properties" && rect.full_path && !isPassiveRect(rect)) {
+    try {
+      await ShowProperties(rect.full_path);
+    } catch (error) {
+      showErrorToast(error);
+    }
   } else if (item.dataset.action === "goto") {
     visit(rect.node_id);
   }
