@@ -16,17 +16,33 @@ The project is open source and inspired by [SpaceMonger 1.4](https://github.com/
 
 ## Features
 
-- Interactive, customizable treemap
-- Native back/forward navigation
-- Optional free-space display
-- Scan progress, estimate, and cancellation
-- Persistent settings and custom config location
-- Appearance presets and controls
+SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-platform application.
+
+### Visualization and scanning
+
+- Size-proportional treemap for files and folders
+- Optional free-space node for scanned volumes
+- Configurable small-file aggregation threshold
+- Live scan progress, time estimate, and cancellation
+- Exclusions for paths, hidden files, symlinks, and network filesystems
+
+### Navigation and actions
+
+- Treemap navigation with Back, Forward, Parent, and Root commands
+- Hover details with full path, byte size, modification date, and system icon
+- Open, Open with, and filesystem Properties actions
+- Optional move-to-trash command with confirmation and rescan
+
+### Customization
+
+- Rectangle color palettes, scale, shape and shading
 - Rebindable keyboard shortcuts
-- File details with system icons
-- Open, Open with, and Properties actions
-- Optional deletion with confirmation
-- Windows, Linux and macOS (not tested)
+- Persistent settings
+
+### Platforms
+
+- Windows and Linux support
+- macOS build available but not yet tested
 
 
 ## Usage
