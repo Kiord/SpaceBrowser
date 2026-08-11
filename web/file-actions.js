@@ -268,8 +268,7 @@ export function initFileActions(options) {
     }
   });
   window.addEventListener("keydown", event => {
-    if (event.isComposing || event.key !== "Delete") return;
-    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true'], dialog[open]")) return;
+    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.keyBindings?.delete)) return;
     if (!getSelectedRect()) return;
     event.preventDefault();
     requestSelectedDeletion();

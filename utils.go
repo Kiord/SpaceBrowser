@@ -28,18 +28,22 @@ type AppearanceSettings struct {
 }
 
 type KeyBindings struct {
-	Back     string `json:"back"`
-	Forward  string `json:"forward"`
-	Parent   string `json:"parent"`
-	Root     string `json:"root"`
-	Open     string `json:"open"`
-	OpenWith string `json:"openWith"`
+	Back          string `json:"back"`
+	Forward       string `json:"forward"`
+	Parent        string `json:"parent"`
+	Root          string `json:"root"`
+	Open          string `json:"open"`
+	OpenWith      string `json:"openWith"`
+	VisitSelected string `json:"visitSelected"`
+	Delete        string `json:"delete"`
 }
 
 func defaultKeyBindings() KeyBindings {
 	return KeyBindings{
-		Open:     "Ctrl+O",
-		OpenWith: "Ctrl+Shift+O",
+		Open:          "Ctrl+O",
+		OpenWith:      "Ctrl+Shift+O",
+		VisitSelected: "Enter",
+		Delete:        "Delete",
 	}
 }
 

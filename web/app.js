@@ -2,11 +2,13 @@ import { DefaultPath } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { hideContextMenu, initFileActions } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";
+import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
 import { analyze, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
 import { getSelectedRect, initTreemapView, isPassiveRect, redraw } from "./treemap-view.js";
 import { initZoom } from "./zoom.js";
+import { AppState } from "./state.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   byId("pathGroup").removeAttribute("title");
@@ -23,12 +25,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   initZoom({ redraw });
 
   window.addEventListener("keydown", event => {
-    if (event.isComposing || event.key !== "Enter") return;
-    if (document.activeElement === byId("pathInput")) {
+    if (event.isComposing) return;
+    if (event.key === "Enter" && document.activeElement === byId("pathInput")) {
       event.preventDefault();
       analyze();
       return;
     }
+    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.keyBindings?.visitSelected)) return;
+    event.preventDefault();
     navigateToSelected();
   });
 

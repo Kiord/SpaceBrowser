@@ -247,30 +247,62 @@
           </div>
         </section>
         <section id="settingsKeyBindingsPanel" class="settings-panel key-bindings-panel" role="tabpanel" aria-labelledby="settingsKeyBindingsTab" data-settings-panel="key-bindings" hidden>
-          <p class="key-bindings-help">Click a binding, then press a key or shortcut. Press Backspace or Delete to clear it, or Escape to cancel.</p>
+          <p class="key-bindings-help">Click a binding, then press any key or shortcut.</p>
           <div class="settings-row key-binding-row">
             <label for="keyBindingBack">Back</label>
-            <button id="keyBindingBack" class="key-binding-button" type="button" data-key-binding="back"><span>Unassigned</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingBack" class="key-binding-button" type="button" data-key-binding="back"><span>Unassigned</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="back" aria-label="Clear Back binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
           <div class="settings-row key-binding-row">
             <label for="keyBindingForward">Forward</label>
-            <button id="keyBindingForward" class="key-binding-button" type="button" data-key-binding="forward"><span>Unassigned</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingForward" class="key-binding-button" type="button" data-key-binding="forward"><span>Unassigned</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="forward" aria-label="Clear Forward binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
           <div class="settings-row key-binding-row">
             <label for="keyBindingParent">Parent folder</label>
-            <button id="keyBindingParent" class="key-binding-button" type="button" data-key-binding="parent"><span>Unassigned</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingParent" class="key-binding-button" type="button" data-key-binding="parent"><span>Unassigned</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="parent" aria-label="Clear Parent folder binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
           <div class="settings-row key-binding-row">
             <label for="keyBindingRoot">Go to scan root</label>
-            <button id="keyBindingRoot" class="key-binding-button" type="button" data-key-binding="root"><span>Unassigned</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingRoot" class="key-binding-button" type="button" data-key-binding="root"><span>Unassigned</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="root" aria-label="Clear Go to scan root binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
           <div class="settings-row key-binding-row">
             <label for="keyBindingOpen">Open</label>
-            <button id="keyBindingOpen" class="key-binding-button" type="button" data-key-binding="open"><span>Ctrl+O</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingOpen" class="key-binding-button" type="button" data-key-binding="open"><span>Ctrl+O</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="open" aria-label="Clear Open binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
           <div class="settings-row key-binding-row">
             <label for="keyBindingOpenWith">Open with...</label>
-            <button id="keyBindingOpenWith" class="key-binding-button" type="button" data-key-binding="openWith"><span>Ctrl+Shift+O</span></button>
+            <div class="key-binding-field">
+              <button id="keyBindingOpenWith" class="key-binding-button" type="button" data-key-binding="openWith"><span>Ctrl+Shift+O</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="openWith" aria-label="Clear Open with binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
+          </div>
+          <div class="settings-row key-binding-row">
+            <label for="keyBindingVisitSelected">Visit selected</label>
+            <div class="key-binding-field">
+              <button id="keyBindingVisitSelected" class="key-binding-button" type="button" data-key-binding="visitSelected"><span>Enter</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="visitSelected" aria-label="Clear Visit selected binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
+          </div>
+          <div class="settings-row key-binding-row key-binding-row-danger">
+            <label for="keyBindingDelete">Delete</label>
+            <div class="key-binding-field">
+              <button id="keyBindingDelete" class="key-binding-button" type="button" data-key-binding="delete"><span>Delete</span></button>
+              <button class="key-binding-clear" type="button" data-clear-key-binding="delete" aria-label="Clear Delete binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
           </div>
         </section>
         <div id="settingsError" class="settings-error" role="alert"></div>

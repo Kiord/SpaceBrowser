@@ -28,12 +28,14 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 			ReliefStrength: 0.18,
 		},
 		KeyBindings: KeyBindings{
-			Back:     "Alt+Left",
-			Forward:  "Alt+Right",
-			Parent:   "P",
-			Root:     "R",
-			Open:     "Ctrl+O",
-			OpenWith: "Ctrl+Shift+O",
+			Back:          "Alt+Left",
+			Forward:       "Alt+Right",
+			Parent:        "P",
+			Root:          "R",
+			Open:          "Ctrl+O",
+			OpenWith:      "Ctrl+Shift+O",
+			VisitSelected: "V",
+			Delete:        "Shift+Delete",
 		},
 	}
 	if err := first.SetProfile(want); err != nil {
@@ -53,6 +55,47 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	want.ExcludedPaths = first.GetProfile().ExcludedPaths
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted profile = %#v, want %#v", got, want)
+	}
+}
+
+func TestVersionFourSettingsGainNewCommandBindings(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{
+  "version": 4,
+  "excludedPaths": [],
+  "skipHidden": false,
+  "minFileSize": 1024,
+  "followSymlinks": false,
+  "skipNetworkFS": true,
+  "allowDelete": false,
+  "rescanOnDelete": true,
+  "appearance": {
+    "palette": "default",
+    "zoomFactor": 1,
+    "cornerRadius": 0,
+    "reliefStrength": 0.1
+  },
+  "keyBindings": {
+    "back": "B",
+    "forward": "F",
+    "parent": "P",
+    "root": "R",
+    "open": "Ctrl+O",
+    "openWith": "Ctrl+Shift+O"
+  }
+}`)
+	if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := newApp(settingsPath).GetProfile().KeyBindings
+	if got.Back != "B" || got.Forward != "F" || got.Parent != "P" || got.Root != "R" {
+		t.Fatalf("existing key bindings were not preserved: %#v", got)
+	}
+	defaults := defaultKeyBindings()
+	if got.VisitSelected != defaults.VisitSelected || got.Delete != defaults.Delete {
+		t.Fatalf("new key bindings = (%q, %q), want defaults (%q, %q)",
+			got.VisitSelected, got.Delete, defaults.VisitSelected, defaults.Delete)
 	}
 }
 

@@ -119,6 +119,8 @@ func normalizeKeyBindings(bindings KeyBindings) KeyBindings {
 	bindings.Root = strings.TrimSpace(bindings.Root)
 	bindings.Open = strings.TrimSpace(bindings.Open)
 	bindings.OpenWith = strings.TrimSpace(bindings.OpenWith)
+	bindings.VisitSelected = strings.TrimSpace(bindings.VisitSelected)
+	bindings.Delete = strings.TrimSpace(bindings.Delete)
 	return bindings
 }
 

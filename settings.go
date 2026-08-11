@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const settingsFileVersion = 4
+const settingsFileVersion = 5
 
 type persistedSettings struct {
 	Version        int                `json:"version"`
@@ -57,6 +57,10 @@ func loadSettings(path string) (Profile, error) {
 	keyBindings := saved.KeyBindings
 	if saved.Version < 4 {
 		keyBindings = defaultKeyBindings()
+	} else if saved.Version < 5 {
+		defaults := defaultKeyBindings()
+		keyBindings.VisitSelected = defaults.VisitSelected
+		keyBindings.Delete = defaults.Delete
 	}
 
 	return normalizeProfile(Profile{

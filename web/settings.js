@@ -23,6 +23,8 @@ const KEY_BINDING_LABELS = Object.freeze({
   root: "Go to scan root",
   open: "Open",
   openWith: "Open with...",
+  visitSelected: "Visit selected",
+  delete: "Delete",
 });
 
 function defaultAppearance() {
@@ -99,18 +101,7 @@ function captureKeyBinding(event) {
   event.preventDefault();
   event.stopImmediatePropagation();
   if (event.repeat) return;
-  if (event.key === "Escape") {
-    stopKeyBindingCapture();
-    return;
-  }
-
   const name = capturingBindingButton.dataset.keyBinding;
-  if (event.key === "Backspace" || event.key === "Delete") {
-    draftKeyBindings[name] = "";
-    stopKeyBindingCapture();
-    return;
-  }
-
   const shortcut = shortcutFromEvent(event);
   if (!shortcut) return;
   const conflict = Object.entries(draftKeyBindings).find(([otherName, binding]) => otherName !== name && binding === shortcut);
@@ -121,6 +112,14 @@ function captureKeyBinding(event) {
   }
   draftKeyBindings[name] = shortcut;
   stopKeyBindingCapture();
+}
+
+function clearKeyBinding(button) {
+  stopKeyBindingCapture();
+  const name = button.dataset.clearKeyBinding;
+  draftKeyBindings[name] = "";
+  renderKeyBindingButton(byId(`keyBinding${name[0].toUpperCase()}${name.slice(1)}`));
+  byId("settingsError").textContent = "";
 }
 
 function updatePalettePreview(paletteName) {
@@ -293,6 +292,9 @@ export function initSettings(options) {
   });
   queryAll("[data-key-binding]").forEach(button => {
     button.addEventListener("click", () => beginKeyBindingCapture(button));
+  });
+  queryAll("[data-clear-key-binding]").forEach(button => {
+    button.addEventListener("click", () => clearKeyBinding(button));
   });
   window.addEventListener("keydown", captureKeyBinding, true);
   byId("settingsPalette").addEventListener("change", updateAppearanceFormOutputs);

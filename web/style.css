@@ -569,6 +569,12 @@ button:disabled:hover {
   line-height: 1.4;
 }
 
+.key-binding-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 4px;
+}
+
 .settings-dialog .key-binding-button {
   width: 100%;
   justify-self: stretch;
@@ -576,11 +582,44 @@ button:disabled:hover {
   font-family: Consolas, "Courier New", monospace;
 }
 
+.settings-dialog .key-binding-clear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+.key-binding-clear svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: square;
+}
+
 .settings-dialog .key-binding-button.is-capturing {
   color: #111;
   background: #fff;
   border-color: #555;
   box-shadow: inset 0 0 0 1px #aaa;
+}
+
+.key-binding-row-danger {
+  margin: 2px -7px -3px;
+  padding: 8px 7px;
+  color: #6f211e;
+  background: #fff1f0;
+  border: 1px solid #edcfcc;
+  border-radius: 2px;
+}
+
+.settings-dialog .key-binding-row-danger .key-binding-button,
+.settings-dialog .key-binding-row-danger .key-binding-clear {
+  color: #6f211e;
+  background: #fffafa;
+  border-color: #d7aaa6;
 }
 
 .palette-preview {
