@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"spacebrowser/internal/platform"
 	"strings"
@@ -17,11 +18,12 @@ import (
 )
 
 type App struct {
-	ctx           context.Context
-	showFreeSpace bool
-	profile       Profile
-	settingsPath  string
-	settingsMu    sync.RWMutex
+	ctx                 context.Context
+	showFreeSpace       bool
+	profile             Profile
+	settingsPath        string
+	defaultSettingsPath string
+	settingsMu          sync.RWMutex
 
 	scanMu         sync.RWMutex
 	scanGeneration uint64
@@ -34,18 +36,22 @@ type App struct {
 }
 
 func NewApp() *App {
-	settingsPath, _ := defaultSettingsPath()
-	return newApp(settingsPath)
+	defaultPath, _ := defaultSettingsPath()
+	return newAppWithPaths(configuredSettingsPath(defaultPath), defaultPath)
 }
 
 func newApp(settingsPath string) *App {
+	return newAppWithPaths(settingsPath, settingsPath)
+}
+
+func newAppWithPaths(settingsPath, defaultPath string) *App {
 	profile := *defaultProfile()
 	if settingsPath != "" {
 		if savedProfile, err := loadSettings(settingsPath); err == nil {
 			profile = savedProfile
 		}
 	}
-	return &App{showFreeSpace: true, profile: profile, settingsPath: settingsPath}
+	return &App{showFreeSpace: true, profile: profile, settingsPath: settingsPath, defaultSettingsPath: defaultPath}
 }
 
 func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
@@ -79,6 +85,77 @@ func (a *App) SetProfile(profile Profile) error {
 	}
 	a.profile = profile
 	return nil
+}
+
+func (a *App) GetSettingsPath() string {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	return a.settingsPath
+}
+
+func (a *App) GetDefaultSettingsPath() string {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	return a.defaultSettingsPath
+}
+
+func (a *App) SetSettingsPath(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("settings path cannot be empty")
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve settings path: %w", err)
+	}
+	path = filepath.Clean(absPath)
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return fmt.Errorf("settings path points to a directory")
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect settings path: %w", err)
+	}
+
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	if path == a.settingsPath {
+		return nil
+	}
+	if a.defaultSettingsPath == "" {
+		return fmt.Errorf("default settings location is unavailable")
+	}
+	if err := saveSettings(path, a.profile); err != nil {
+		return fmt.Errorf("write settings at new location: %w", err)
+	}
+	if err := saveSettingsLocation(a.defaultSettingsPath, path); err != nil {
+		return err
+	}
+	a.settingsPath = path
+	return nil
+}
+
+func (a *App) PickSettingsPath() (string, error) {
+	if a.ctx == nil {
+		return "", fmt.Errorf("app not initialized")
+	}
+	currentPath := a.GetSettingsPath()
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:                "Choose configuration file location",
+		DefaultDirectory:     filepath.Dir(currentPath),
+		DefaultFilename:      filepath.Base(currentPath),
+		CanCreateDirectories: true,
+		Filters:              []runtime.FileFilter{{DisplayName: "JSON files (*.json)", Pattern: "*.json"}},
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve settings path: %w", err)
+	}
+	return filepath.Clean(absPath), nil
 }
 
 func normalizeProfile(profile Profile) (Profile, error) {

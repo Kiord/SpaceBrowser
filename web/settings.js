@@ -1,4 +1,12 @@
-import { GetDefaultProfile, GetProfile, SetProfile } from "./wailsjs/go/main/App.js";
+import {
+  GetDefaultProfile,
+  GetDefaultSettingsPath,
+  GetProfile,
+  GetSettingsPath,
+  PickSettingsPath,
+  SetProfile,
+  SetSettingsPath,
+} from "./wailsjs/go/main/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
 import { shortcutFromEvent } from "./key-bindings.js";
@@ -15,6 +23,16 @@ import {
 let redraw = async () => {};
 let draftKeyBindings = {};
 let capturingBindingButton = null;
+let activeSettingsPath = "";
+let defaultSettingsPath = "";
+let pendingRestoreTab = "";
+
+const SETTINGS_TAB_LABELS = Object.freeze({
+  general: "General",
+  appearance: "Appearance",
+  "key-bindings": "Key bindings",
+  misc: "Misc",
+});
 
 const KEY_BINDING_LABELS = Object.freeze({
   back: "Back",
@@ -150,7 +168,7 @@ function populateAppearanceForm(appearance, useCurrentZoom = true) {
   updateAppearanceFormOutputs();
 }
 
-function populateProfileForm(profile, useCurrentZoom = true) {
+function populateGeneralForm(profile) {
   byId("settingsPlatform").textContent = profile.platformSystem || "";
   byId("settingsExcludedPaths").value = (profile.excludedPaths || []).join("\n");
   const threshold = splitSizeIntoUnit(profile.minFileSize ?? 0);
@@ -162,8 +180,20 @@ function populateProfileForm(profile, useCurrentZoom = true) {
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
+}
+
+function populateProfileForm(profile, useCurrentZoom = true) {
+  populateGeneralForm(profile);
   populateAppearanceForm(profile.appearance, useCurrentZoom);
   populateKeyBindingsForm(profile.keyBindings);
+}
+
+function populateMiscForm(settingsPath, defaultPath) {
+  activeSettingsPath = String(settingsPath || "");
+  defaultSettingsPath = String(defaultPath || "");
+  const input = byId("settingsConfigPath");
+  input.value = activeSettingsPath;
+  input.title = activeSettingsPath;
 }
 
 async function ensureDefaultProfile() {
@@ -183,9 +213,15 @@ async function openSettings() {
 
   byId("settingsError").textContent = "";
   try {
-    const [profile] = await Promise.all([GetProfile(), ensureDefaultProfile()]);
+    const [profile, , settingsPath, defaultPath] = await Promise.all([
+      GetProfile(),
+      ensureDefaultProfile(),
+      GetSettingsPath(),
+      GetDefaultSettingsPath(),
+    ]);
     AppState.profile = profile;
     populateProfileForm(profile);
+    populateMiscForm(settingsPath, defaultPath);
     showSettingsTab("general");
     dialog.showModal();
   } catch (error) {
@@ -196,6 +232,7 @@ async function openSettings() {
 function closeRestoreDefaultsConfirmation() {
   const dialog = byId("restoreDefaultsDialog");
   if (dialog.open) dialog.close();
+  pendingRestoreTab = "";
 }
 
 function closeSettings() {
@@ -205,14 +242,35 @@ function closeSettings() {
   if (dialog.open) dialog.close();
 }
 
-function openRestoreDefaultsConfirmation() {
+function openRestoreDefaultsConfirmation(tabName) {
+  if (tabName === "all") {
+    pendingRestoreTab = tabName;
+    byId("restoreDefaultsTitle").textContent = "Restore all defaults?";
+    byId("restoreDefaultsMessage").textContent = "All settings tabs will be reset. Changes are applied only after you save.";
+    const dialog = byId("restoreDefaultsDialog");
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+  const label = SETTINGS_TAB_LABELS[tabName];
+  if (!label) return;
+  pendingRestoreTab = tabName;
+  byId("restoreDefaultsTitle").textContent = `Restore ${label} default?`;
+  byId("restoreDefaultsMessage").textContent = `Only the ${label} tab will be reset. Changes are applied only after you save.`;
   const dialog = byId("restoreDefaultsDialog");
   if (!dialog.open) dialog.showModal();
 }
 
 async function restoreDefaultSettings() {
+  const tabName = pendingRestoreTab;
+  if (!tabName) return;
   const defaults = await ensureDefaultProfile();
-  populateProfileForm(defaults, false);
+  if (tabName === "all") {
+    populateProfileForm(defaults, false);
+    useDefaultConfigPath();
+  } else if (tabName === "general") populateGeneralForm(defaults);
+  else if (tabName === "appearance") populateAppearanceForm(defaults.appearance, false);
+  else if (tabName === "key-bindings") populateKeyBindingsForm(defaults.keyBindings);
+  else if (tabName === "misc") useDefaultConfigPath();
   byId("settingsError").textContent = "";
   closeRestoreDefaultsConfirmation();
 }
@@ -254,6 +312,11 @@ async function saveSettings(event) {
   if (saveButton) saveButton.disabled = true;
   try {
     await SetProfile(profile);
+    const requestedSettingsPath = byId("settingsConfigPath").value;
+    if (requestedSettingsPath && requestedSettingsPath !== activeSettingsPath) {
+      await SetSettingsPath(requestedSettingsPath);
+      activeSettingsPath = requestedSettingsPath;
+    }
     AppState.profile = profile;
     dialog.close();
     await applyAppearance(profile.appearance);
@@ -262,6 +325,28 @@ async function saveSettings(event) {
   } finally {
     if (saveButton) saveButton.disabled = false;
   }
+}
+
+async function browseConfigPath() {
+  const error = byId("settingsError");
+  error.textContent = "";
+  try {
+    const path = await PickSettingsPath();
+    if (!path) return;
+    const input = byId("settingsConfigPath");
+    input.value = path;
+    input.title = path;
+  } catch (browseError) {
+    error.textContent = String(browseError || "Unable to choose a configuration file location.");
+  }
+}
+
+function useDefaultConfigPath() {
+  if (!defaultSettingsPath) return;
+  const input = byId("settingsConfigPath");
+  input.value = defaultSettingsPath;
+  input.title = defaultSettingsPath;
+  byId("settingsError").textContent = "";
 }
 
 function convertSettingsSizeUnit(event) {
@@ -279,14 +364,18 @@ export function initSettings(options) {
   byId("settingsForm").addEventListener("submit", saveSettings);
   byId("closeSettingsButton").addEventListener("click", closeSettings);
   byId("cancelSettingsButton").addEventListener("click", closeSettings);
-  byId("restoreDefaultsButton").addEventListener("click", openRestoreDefaultsConfirmation);
   byId("cancelRestoreDefaultsButton").addEventListener("click", closeRestoreDefaultsConfirmation);
   byId("confirmRestoreDefaultsButton").addEventListener("click", restoreDefaultSettings);
+  byId("restoreAllDefaultsButton").addEventListener("click", () => openRestoreDefaultsConfirmation("all"));
   byId("restoreDefaultsDialog").addEventListener("cancel", event => {
     event.preventDefault();
     closeRestoreDefaultsConfirmation();
   });
   byId("settingsMinFileSizeUnit").addEventListener("change", convertSettingsSizeUnit);
+  byId("browseConfigPathButton").addEventListener("click", browseConfigPath);
+  queryAll("[data-restore-settings]").forEach(button => {
+    button.addEventListener("click", () => openRestoreDefaultsConfirmation(button.dataset.restoreSettings));
+  });
   queryAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
   });

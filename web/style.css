@@ -538,6 +538,7 @@ button:disabled:hover {
 
 .settings-row textarea,
 .settings-row input[type="number"],
+.settings-row input[type="text"],
 .settings-row select {
   width: 100%;
   box-sizing: border-box;
@@ -548,6 +549,30 @@ button:disabled:hover {
   border-radius: 2px;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.06);
   font: 12px "Segoe UI", sans-serif;
+}
+
+.config-path-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+}
+
+.settings-dialog .config-path-browse {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.config-path-browse svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 
 .settings-row textarea {
@@ -746,6 +771,14 @@ button:disabled:hover {
   padding: 10px 14px;
   border-top: 1px solid #ddd;
   background: #fafafa;
+}
+
+.settings-panel-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 3px;
+  padding-top: 10px;
+  border-top: 1px solid #e1e1e1;
 }
 
 .settings-actions-primary {

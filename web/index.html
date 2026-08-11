@@ -150,6 +150,7 @@
         <button id="settingsGeneralTab" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general">General</button>
         <button id="settingsAppearanceTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAppearancePanel" data-settings-tab="appearance">Appearance</button>
         <button id="settingsKeyBindingsTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsKeyBindingsPanel" data-settings-tab="key-bindings">Key bindings</button>
+        <button id="settingsMiscTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsMiscPanel" data-settings-tab="misc">Misc</button>
       </div>
 
       <div class="settings-body">
@@ -200,6 +201,9 @@
               <span>Rescan on delete</span>
             </label>
           </section>
+          <div class="settings-panel-actions">
+            <button type="button" data-restore-settings="general">Restore General defaults</button>
+          </div>
         </section>
 
         <section id="settingsAppearancePanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsAppearanceTab" data-settings-panel="appearance" hidden>
@@ -244,6 +248,9 @@
               </div>
               <small>1.00× disables the relief effect.</small>
             </div>
+          </div>
+          <div class="settings-panel-actions">
+            <button type="button" data-restore-settings="appearance">Restore Appearance defaults</button>
           </div>
         </section>
         <section id="settingsKeyBindingsPanel" class="settings-panel key-bindings-panel" role="tabpanel" aria-labelledby="settingsKeyBindingsTab" data-settings-panel="key-bindings" hidden>
@@ -304,12 +311,35 @@
               <button class="key-binding-clear" type="button" data-clear-key-binding="delete" aria-label="Clear Delete binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
             </div>
           </div>
+          <div class="settings-panel-actions">
+            <button type="button" data-restore-settings="key-bindings">Restore Key bindings defaults</button>
+          </div>
+        </section>
+        <section id="settingsMiscPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsMiscTab" data-settings-panel="misc" hidden>
+          <div class="settings-row settings-row-top">
+            <label for="settingsConfigPath">Configuration file</label>
+            <div>
+              <div class="config-path-field">
+                <input id="settingsConfigPath" type="text" readonly spellcheck="false">
+                <button id="browseConfigPathButton" class="config-path-browse" type="button" aria-label="Choose configuration file location" data-tooltip="Choose configuration file location">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 8V5h7l2 3h9v11H3z"></path>
+                    <path d="M3 9h18"></path>
+                  </svg>
+                </button>
+              </div>
+              <small>Previous configuration file will <strong>not</strong> be deleted.</small>
+            </div>
+          </div>
+          <div class="settings-panel-actions">
+            <button type="button" data-restore-settings="misc">Restore Misc defaults</button>
+          </div>
         </section>
         <div id="settingsError" class="settings-error" role="alert"></div>
       </div>
 
       <footer class="settings-actions">
-        <button id="restoreDefaultsButton" class="restore-defaults-button" type="button">Restore defaults</button>
+        <button id="restoreAllDefaultsButton" type="button">Restore all defaults</button>
         <div class="settings-actions-primary">
           <button id="cancelSettingsButton" type="button">Cancel</button>
           <button type="submit">Save</button>
@@ -320,8 +350,8 @@
 
   <dialog id="restoreDefaultsDialog" class="settings-dialog confirm-dialog" aria-labelledby="restoreDefaultsTitle">
     <div class="confirm-dialog-body">
-      <h2 id="restoreDefaultsTitle">Restore default settings?</h2>
-      <p>This will reset all General, Appearance, and Key bindings options. Changes are applied only after you save.</p>
+      <h2 id="restoreDefaultsTitle">Restore tab defaults?</h2>
+      <p id="restoreDefaultsMessage">Only this tab will be reset. Changes are applied only after you save.</p>
       <div class="confirm-dialog-actions">
         <button id="cancelRestoreDefaultsButton" type="button">Cancel</button>
         <button id="confirmRestoreDefaultsButton" type="button">Restore</button>

@@ -22,12 +22,43 @@ type persistedSettings struct {
 	KeyBindings    KeyBindings        `json:"keyBindings"`
 }
 
+type persistedSettingsLocation struct {
+	Path string `json:"path"`
+}
+
 func defaultSettingsPath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("find user configuration directory: %w", err)
 	}
 	return filepath.Join(configDir, "SpaceBrowser", "settings.json"), nil
+}
+
+func configuredSettingsPath(defaultPath string) string {
+	if defaultPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(defaultPath), "settings-location.json"))
+	if err != nil {
+		return defaultPath
+	}
+	var location persistedSettingsLocation
+	if json.Unmarshal(data, &location) != nil || location.Path == "" {
+		return defaultPath
+	}
+	return filepath.Clean(location.Path)
+}
+
+func saveSettingsLocation(defaultPath, activePath string) error {
+	data, err := json.MarshalIndent(persistedSettingsLocation{Path: activePath}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode settings location: %w", err)
+	}
+	data = append(data, '\n')
+	if err := writeSettingsFile(filepath.Join(filepath.Dir(defaultPath), "settings-location.json"), data); err != nil {
+		return fmt.Errorf("save settings location: %w", err)
+	}
+	return nil
 }
 
 func loadSettings(path string) (Profile, error) {
@@ -94,7 +125,10 @@ func saveSettings(path string, profile Profile) error {
 		return fmt.Errorf("encode settings: %w", err)
 	}
 	data = append(data, '\n')
+	return writeSettingsFile(path, data)
+}
 
+func writeSettingsFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create settings directory: %w", err)

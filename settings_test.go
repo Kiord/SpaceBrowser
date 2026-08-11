@@ -141,6 +141,45 @@ func TestEmptyKeyBindingsRemainUnassigned(t *testing.T) {
 	}
 }
 
+func TestSettingsPathCanBeRelocated(t *testing.T) {
+	dir := t.TempDir()
+	defaultPath := filepath.Join(dir, "default", "settings.json")
+	customPath := filepath.Join(dir, "custom", "spacebrowser.json")
+	app := newAppWithPaths(defaultPath, defaultPath)
+	profile := app.GetProfile()
+	profile.SkipHidden = true
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatalf("SetProfile() error = %v", err)
+	}
+	if err := app.SetSettingsPath(customPath); err != nil {
+		t.Fatalf("SetSettingsPath() error = %v", err)
+	}
+
+	if got := app.GetSettingsPath(); got != customPath {
+		t.Fatalf("settings path = %q, want %q", got, customPath)
+	}
+	if got := configuredSettingsPath(defaultPath); got != customPath {
+		t.Fatalf("configured settings path = %q, want %q", got, customPath)
+	}
+	loaded, err := loadSettings(customPath)
+	if err != nil {
+		t.Fatalf("loadSettings() error = %v", err)
+	}
+	if !loaded.SkipHidden {
+		t.Fatal("relocated settings did not contain the current profile")
+	}
+	restarted := newAppWithPaths(configuredSettingsPath(defaultPath), defaultPath)
+	if got := restarted.GetSettingsPath(); got != customPath {
+		t.Fatalf("restarted settings path = %q, want %q", got, customPath)
+	}
+	if !restarted.GetProfile().SkipHidden {
+		t.Fatal("restarted app did not load the relocated settings")
+	}
+	if _, err := os.Stat(defaultPath); err != nil {
+		t.Fatalf("previous settings file should be retained: %v", err)
+	}
+}
+
 func TestVersionTwoSettingsGainDefaultDeletionSettings(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	legacy := []byte(`{
