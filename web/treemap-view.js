@@ -439,7 +439,7 @@ export function initTreemapView() {
     const { x, y } = getCanvasCoords(event);
     selectRectByIndex(rectIndexAtPoint(x, y), true);
     const rect = getSelectedRect();
-    if (rect && !isPassiveRect(rect)) showContextMenu(event.pageX, event.pageY);
+    if (rect && !isPassiveRect(rect)) showContextMenu(event.clientX, event.clientY);
     else hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("dblclick", event => {

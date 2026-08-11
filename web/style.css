@@ -286,6 +286,10 @@ html, body {
   display: none;
   box-shadow: 0 2px 5px rgba(0,0,0,0.18);
   font-size: 12px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 .context-menu li {
   display: flex;

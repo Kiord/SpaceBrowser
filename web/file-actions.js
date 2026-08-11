@@ -99,13 +99,32 @@ async function confirmSelectedDeletion() {
 
 export function showContextMenu(x, y) {
   const menu = byId("contextMenu");
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-  menu.style.display = "block";
   const goTo = menu.querySelector('[data-action="goto"]');
   if (goTo) goTo.classList.toggle("disabled", !getSelectedRect()?.is_folder);
   const properties = menu.querySelector('[data-action="properties"]');
   if (properties) properties.classList.toggle("disabled", !getSelectedRect()?.full_path || isPassiveRect(getSelectedRect()));
+
+  const margin = 8;
+  const cursorGap = 3;
+  menu.style.visibility = "hidden";
+  menu.style.display = "block";
+  menu.style.left = "0";
+  menu.style.top = "0";
+
+  const bounds = menu.getBoundingClientRect();
+  const availableWidth = window.innerWidth;
+  const availableHeight = window.innerHeight;
+  let left = x + cursorGap;
+  let top = y + cursorGap;
+
+  if (left + bounds.width > availableWidth - margin) left = x - bounds.width - cursorGap;
+  if (top + bounds.height > availableHeight - margin) top = y - bounds.height - cursorGap;
+
+  left = Math.max(margin, Math.min(left, availableWidth - bounds.width - margin));
+  top = Math.max(margin, Math.min(top, availableHeight - bounds.height - margin));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.visibility = "visible";
 }
 
 export function hideContextMenu() {
