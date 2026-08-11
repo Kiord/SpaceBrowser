@@ -67,11 +67,12 @@ async function confirmSelectedDeletion() {
   cancelButton.disabled = true;
   byId("deleteConfirmDialog").close();
   pendingDeletion = null;
-  showToastAt(mousePosition.x, mousePosition.y, `Moving to ${trashDestinationName()}…`, 30000);
+  const dismissMovingToast = showToastAt(mousePosition.x, mousePosition.y, `Moving to ${trashDestinationName()}…`, 30000);
 
   try {
     await waitForNextPaint();
     const result = await DeleteNode(target.nodeId);
+    dismissMovingToast();
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
     if (AppState.profile?.rescanOnDelete) {
@@ -86,8 +87,10 @@ async function confirmSelectedDeletion() {
       showToastAt(mousePosition.x, mousePosition.y, `Moved to ${trashDestinationName()}`, 1600);
     }
   } catch (error) {
+    dismissMovingToast();
     showErrorToast(error);
   } finally {
+    dismissMovingToast();
     deletionInProgress = false;
     confirmButton.disabled = false;
     cancelButton.disabled = false;

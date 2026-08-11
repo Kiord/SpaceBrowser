@@ -8,6 +8,7 @@ let rectAtPoint = null;
 let hoveredRect = null;
 let hoveredRectIndex = -1;
 const associatedIconCache = new Map();
+let toastRevision = 0;
 
 export const mousePosition = { x: 0, y: 0 };
 
@@ -117,6 +118,7 @@ export function updateRectToast(event) {
 
 export function showToastAt(x, y, message = "Copied path", duration = 1000, variant = "default") {
   const toast = byId("toast");
+  const revision = ++toastRevision;
   toast.textContent = message;
   toast.classList.toggle("is-error", variant === "error");
   const pad = 8;
@@ -126,9 +128,17 @@ export function showToastAt(x, y, message = "Copied path", duration = 1000, vari
   toast.style.transform = "translateY(0)";
   clearTimeout(toast._hideTimer);
   toast._hideTimer = setTimeout(() => {
+    if (revision !== toastRevision) return;
     toast.style.opacity = "0";
     toast.style.transform = "translateY(6px)";
   }, duration);
+  return () => {
+    if (revision !== toastRevision) return;
+    clearTimeout(toast._hideTimer);
+    toastRevision++;
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(6px)";
+  };
 }
 
 export function showErrorToast(error) {
