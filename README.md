@@ -8,9 +8,13 @@
   Cross-platform disk space visualizer
 </p>
 
+<br>
+
 SpaceBrowser scans a folder or volume and displays its contents as a size-proportional [treemap](https://en.wikipedia.org/wiki/Treemapping), making large files and directories easy to identify.
 
-The project is open source and inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1).
+Inspired by [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1), SpaceBrowser is a free, cross-platform, open-source disk space analyzer and an alternative to WinDirStat, WizTree, TreeSize, DaisyDisk, and SquirrelDisk
+
+<br>
 
 ![SpaceBrowser screenshot](assets/screenshot.jpg)
 
