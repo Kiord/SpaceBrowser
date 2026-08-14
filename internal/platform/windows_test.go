@@ -4,10 +4,12 @@ package platform
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"unsafe"
@@ -124,6 +126,124 @@ func TestWindowsUsageIdentifiesHardLinks(t *testing.T) {
 	}
 }
 
+func TestWindowsReadDirReturnsBatchedMetadata(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "original.bin")
+	link := filepath.Join(dir, "link.bin")
+	if err := os.WriteFile(original, []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(original, link); err != nil {
+		t.Skipf("hard links are unavailable: %v", err)
+	}
+
+	entries, err := (Windows{}).ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := make(map[string]DirectoryEntry, len(entries))
+	for _, entry := range entries {
+		byName[entry.Name()] = entry
+	}
+	originalEntry, originalOK := byName["original.bin"]
+	linkEntry, linkOK := byName["link.bin"]
+	if !originalOK || !linkOK {
+		t.Fatalf("directory entries = %v, want original.bin and link.bin", byName)
+	}
+	for _, entry := range []DirectoryEntry{originalEntry, linkEntry} {
+		if !entry.HasUsage || !entry.HasHidden {
+			t.Fatalf("batched metadata flags = usage %v, hidden %v; want both", entry.HasUsage, entry.HasHidden)
+		}
+		if !entry.Usage.HasIdentity {
+			t.Fatal("batched Windows file identity is unavailable")
+		}
+		if entry.Usage.AllocatedSize <= 1 {
+			t.Fatalf("batched allocation = %d, want cluster allocation", entry.Usage.AllocatedSize)
+		}
+		if _, err := entry.Info(); err != nil {
+			t.Fatalf("batched file info: %v", err)
+		}
+	}
+	if originalEntry.Usage.Identity != linkEntry.Usage.Identity {
+		t.Fatalf("batched hard-link identities differ: %+v and %+v", originalEntry.Usage.Identity, linkEntry.Usage.Identity)
+	}
+}
+
+func TestParseWindowsDirectoryRecordLayouts(t *testing.T) {
+	const name = "entry.bin"
+	for _, layout := range windowsDirectoryLayouts {
+		buffer := make([]byte, layout.nameOffset+len(name)*2)
+		binary.LittleEndian.PutUint64(buffer[40:48], 123)
+		binary.LittleEndian.PutUint64(buffer[48:56], 4096)
+		binary.LittleEndian.PutUint32(buffer[56:60], winapi.FILE_ATTRIBUTE_HIDDEN|winapi.FILE_ATTRIBUTE_REPARSE_POINT)
+		binary.LittleEndian.PutUint32(buffer[60:64], uint32(len(name)*2))
+		binary.LittleEndian.PutUint32(buffer[layout.reparseTagOffset:layout.reparseTagOffset+4], winapi.IO_REPARSE_TAG_SYMLINK)
+		binary.LittleEndian.PutUint64(buffer[layout.idOffset:layout.idOffset+8], 42)
+		if layout.idSize == 16 {
+			binary.LittleEndian.PutUint64(buffer[layout.idOffset+8:layout.idOffset+16], 84)
+		}
+		for i, char := range name {
+			binary.LittleEndian.PutUint16(buffer[layout.nameOffset+i*2:layout.nameOffset+i*2+2], uint16(char))
+		}
+
+		entries, err := parseWindowsDirectoryBuffer(buffer, layout, 7, true, "")
+		if err != nil {
+			t.Fatalf("layout %d: %v", layout.class, err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("layout %d returned %d entries, want 1", layout.class, len(entries))
+		}
+		entry := entries[0]
+		if entry.Name() != name || entry.Type()&os.ModeSymlink == 0 || !entry.Hidden {
+			t.Fatalf("layout %d metadata = name %q, type %v, hidden %v", layout.class, entry.Name(), entry.Type(), entry.Hidden)
+		}
+		if entry.Usage.AllocatedSize != 4096 || entry.Usage.Identity.Volume != 7 || entry.Usage.Identity.Low != 42 {
+			t.Fatalf("layout %d usage = %+v", layout.class, entry.Usage)
+		}
+		if layout.idSize == 16 && entry.Usage.Identity.High != 84 {
+			t.Fatalf("layout %d high identity = %d, want 84", layout.class, entry.Usage.Identity.High)
+		}
+	}
+}
+
+func BenchmarkWindowsDirectoryMetadata(b *testing.B) {
+	dir := b.TempDir()
+	for i := 0; i < 1000; i++ {
+		path := filepath.Join(dir, "file-"+strconv.Itoa(i)+".bin")
+		if err := os.WriteFile(path, []byte{1}, 0o600); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.Run("batched", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			entries, err := (Windows{}).ReadDir(dir)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if len(entries) != 1000 {
+				b.Fatalf("entry count = %d, want 1000", len(entries))
+			}
+		}
+	})
+
+	b.Run("per-file-handles", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for _, entry := range entries {
+				info, err := entry.Info()
+				if err != nil {
+					b.Fatal(err)
+				}
+				(Windows{}).UsageFor(filepath.Join(dir, entry.Name()), info)
+			}
+		}
+	})
+}
+
 func TestWindowsUsageReportsOrdinaryClusterAllocation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "one-byte.bin")
 	if err := os.WriteFile(path, []byte{1}, 0o600); err != nil {
@@ -176,6 +296,10 @@ func TestWindowsUsageReportsSparseAllocation(t *testing.T) {
 	usage := (Windows{}).UsageFor(path, info)
 	if usage.AllocatedSize >= info.Size() {
 		t.Fatalf("allocated size = %d, want less than logical size %d", usage.AllocatedSize, info.Size())
+	}
+	batchedUsage := batchedUsageForTest(t, path)
+	if batchedUsage.AllocatedSize != usage.AllocatedSize {
+		t.Fatalf("batched sparse allocation = %d, want %d", batchedUsage.AllocatedSize, usage.AllocatedSize)
 	}
 }
 
@@ -231,6 +355,28 @@ func TestWindowsUsageReportsCompressedAllocation(t *testing.T) {
 	if usage.AllocatedSize >= info.Size() {
 		t.Fatalf("allocated size = %d, want less than compressed logical size %d", usage.AllocatedSize, info.Size())
 	}
+	batchedUsage := batchedUsageForTest(t, path)
+	if batchedUsage.AllocatedSize != usage.AllocatedSize {
+		t.Fatalf("batched compressed allocation = %d, want %d", batchedUsage.AllocatedSize, usage.AllocatedSize)
+	}
+}
+
+func batchedUsageForTest(t *testing.T, path string) FileUsage {
+	t.Helper()
+	entries, err := (Windows{}).ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == filepath.Base(path) {
+			if !entry.HasUsage {
+				t.Fatal("batched Windows usage is unavailable")
+			}
+			return entry.Usage
+		}
+	}
+	t.Fatalf("%q was not returned by batched directory enumeration", path)
+	return FileUsage{}
 }
 
 func TestWindowsIsHiddenUsesFileAttribute(t *testing.T) {

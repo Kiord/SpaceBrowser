@@ -21,7 +21,19 @@ type FileUsage struct {
 	LinkCount     uint64
 }
 
+// DirectoryEntry carries metadata that a platform can obtain while enumerating
+// a directory. HasUsage and HasHidden allow the scanner to avoid repeating
+// per-file system calls when the enumeration API already returned those values.
+type DirectoryEntry struct {
+	os.DirEntry
+	Usage     FileUsage
+	HasUsage  bool
+	Hidden    bool
+	HasHidden bool
+}
+
 type API interface {
+	ReadDir(string) ([]DirectoryEntry, error)
 	UsageFor(string, os.FileInfo) FileUsage
 	BaseName(string) string
 	IsHidden(string) bool
@@ -41,6 +53,18 @@ type API interface {
 // -------- defaults (POSIX-ish + xdg-open) --------
 
 type Default struct{}
+
+func (Default) ReadDir(path string) ([]DirectoryEntry, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]DirectoryEntry, len(entries))
+	for i, entry := range entries {
+		result[i].DirEntry = entry
+	}
+	return result, nil
+}
 
 func (Default) UsageFor(_ string, fi os.FileInfo) FileUsage {
 	return FileUsage{AllocatedSize: fi.Size(), LinkCount: 1}

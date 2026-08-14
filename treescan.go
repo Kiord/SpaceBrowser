@@ -52,7 +52,7 @@ type Scanner struct {
 	nodes         []*Node
 	nodesMu       sync.Mutex
 	idCounter     int64
-	seen          map[platform.FileIdentity]struct{}
+	seen          map[platform.FileIdentity]*Node
 	seenMu        sync.Mutex
 	seenDirs      map[string]struct{}
 	seenDirsMu    sync.Mutex
@@ -77,7 +77,7 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		profile:    p,
 		sem:        make(chan struct{}, maxWorkers),
 		maxWorkers: maxWorkers,
-		seen:       make(map[platform.FileIdentity]struct{}),
+		seen:       make(map[platform.FileIdentity]*Node),
 		seenDirs:   make(map[string]struct{}),
 		ctx:        context.Background(),
 	}
@@ -132,11 +132,15 @@ func (s *Scanner) seenDirectory(path string) bool {
 	return exists
 }
 
-func (s *Scanner) seenOnce(identity platform.FileIdentity) bool {
+func (s *Scanner) recordIdentity(identity platform.FileIdentity, node *Node) bool {
 	s.seenMu.Lock()
-	_, ok := s.seen[identity]
+	existing, ok := s.seen[identity]
 	if !ok {
-		s.seen[identity] = struct{}{}
+		s.seen[identity] = node
+	} else if existing != nil {
+		// The exact link count is not part of Windows directory enumeration.
+		// Seeing the same identity is enough to flag deletion for a rescan.
+		existing.LinkCount = 2
 	}
 	s.seenMu.Unlock()
 	return ok
@@ -199,7 +203,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
 
-	entries, err := os.ReadDir(abs)
+	entries, err := platform.Impl.ReadDir(abs)
 	if err != nil {
 		// unreadable directory -> return empty folder
 		return root, nil
@@ -222,11 +226,12 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 	defer flushProcessed()
 
-	for _, de := range entries {
+	for _, entry := range entries {
 		if err := s.ctx.Err(); err != nil {
 			return nil, err
 		}
 		completeNow := func() bool {
+			de := entry.DirEntry
 			name := de.Name()
 			full := filepath.Join(abs, name)
 
@@ -248,8 +253,14 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				isDir = info.IsDir()
 			}
 
-			if s.profile.SkipHidden && platform.Impl.IsHidden(full) {
-				return true
+			if s.profile.SkipHidden {
+				hidden := entry.Hidden
+				if !entry.HasHidden {
+					hidden = platform.Impl.IsHidden(full)
+				}
+				if hidden {
+					return true
+				}
 			}
 
 			if isDir {
@@ -278,14 +289,17 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				return true
 			}
 
-			usage := platform.Impl.UsageFor(full, info)
-			sz := usage.AllocatedSize
-			if usage.HasIdentity && s.seenOnce(usage.Identity) {
-				return true
+			usage := entry.Usage
+			if !entry.HasUsage || isSymlink {
+				usage = platform.Impl.UsageFor(full, info)
 			}
-			atomic.AddInt64(&s.bytesProcessed, sz)
+			sz := usage.AllocatedSize
 
 			if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
+				if usage.HasIdentity && s.recordIdentity(usage.Identity, nil) {
+					return true
+				}
+				atomic.AddInt64(&s.bytesProcessed, sz)
 				smallFilesSize += sz
 				smallFileCount++
 				atomic.AddInt64(fileCount, 1)
@@ -302,6 +316,10 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				ModTime:   info.ModTime().Unix(),
 				LinkCount: usage.LinkCount,
 			}
+			if usage.HasIdentity && s.recordIdentity(usage.Identity, child) {
+				return true
+			}
+			atomic.AddInt64(&s.bytesProcessed, sz)
 			s.assignID(child)
 			root.Children = append(root.Children, child)
 			root.Size += sz
