@@ -18,8 +18,9 @@ type TreeStore struct {
 }
 
 type DeleteResult struct {
-	FileCount int `json:"fileCount"`
-	DirCount  int `json:"dirCount"`
+	FileCount      int  `json:"fileCount"`
+	DirCount       int  `json:"dirCount"`
+	RescanRequired bool `json:"rescanRequired"`
 }
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) {
@@ -101,6 +102,7 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 	}
 
 	var deletedFiles, deletedDirs int
+	rescanRequired := false
 	var detach func(*Node)
 	detach = func(current *Node) {
 		if current == nil {
@@ -113,6 +115,8 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 				deletedDirs++
 			} else {
 				deletedFiles++
+				// Removing one hard link may not release its shared allocation.
+				rescanRequired = rescanRequired || current.LinkCount > 1
 			}
 		}
 		for _, child := range current.Children {
@@ -126,5 +130,5 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
-	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount}, nil
+	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
 }

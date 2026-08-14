@@ -21,9 +21,10 @@ func (Darwin) UsageFor(_ string, fi os.FileInfo) FileUsage {
 				Low:    uint64(st.Ino),
 			},
 			HasIdentity: true,
+			LinkCount:   uint64(st.Nlink),
 		}
 	}
-	return FileUsage{AllocatedSize: fi.Size()}
+	return FileUsage{AllocatedSize: fi.Size(), LinkCount: 1}
 }
 func (Darwin) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {

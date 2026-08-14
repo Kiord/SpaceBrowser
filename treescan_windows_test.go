@@ -6,10 +6,45 @@ import (
 	"os"
 	"path/filepath"
 	"spacebrowser/internal/platform"
+	"strings"
 	"testing"
 
 	winapi "golang.org/x/sys/windows"
 )
+
+func TestScannerTraversesExplicitMappedDriveRoot(t *testing.T) {
+	mappedRoot := os.Getenv("SPACEBROWSER_TEST_MAPPED_DRIVE")
+	if mappedRoot == "" {
+		t.Skip("SPACEBROWSER_TEST_MAPPED_DRIVE is not configured")
+	}
+	root, err := os.MkdirTemp(mappedRoot, "spacebrowser-scan-")
+	if err != nil {
+		t.Fatalf("create mapped-drive test root: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "content.bin"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	if !profile.SkipNetworkFS {
+		t.Fatal("test requires network filesystem skipping to be enabled")
+	}
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	scanned, err := scanner.buildTree(root, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 1 || dirCount != 2 || len(scanned.Children) != 1 || !scanned.Children[0].IsFolder || !strings.EqualFold(scanned.Children[0].Name, "nested") {
+		t.Fatalf("mapped-root scan = %d files, %d directories, children %+v; want nested content", fileCount, dirCount, scanned.Children)
+	}
+}
 
 func TestScannerSkipsWindowsHiddenAttribute(t *testing.T) {
 	dir := t.TempDir()
@@ -75,6 +110,9 @@ func TestScannerCountsHardLinkedFileOnce(t *testing.T) {
 	usage := platform.Impl.UsageFor(original, mustStat(t, original))
 	if root.Size != usage.AllocatedSize {
 		t.Fatalf("root size = %d, want one allocation of %d", root.Size, usage.AllocatedSize)
+	}
+	if root.Children[0].LinkCount < 2 {
+		t.Fatalf("scanned hard-link count = %d, want at least 2", root.Children[0].LinkCount)
 	}
 }
 

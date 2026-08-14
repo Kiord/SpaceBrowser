@@ -85,7 +85,7 @@ async function confirmSelectedDeletion() {
     dismissMovingToast();
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
-    if (AppState.profile?.rescanOnDelete) {
+    if (AppState.profile?.rescanOnDelete || result.rescanRequired) {
       if (AppState.scanRootPath) byId("pathInput").value = AppState.scanRootPath;
       await analyze();
     } else {

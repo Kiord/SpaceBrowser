@@ -19,6 +19,15 @@ type Windows struct{ Default }
 var windowsNetworkRoots sync.Map
 var getCompressedFileSizeW = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetCompressedFileSizeW")
 
+type windowsFileStandardInfo struct {
+	AllocationSize int64
+	EndOfFile      int64
+	NumberOfLinks  uint32
+	DeletePending  byte
+	Directory      byte
+	_              [2]byte
+}
+
 type windowsFileIDInfo struct {
 	VolumeSerialNumber uint64
 	FileID             [16]byte
@@ -100,8 +109,17 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 	if err != nil {
 		return usage
 	}
-	if allocatedSize, ok := windowsAllocatedSize(pathPtr); ok {
-		usage.AllocatedSize = allocatedSize
+	attributes, attributesErr := windows.GetFileAttributes(pathPtr)
+	usesSpecialAllocation := attributesErr == nil && attributes&(windows.FILE_ATTRIBUTE_COMPRESSED|windows.FILE_ATTRIBUTE_SPARSE_FILE) != 0
+	specialAllocationAvailable := false
+	// FILE_STANDARD_INFO provides cluster allocation for ordinary files.
+	// Compressed and sparse files need GetCompressedFileSizeW for their
+	// physically allocated data instead.
+	if usesSpecialAllocation {
+		if allocatedSize, ok := windowsAllocatedSize(pathPtr); ok {
+			usage.AllocatedSize = allocatedSize
+			specialAllocationAvailable = true
+		}
 	}
 
 	handle, err := windows.CreateFile(
@@ -118,6 +136,20 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 	}
 	defer windows.CloseHandle(handle)
 
+	var standard windowsFileStandardInfo
+	if err := windows.GetFileInformationByHandleEx(
+		handle,
+		windows.FileStandardInfo,
+		(*byte)(unsafe.Pointer(&standard)),
+		uint32(unsafe.Sizeof(standard)),
+	); err == nil {
+		if standard.AllocationSize >= 0 && !specialAllocationAvailable {
+			usage.AllocatedSize = standard.AllocationSize
+		}
+		if standard.NumberOfLinks > 0 {
+			usage.LinkCount = uint64(standard.NumberOfLinks)
+		}
+	}
 	var id windowsFileIDInfo
 	if err := windows.GetFileInformationByHandleEx(
 		handle,

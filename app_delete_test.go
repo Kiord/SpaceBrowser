@@ -77,3 +77,22 @@ func TestTreeStoreDeleteNodeRejectsRoot(t *testing.T) {
 		t.Fatal("moveToTrash was called for the root")
 	}
 }
+
+func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "hard-link.bin")
+	if err := os.WriteFile(target, []byte("shared"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := &Node{ID: 0, ParentID: -1, Size: 6, IsFolder: true}
+	file := &Node{ID: 1, ParentID: 0, FullPath: target, Size: 6, LinkCount: 2}
+	root.Children = []*Node{file}
+	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
+
+	result, err := store.DeleteNode(file.ID, func(string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.RescanRequired {
+		t.Fatal("deleting a multiply linked file did not require a rescan")
+	}
+}

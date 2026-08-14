@@ -111,6 +111,9 @@ func TestWindowsUsageIdentifiesHardLinks(t *testing.T) {
 	if originalUsage.Identity != linkUsage.Identity {
 		t.Fatalf("hard-link identities differ: %+v and %+v", originalUsage.Identity, linkUsage.Identity)
 	}
+	if originalUsage.LinkCount < 2 || linkUsage.LinkCount < 2 {
+		t.Fatalf("hard-link counts = %d and %d, want at least 2", originalUsage.LinkCount, linkUsage.LinkCount)
+	}
 	otherInfo, err := os.Stat(other)
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +121,25 @@ func TestWindowsUsageIdentifiesHardLinks(t *testing.T) {
 	otherUsage := windowsPlatform.UsageFor(other, otherInfo)
 	if !otherUsage.HasIdentity || originalUsage.Identity == otherUsage.Identity {
 		t.Fatalf("distinct files have invalid identities: %+v and %+v", originalUsage.Identity, otherUsage.Identity)
+	}
+}
+
+func TestWindowsUsageReportsOrdinaryClusterAllocation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "one-byte.bin")
+	if err := os.WriteFile(path, []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	usage := (Windows{}).UsageFor(path, info)
+	if usage.AllocatedSize <= info.Size() {
+		t.Fatalf("allocated size = %d, want greater than one-byte logical size", usage.AllocatedSize)
+	}
+	if usage.LinkCount != 1 {
+		t.Fatalf("link count = %d, want 1", usage.LinkCount)
 	}
 }
 

@@ -35,7 +35,8 @@ type Node struct {
 	DiskTotal int64 `json:"disk_total,omitempty"`
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
-	ModTime int64 `json:"-"`
+	ModTime   int64  `json:"-"`
+	LinkCount uint64 `json:"-"`
 }
 
 // ==============================
@@ -48,13 +49,14 @@ type Scanner struct {
 	maxWorkers int
 
 	// dense array: nodes[id] == *Node
-	nodes      []*Node
-	nodesMu    sync.Mutex
-	idCounter  int64
-	seen       map[platform.FileIdentity]struct{}
-	seenMu     sync.Mutex
-	seenDirs   map[string]struct{}
-	seenDirsMu sync.Mutex
+	nodes         []*Node
+	nodesMu       sync.Mutex
+	idCounter     int64
+	seen          map[platform.FileIdentity]struct{}
+	seenMu        sync.Mutex
+	seenDirs      map[string]struct{}
+	seenDirsMu    sync.Mutex
+	rootIsNetwork bool
 
 	workDiscovered int64
 	workProcessed  int64
@@ -173,6 +175,11 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		defer atomic.AddInt64(&s.workProcessed, 1)
 	}
 	abs := platform.Impl.Canonicalize(path)
+	if depth == 0 && s.profile.SkipNetworkFS {
+		// An explicitly selected network root is intentional. Skip network
+		// crossings only when the scan itself started on a local filesystem.
+		s.rootIsNetwork = platform.Impl.IsLikelyNetworkFS(abs)
+	}
 	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
 		return nil, nil
 	}
@@ -246,7 +253,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			if isDir {
-				if s.profile.SkipNetworkFS && platform.Impl.IsLikelyNetworkFS(full) {
+				if s.profile.SkipNetworkFS && !s.rootIsNetwork && platform.Impl.IsLikelyNetworkFS(full) {
 					return true
 				}
 				if info == nil {
@@ -286,13 +293,14 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			child := &Node{
-				ParentID: root.ID,
-				Name:     name,
-				FullPath: full,
-				Size:     sz,
-				IsFolder: false,
-				Depth:    depth + 1,
-				ModTime:  info.ModTime().Unix(),
+				ParentID:  root.ID,
+				Name:      name,
+				FullPath:  full,
+				Size:      sz,
+				IsFolder:  false,
+				Depth:     depth + 1,
+				ModTime:   info.ModTime().Unix(),
+				LinkCount: usage.LinkCount,
 			}
 			s.assignID(child)
 			root.Children = append(root.Children, child)

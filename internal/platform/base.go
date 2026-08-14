@@ -18,6 +18,7 @@ type FileUsage struct {
 	AllocatedSize int64
 	Identity      FileIdentity
 	HasIdentity   bool
+	LinkCount     uint64
 }
 
 type API interface {
@@ -42,7 +43,7 @@ type API interface {
 type Default struct{}
 
 func (Default) UsageFor(_ string, fi os.FileInfo) FileUsage {
-	return FileUsage{AllocatedSize: fi.Size()}
+	return FileUsage{AllocatedSize: fi.Size(), LinkCount: 1}
 }
 
 func (Default) BaseName(p string) string {
