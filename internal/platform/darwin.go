@@ -12,17 +12,18 @@ import (
 
 type Darwin struct{ Default }
 
-func (Darwin) AllocatedSize(fi os.FileInfo) int64 {
+func (Darwin) UsageFor(_ string, fi os.FileInfo) FileUsage {
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		return int64(st.Blocks) * 512
+		return FileUsage{
+			AllocatedSize: int64(st.Blocks) * 512,
+			Identity: FileIdentity{
+				Volume: uint64(st.Dev),
+				Low:    uint64(st.Ino),
+			},
+			HasIdentity: true,
+		}
 	}
-	return fi.Size()
-}
-func (Darwin) InodeKeyOf(fi os.FileInfo) (InodeKey, bool) {
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		return InodeKey{Dev: uint64(st.Dev), Ino: uint64(st.Ino)}, true
-	}
-	return InodeKey{}, false
+	return FileUsage{AllocatedSize: fi.Size()}
 }
 func (Darwin) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {

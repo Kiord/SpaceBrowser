@@ -8,11 +8,20 @@ import (
 	"strings"
 )
 
-type InodeKey struct{ Dev, Ino uint64 }
+type FileIdentity struct {
+	Volume uint64
+	Low    uint64
+	High   uint64
+}
+
+type FileUsage struct {
+	AllocatedSize int64
+	Identity      FileIdentity
+	HasIdentity   bool
+}
 
 type API interface {
-	AllocatedSize(os.FileInfo) int64
-	InodeKeyOf(os.FileInfo) (InodeKey, bool)
+	UsageFor(string, os.FileInfo) FileUsage
 	BaseName(string) string
 	IsHidden(string) bool
 	IsMountRoot(string) bool
@@ -32,8 +41,9 @@ type API interface {
 
 type Default struct{}
 
-func (Default) AllocatedSize(fi os.FileInfo) int64      { return fi.Size() }
-func (Default) InodeKeyOf(os.FileInfo) (InodeKey, bool) { return InodeKey{}, false }
+func (Default) UsageFor(_ string, fi os.FileInfo) FileUsage {
+	return FileUsage{AllocatedSize: fi.Size()}
+}
 
 func (Default) BaseName(p string) string {
 	b := filepath.Base(p)

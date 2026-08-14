@@ -51,7 +51,7 @@ type Scanner struct {
 	nodes      []*Node
 	nodesMu    sync.Mutex
 	idCounter  int64
-	seen       map[platform.InodeKey]struct{}
+	seen       map[platform.FileIdentity]struct{}
 	seenMu     sync.Mutex
 	seenDirs   map[string]struct{}
 	seenDirsMu sync.Mutex
@@ -75,7 +75,7 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		profile:    p,
 		sem:        make(chan struct{}, maxWorkers),
 		maxWorkers: maxWorkers,
-		seen:       make(map[platform.InodeKey]struct{}),
+		seen:       make(map[platform.FileIdentity]struct{}),
 		seenDirs:   make(map[string]struct{}),
 		ctx:        context.Background(),
 	}
@@ -130,11 +130,11 @@ func (s *Scanner) seenDirectory(path string) bool {
 	return exists
 }
 
-func (s *Scanner) seenOnce(k platform.InodeKey) bool {
+func (s *Scanner) seenOnce(identity platform.FileIdentity) bool {
 	s.seenMu.Lock()
-	_, ok := s.seen[k]
+	_, ok := s.seen[identity]
 	if !ok {
-		s.seen[k] = struct{}{}
+		s.seen[identity] = struct{}{}
 	}
 	s.seenMu.Unlock()
 	return ok
@@ -271,8 +271,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				return true
 			}
 
-			sz := platform.Impl.AllocatedSize(info)
-			if k, ok := platform.Impl.InodeKeyOf(info); ok && s.seenOnce(k) {
+			usage := platform.Impl.UsageFor(full, info)
+			sz := usage.AllocatedSize
+			if usage.HasIdentity && s.seenOnce(usage.Identity) {
 				return true
 			}
 			atomic.AddInt64(&s.bytesProcessed, sz)
