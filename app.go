@@ -19,6 +19,8 @@ import (
 
 type App struct {
 	ctx                 context.Context
+	initialScanPath     string
+	logger              *SeverityLogger
 	showFreeSpace       bool
 	profile             Profile
 	settingsPath        string
@@ -36,8 +38,15 @@ type App struct {
 }
 
 func NewApp() *App {
-	defaultPath, _ := defaultSettingsPath()
-	return newAppWithPaths(configuredSettingsPath(defaultPath), defaultPath)
+	return newAppWithLogger(NewSeverityLogger(defaultVerbosity, os.Stderr))
+}
+
+func newAppWithLogger(logger *SeverityLogger) *App {
+	defaultPath, err := defaultSettingsPath()
+	if err != nil {
+		logger.Warningf("could not determine the default settings location: %v", err)
+	}
+	return newAppWithPathsAndLogger(configuredSettingsPath(defaultPath), defaultPath, logger)
 }
 
 func newApp(settingsPath string) *App {
@@ -45,16 +54,39 @@ func newApp(settingsPath string) *App {
 }
 
 func newAppWithPaths(settingsPath, defaultPath string) *App {
+	return newAppWithPathsAndLogger(settingsPath, defaultPath, NewSeverityLogger(defaultVerbosity, os.Stderr))
+}
+
+func newAppWithPathsAndLogger(settingsPath, defaultPath string, logger *SeverityLogger) *App {
 	profile := *defaultProfile()
 	if settingsPath != "" {
 		if savedProfile, err := loadSettings(settingsPath); err == nil {
 			profile = savedProfile
+		} else if !os.IsNotExist(err) {
+			logger.Warningf("could not load settings from %s: %v; using defaults", settingsPath, err)
 		}
 	}
-	return &App{showFreeSpace: true, profile: profile, settingsPath: settingsPath, defaultSettingsPath: defaultPath}
+	return &App{
+		showFreeSpace:       true,
+		profile:             profile,
+		settingsPath:        settingsPath,
+		defaultSettingsPath: defaultPath,
+		logger:              logger,
+	}
 }
 
-func (a *App) Startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) Startup(ctx context.Context) {
+	a.ctx = ctx
+	a.logger.Debugf("application runtime initialized")
+}
+
+func (a *App) Shutdown(context.Context) {
+	a.logger.Infof("SpaceBrowser stopped")
+}
+
+func (a *App) GetInitialScanPath() string {
+	return a.initialScanPath
+}
 
 func (a *App) SetShowFreeSpace(show bool) {
 	a.settingsMu.Lock()
@@ -322,6 +354,7 @@ func (a *App) CancelScan() {
 	cancel := a.scanCancel
 	a.scanMu.RUnlock()
 	if cancel != nil {
+		a.logger.Infof("cancelling active scan")
 		cancel()
 	}
 }
@@ -361,6 +394,7 @@ func (a *App) updateScanPath(generation uint64, path string) {
 	a.scanMu.Lock()
 	if a.scanGeneration == generation && a.scanActive {
 		a.scanPath = path
+		a.logger.Tracef("scanning %s", path)
 	}
 	a.scanMu.Unlock()
 }
@@ -379,8 +413,11 @@ func (a *App) finishScan(generation uint64) {
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	path, err := validateScanPath(path)
 	if err != nil {
+		a.logger.Errorf("cannot start scan: %v", err)
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
+	startedAt := time.Now()
+	a.logger.Infof("scan started: %s", path)
 
 	var volumeUsage *disk.UsageStat
 	var totalBytes int64
@@ -395,6 +432,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()
+	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
 	var files, dirs int64
 	scanner := NewScanner(&profile, 0)
 	a.attachScanner(generation, scanner)
@@ -402,8 +440,10 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	if err != nil {
 		if ctx.Err() != nil {
+			a.logger.Warningf("scan cancelled after %s: %s", time.Since(startedAt).Round(time.Millisecond), path)
 			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
 		}
+		a.logger.Errorf("scan failed after %s: %v", time.Since(startedAt).Round(time.Millisecond), err)
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
@@ -431,6 +471,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	})
 
 	store.Replace(root, scanner.Nodes(), int(files), int(dirs))
+	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", time.Since(startedAt).Round(time.Millisecond), path, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil
 }
 

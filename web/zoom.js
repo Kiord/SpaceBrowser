@@ -1,4 +1,5 @@
 import { AppState, AppearanceState, SCALE_MAX, SCALE_MIN, SCALE_SMOOTH_BASE, SCALE_STEP_KEYS, getScale } from "./state.js";
+import { logDebug } from "./logging.js";
 
 let redraw = async () => {};
 
@@ -9,7 +10,7 @@ async function setScale(next, reason = "") {
   AppState.zoomFactor = clamped;
   AppearanceState.zoomFactor = clamped;
   AppState.scale = getScale() * clamped;
-  console.debug(`scale ${reason}:`, old, "→", clamped);
+  logDebug(`scale ${reason}:`, old, "→", clamped);
   await redraw();
 }
 

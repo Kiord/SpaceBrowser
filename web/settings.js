@@ -10,6 +10,7 @@ import {
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
 import { shortcutFromEvent } from "./key-bindings.js";
+import { logError } from "./logging.js";
 import {
   AppState,
   AppearanceState,
@@ -225,7 +226,7 @@ async function openSettings() {
     showSettingsTab("general");
     dialog.showModal();
   } catch (error) {
-    console.error("loading settings failed:", error);
+    logError("loading settings failed:", error);
   }
 }
 

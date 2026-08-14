@@ -1,8 +1,9 @@
-import { DefaultPath } from "./wailsjs/go/main/App.js";
+import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { hideContextMenu, initFileActions } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";
 import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
+import { logError } from "./logging.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
 import { analyze, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
@@ -39,13 +40,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     await loadSettingsState();
   } catch (error) {
-    console.error("loading settings failed:", error);
+    logError("loading settings failed:", error);
   }
 
   try {
-    const defaultPath = await DefaultPath();
-    if (defaultPath) byId("pathInput").value = defaultPath;
+    const initialPath = await GetInitialScanPath();
+    const startPath = initialPath || await DefaultPath();
+    if (startPath) byId("pathInput").value = startPath;
+    if (initialPath) await analyze();
   } catch (error) {
-    console.error("loading default path failed:", error);
+    logError("loading initial path failed:", error);
   }
 });

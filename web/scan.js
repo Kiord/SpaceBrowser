@@ -3,6 +3,7 @@ import { byId, query, queryAll } from "./dom.js";
 import { formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
+import { logDebug, logError } from "./logging.js";
 import { AppState } from "./state.js";
 
 let redraw = async () => {};
@@ -83,7 +84,7 @@ function startScanProgress(path) {
           ? `Remaining ~${formatDuration(progress.remainingMilliseconds, true)}`
           : "";
     } catch (error) {
-      console.debug("scan progress unavailable:", error);
+      logDebug("scan progress unavailable:", error);
     } finally {
       if (token === scanProgressToken) scanProgressTimer = setTimeout(poll, 120);
     }
@@ -110,7 +111,7 @@ async function cancelActiveScan() {
   try {
     await CancelScan();
   } catch (error) {
-    console.error("cancelling scan failed:", error);
+    logError("cancelling scan failed:", error);
   }
 }
 
@@ -127,9 +128,7 @@ export async function analyze() {
     startScanProgress(canonicalPath);
     scanStarted = true;
 
-    console.time("scan");
     const { rootId, fileCount, dirCount } = await GetFullTree(canonicalPath);
-    console.timeEnd("scan");
     stopScanProgress();
     scanStarted = false;
 
@@ -144,7 +143,7 @@ export async function analyze() {
     AppState.selectedNodeId = null;
     await redraw();
   } catch (error) {
-    console.error("analyze failed:", error);
+    logError("analyze failed:", error);
     if (scanStarted) stopScanProgress();
     const wasCancelled = scanCancelledByUser || /scan cancelled/i.test(String(error));
     if (!wasCancelled) showErrorToast(error);

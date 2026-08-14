@@ -1,5 +1,6 @@
 import { PickFolder } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
+import { logWarning } from "./logging.js";
 import { AppState } from "./state.js";
 
 async function chooseFolder() {
@@ -17,7 +18,7 @@ async function chooseFolder() {
       input.setSelectionRange(input.value.length, input.value.length);
     }, 0);
   } catch (error) {
-    console.warn("folder pick cancelled or failed:", error);
+    logWarning("folder pick cancelled or failed:", error);
   } finally {
     AppState.pickingFolderDialogIsOpen = false;
     button.disabled = false;

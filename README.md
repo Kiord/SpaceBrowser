@@ -59,6 +59,17 @@ To build SpaceBrowser from source, install Go 1.25 and the [Wails v2 development
 git clone https://github.com/Kiord/SpaceBrowser.git
 cd SpaceBrowser
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+```
+
+On Windows, build the console-subsystem executable so the terminal waits correctly and displays logs:
+
+```powershell
+wails build -windowsconsole
+```
+
+On Linux and macOS, use:
+
+```sh
 wails build
 ```
 
@@ -66,6 +77,12 @@ The resulting application is placed in `build/bin`. For development with automat
 
 ```sh
 wails dev
+```
+
+Pass application arguments through Wails during development with `-appargs`, for example:
+
+```sh
+wails dev -appargs '"C:\Users" -v 4'
 ```
 
 ## Trigger a new release

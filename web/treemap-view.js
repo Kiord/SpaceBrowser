@@ -3,6 +3,7 @@ import { hideContextMenu, showContextMenu } from "./file-actions.js";
 import { debounce, formatCompactSize, formatModTime, formatSize } from "./format.js";
 import { navigateToSelected, updateNavButtons } from "./navigation.js";
 import { hideRectToast, initNotifications } from "./notifications.js";
+import { logDebug, logWarning } from "./logging.js";
 import { AppState, AppearanceState, FONT_SIZE, activePalette, getScale } from "./state.js";
 
 let redrawGeneration = 0;
@@ -22,9 +23,9 @@ export async function redraw() {
   const h = AppState.colorCanvas.height;
   const scale = AppState.scale;
 
-  console.time("layout(fetch)");
+  const layoutStartedAt = performance.now();
   const payload = await apiLayoutById(nodeId, w, h, scale);
-  console.timeEnd("layout(fetch)");
+  logDebug(`layout fetch: ${(performance.now() - layoutStartedAt).toFixed(1)} ms`);
 
   const stateChanged = AppState.node_id !== nodeId
     || AppState.colorCanvas.width !== w
@@ -34,16 +35,16 @@ export async function redraw() {
 
   const rects = payload?.rects;
   if (!Array.isArray(rects)) {
-    console.warn("no rects from backend");
+    logWarning("no rects from backend");
     return;
   }
 
   AppState.rects = rects;
   AppState.selectedRectIndex = null;
 
-  console.time("draw");
+  const drawStartedAt = performance.now();
   drawTreemap(rects);
-  console.timeEnd("draw");
+  logDebug(`treemap draw: ${(performance.now() - drawStartedAt).toFixed(1)} ms`);
 
   updateNavButtons();
 }

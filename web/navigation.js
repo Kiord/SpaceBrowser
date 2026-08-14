@@ -1,6 +1,7 @@
 import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
+import { logError } from "./logging.js";
 import { AppState } from "./state.js";
 
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
@@ -71,7 +72,7 @@ export async function toggleFreeSpace(event) {
     await redraw();
   } catch (error) {
     button.setAttribute("aria-pressed", String(wasChecked));
-    console.error("toggleFreeSpace failed:", error);
+    logError("toggleFreeSpace failed:", error);
   }
 }
 
