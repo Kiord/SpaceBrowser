@@ -53,6 +53,8 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 
 Prebuilt versions for Windows, macOS, and Linux are available on the [Releases page](https://github.com/Kiord/SpaceBrowser/releases). Download the file for your platform and run it directly.
 
+SpaceBrowser can be launched in a terminal, see `--help`.
+
 To build SpaceBrowser from source, install Go 1.25 and the [Wails v2 development dependencies](https://wails.io/docs/gettingstarted/installation/), then run:
 
 ```sh
