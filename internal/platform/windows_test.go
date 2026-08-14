@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"unsafe"
 
 	winapi "golang.org/x/sys/windows"
 )
@@ -60,6 +61,21 @@ func TestWindowsNetworkFilesystemClassification(t *testing.T) {
 func TestWindowsLocalTempPathIsNotNetworkFilesystem(t *testing.T) {
 	if (Windows{}).IsLikelyNetworkFS(t.TempDir()) {
 		t.Fatal("local temporary directory was classified as a network filesystem")
+	}
+}
+
+func TestWindowsMappedDriveIntegration(t *testing.T) {
+	path := os.Getenv("SPACEBROWSER_TEST_MAPPED_DRIVE")
+	if path == "" {
+		t.Skip("SPACEBROWSER_TEST_MAPPED_DRIVE is not configured")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("mapped drive is inaccessible: %v", err)
+	}
+	var cache sync.Map
+	clean := (Windows{}).Canonicalize(path)
+	if !isWindowsNetworkFS(clean, windowsVolumePath, windowsDriveType, &cache) {
+		t.Fatalf("mapped drive %q was not classified as a network filesystem", path)
 	}
 }
 
@@ -138,6 +154,60 @@ func TestWindowsUsageReportsSparseAllocation(t *testing.T) {
 	usage := (Windows{}).UsageFor(path, info)
 	if usage.AllocatedSize >= info.Size() {
 		t.Fatalf("allocated size = %d, want less than logical size %d", usage.AllocatedSize, info.Size())
+	}
+}
+
+func TestWindowsUsageReportsCompressedAllocation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "compressed.bin")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const logicalSize = 8 << 20
+	data := make([]byte, logicalSize)
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	const compressionFormatDefault uint16 = 1
+	compressionFormat := compressionFormatDefault
+	var returned uint32
+	if err := winapi.DeviceIoControl(
+		winapi.Handle(file.Fd()),
+		winapi.FSCTL_SET_COMPRESSION,
+		(*byte)(unsafe.Pointer(&compressionFormat)),
+		uint32(unsafe.Sizeof(compressionFormat)),
+		nil,
+		0,
+		&returned,
+		nil,
+	); err != nil {
+		file.Close()
+		t.Skipf("filesystem compression is unavailable: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathPtr, err := windowsPathPtr(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes, err := winapi.GetFileAttributes(pathPtr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attributes&winapi.FILE_ATTRIBUTE_COMPRESSED == 0 {
+		t.Skip("filesystem accepted compression request without enabling compression")
+	}
+	usage := (Windows{}).UsageFor(path, info)
+	if usage.AllocatedSize >= info.Size() {
+		t.Fatalf("allocated size = %d, want less than compressed logical size %d", usage.AllocatedSize, info.Size())
 	}
 }
 

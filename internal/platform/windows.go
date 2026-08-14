@@ -17,19 +17,24 @@ import (
 type Windows struct{ Default }
 
 var windowsNetworkRoots sync.Map
-
-type windowsFileStandardInfo struct {
-	AllocationSize int64
-	EndOfFile      int64
-	NumberOfLinks  uint32
-	DeletePending  byte
-	Directory      byte
-	_              [2]byte
-}
+var getCompressedFileSizeW = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetCompressedFileSizeW")
 
 type windowsFileIDInfo struct {
 	VolumeSerialNumber uint64
 	FileID             [16]byte
+}
+
+func windowsAllocatedSize(path *uint16) (int64, bool) {
+	var high uint32
+	lowResult, _, callErr := getCompressedFileSizeW.Call(
+		uintptr(unsafe.Pointer(path)),
+		uintptr(unsafe.Pointer(&high)),
+	)
+	low := uint32(lowResult)
+	if low == ^uint32(0) && callErr != windows.ERROR_SUCCESS {
+		return 0, false
+	}
+	return int64(uint64(high)<<32 | uint64(low)), true
 }
 
 func windowsPathPtr(path string) (*uint16, error) {
@@ -95,6 +100,9 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 	if err != nil {
 		return usage
 	}
+	if allocatedSize, ok := windowsAllocatedSize(pathPtr); ok {
+		usage.AllocatedSize = allocatedSize
+	}
 
 	handle, err := windows.CreateFile(
 		pathPtr,
@@ -109,16 +117,6 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		return usage
 	}
 	defer windows.CloseHandle(handle)
-
-	var standard windowsFileStandardInfo
-	if err := windows.GetFileInformationByHandleEx(
-		handle,
-		windows.FileStandardInfo,
-		(*byte)(unsafe.Pointer(&standard)),
-		uint32(unsafe.Sizeof(standard)),
-	); err == nil && standard.AllocationSize >= 0 {
-		usage.AllocatedSize = standard.AllocationSize
-	}
 
 	var id windowsFileIDInfo
 	if err := windows.GetFileInformationByHandleEx(

@@ -30,8 +30,28 @@ jobs:
             libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - name: Run tests
-        if: runner.os != 'Linux'
+        if: runner.os == 'macOS'
         run: go test ./...
+
+      - name: Run tests with mapped-drive integration
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $shareName = 'SpaceBrowserTest'
+          $sharePath = Join-Path $env:RUNNER_TEMP 'spacebrowser-network-share'
+          $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          New-Item -ItemType Directory -Path $sharePath -Force | Out-Null
+          New-SmbShare -Name $shareName -Path $sharePath -FullAccess $account | Out-Null
+          try {
+            New-SmbMapping -LocalPath 'Z:' -RemotePath "\\localhost\$shareName" -Persistent $false | Out-Null
+            $env:SPACEBROWSER_TEST_MAPPED_DRIVE = 'Z:\'
+            go test ./...
+            if ($LASTEXITCODE -ne 0) { throw "go test failed with exit code $LASTEXITCODE" }
+          } finally {
+            Remove-SmbMapping -LocalPath 'Z:' -Force -UpdateProfile -ErrorAction SilentlyContinue
+            Remove-SmbShare -Name $shareName -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Run tests with race detector
         if: runner.os == 'Linux'
