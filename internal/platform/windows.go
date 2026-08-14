@@ -29,9 +29,21 @@ type windowsFileIDInfo struct {
 	FileID             [16]byte
 }
 
+func windowsPathPtr(path string) (*uint16, error) {
+	path = filepath.Clean(path)
+	if filepath.IsAbs(path) && !strings.HasPrefix(path, `\\?\`) && !strings.HasPrefix(path, `\\.\`) {
+		if strings.HasPrefix(path, `\\`) {
+			path = `\\?\UNC\` + strings.TrimPrefix(path, `\\`)
+		} else {
+			path = `\\?\` + path
+		}
+	}
+	return windows.UTF16PtrFromString(path)
+}
+
 func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 	usage := w.Default.UsageFor(path, fi)
-	pathPtr, err := windows.UTF16PtrFromString(path)
+	pathPtr, err := windowsPathPtr(path)
 	if err != nil {
 		return usage
 	}
@@ -85,6 +97,18 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		usage.HasIdentity = true
 	}
 	return usage
+}
+
+func (w Windows) IsHidden(path string) bool {
+	pathPtr, err := windowsPathPtr(path)
+	if err != nil {
+		return w.Default.IsHidden(path)
+	}
+	attributes, err := windows.GetFileAttributes(pathPtr)
+	if err != nil {
+		return w.Default.IsHidden(path)
+	}
+	return attributes&windows.FILE_ATTRIBUTE_HIDDEN != 0
 }
 
 func (Windows) BaseName(p string) string {

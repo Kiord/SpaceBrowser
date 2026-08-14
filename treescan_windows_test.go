@@ -7,7 +7,46 @@ import (
 	"path/filepath"
 	"spacebrowser/internal/platform"
 	"testing"
+
+	winapi "golang.org/x/sys/windows"
 )
+
+func TestScannerSkipsWindowsHiddenAttribute(t *testing.T) {
+	dir := t.TempDir()
+	hiddenPath := filepath.Join(dir, "hidden.txt")
+	dotPath := filepath.Join(dir, ".visible.txt")
+	for _, path := range []string{hiddenPath, dotPath} {
+		if err := os.WriteFile(path, []byte("content"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hiddenPtr, err := winapi.UTF16PtrFromString(hiddenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes, err := winapi.GetFileAttributes(hiddenPtr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := winapi.SetFileAttributes(hiddenPtr, attributes|winapi.FILE_ATTRIBUTE_HIDDEN); err != nil {
+		t.Fatal(err)
+	}
+
+	profile := defaultProfile()
+	profile.SkipHidden = true
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(dir, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fileCount != 1 || len(root.Children) != 1 || root.Children[0].Name != ".visible.txt" {
+		t.Fatalf("visible scan results = count %d, children %+v; want only .visible.txt", fileCount, root.Children)
+	}
+}
 
 func TestScannerCountsHardLinkedFileOnce(t *testing.T) {
 	dir := t.TempDir()

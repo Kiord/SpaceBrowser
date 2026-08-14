@@ -90,6 +90,37 @@ func TestWindowsUsageReportsSparseAllocation(t *testing.T) {
 	}
 }
 
+func TestWindowsIsHiddenUsesFileAttribute(t *testing.T) {
+	dir := t.TempDir()
+	hiddenPath := filepath.Join(dir, "hidden.txt")
+	dotPath := filepath.Join(dir, ".visible.txt")
+	for _, path := range []string{hiddenPath, dotPath} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	hiddenPtr, err := windowsPathPtr(hiddenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes, err := winapi.GetFileAttributes(hiddenPtr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := winapi.SetFileAttributes(hiddenPtr, attributes|winapi.FILE_ATTRIBUTE_HIDDEN); err != nil {
+		t.Fatal(err)
+	}
+
+	windowsPlatform := Windows{}
+	if !windowsPlatform.IsHidden(hiddenPath) {
+		t.Fatal("file with the Windows hidden attribute was not hidden")
+	}
+	if windowsPlatform.IsHidden(dotPath) {
+		t.Fatal("dot-prefixed file without the Windows hidden attribute was hidden")
+	}
+}
+
 func TestWindowsCanonicalizeDriveLetter(t *testing.T) {
 	windows := Windows{}
 	for input, want := range map[string]string{
