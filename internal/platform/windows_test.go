@@ -4,13 +4,64 @@ package platform
 
 import (
 	"bytes"
+	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	winapi "golang.org/x/sys/windows"
 )
+
+func TestWindowsNetworkFilesystemClassification(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		volumeRoot string
+		driveType  uint32
+		lookupErr  error
+		want       bool
+	}{
+		{name: "UNC", path: `\\server\share\folder`, want: true},
+		{name: "mapped drive", path: `Z:\folder`, volumeRoot: `Z:\`, driveType: winapi.DRIVE_REMOTE, want: true},
+		{name: "local drive", path: `C:\folder`, volumeRoot: `C:\`, driveType: winapi.DRIVE_FIXED, want: false},
+		{name: "lookup failure", path: `Q:\folder`, lookupErr: errors.New("unavailable"), want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var cache sync.Map
+			volumeCalls := 0
+			driveTypeCalls := 0
+			volumePath := func(string) (string, error) {
+				volumeCalls++
+				return test.volumeRoot, test.lookupErr
+			}
+			driveType := func(string) uint32 {
+				driveTypeCalls++
+				return test.driveType
+			}
+			if got := isWindowsNetworkFS(test.path, volumePath, driveType, &cache); got != test.want {
+				t.Fatalf("isWindowsNetworkFS(%q) = %v, want %v", test.path, got, test.want)
+			}
+			if test.name == "mapped drive" {
+				if got := isWindowsNetworkFS(test.path, volumePath, driveType, &cache); !got {
+					t.Fatal("cached mapped drive was not remote")
+				}
+				if volumeCalls != 2 || driveTypeCalls != 1 {
+					t.Fatalf("cached calls = %d volume and %d type, want 2 and 1", volumeCalls, driveTypeCalls)
+				}
+			}
+		})
+	}
+}
+
+func TestWindowsLocalTempPathIsNotNetworkFilesystem(t *testing.T) {
+	if (Windows{}).IsLikelyNetworkFS(t.TempDir()) {
+		t.Fatal("local temporary directory was classified as a network filesystem")
+	}
+}
 
 func TestWindowsUsageIdentifiesHardLinks(t *testing.T) {
 	dir := t.TempDir()
@@ -131,6 +182,14 @@ func TestWindowsCanonicalizeDriveLetter(t *testing.T) {
 		if got := windows.Canonicalize(input); got != want {
 			t.Errorf("Canonicalize(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestWindowsCanonicalizeExtendedUNCPath(t *testing.T) {
+	const input = `\\?\UNC\server\share\folder`
+	const want = `\\server\share\folder`
+	if got := (Windows{}).Canonicalize(input); got != want {
+		t.Fatalf("Canonicalize(%q) = %q, want %q", input, got, want)
 	}
 }
 

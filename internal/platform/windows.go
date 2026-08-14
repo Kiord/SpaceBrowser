@@ -8,12 +8,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 type Windows struct{ Default }
+
+var windowsNetworkRoots sync.Map
 
 type windowsFileStandardInfo struct {
 	AllocationSize int64
@@ -39,6 +42,51 @@ func windowsPathPtr(path string) (*uint16, error) {
 		}
 	}
 	return windows.UTF16PtrFromString(path)
+}
+
+func windowsVolumePath(path string) (string, error) {
+	pathPtr, err := windowsPathPtr(path)
+	if err != nil {
+		return "", err
+	}
+	buffer := make([]uint16, 32768)
+	if err := windows.GetVolumePathName(pathPtr, &buffer[0], uint32(len(buffer))); err != nil {
+		return "", err
+	}
+	return windows.UTF16ToString(buffer), nil
+}
+
+func windowsDriveType(root string) uint32 {
+	rootPtr, err := windowsPathPtr(root)
+	if err != nil {
+		return windows.DRIVE_UNKNOWN
+	}
+	return windows.GetDriveType(rootPtr)
+}
+
+func isWindowsNetworkFS(
+	path string,
+	volumePath func(string) (string, error),
+	driveType func(string) uint32,
+	cache *sync.Map,
+) bool {
+	if strings.HasPrefix(path, `\\`) {
+		return true
+	}
+	root, err := volumePath(path)
+	if err != nil || root == "" {
+		return false
+	}
+	cacheKey := strings.ToLower(filepath.Clean(root))
+	if cached, ok := cache.Load(cacheKey); ok {
+		return cached.(bool)
+	}
+	typeID := driveType(root)
+	remote := typeID == windows.DRIVE_REMOTE
+	if typeID != windows.DRIVE_UNKNOWN && typeID != windows.DRIVE_NO_ROOT_DIR {
+		cache.Store(cacheKey, remote)
+	}
+	return remote
 }
 
 func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
@@ -127,7 +175,11 @@ func (Windows) Canonicalize(p string) string {
 	p = strings.TrimSpace(p)
 
 	// Strip extended prefix
-	p = strings.TrimPrefix(p, `\\?\`)
+	if strings.HasPrefix(strings.ToUpper(p), `\\?\UNC\`) {
+		p = `\\` + p[len(`\\?\UNC\`):]
+	} else {
+		p = strings.TrimPrefix(p, `\\?\`)
+	}
 
 	// Normalize slashes
 	p = strings.ReplaceAll(p, "/", `\`)
@@ -187,7 +239,7 @@ func (Windows) DefaultStartPath() string {
 
 func (w Windows) IsLikelyNetworkFS(p string) bool {
 	clean := w.Canonicalize(p)
-	return strings.HasPrefix(clean, `\\`)
+	return isWindowsNetworkFS(clean, windowsVolumePath, windowsDriveType, &windowsNetworkRoots)
 }
 
 func init() { Impl = Windows{} }
