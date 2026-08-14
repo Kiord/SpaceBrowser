@@ -3,13 +3,89 @@
 package platform
 
 import (
+	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 type Windows struct{ Default }
+
+type windowsFileStandardInfo struct {
+	AllocationSize int64
+	EndOfFile      int64
+	NumberOfLinks  uint32
+	DeletePending  byte
+	Directory      byte
+	_              [2]byte
+}
+
+type windowsFileIDInfo struct {
+	VolumeSerialNumber uint64
+	FileID             [16]byte
+}
+
+func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
+	usage := w.Default.UsageFor(path, fi)
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return usage
+	}
+
+	handle, err := windows.CreateFile(
+		pathPtr,
+		windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0,
+	)
+	if err != nil {
+		return usage
+	}
+	defer windows.CloseHandle(handle)
+
+	var standard windowsFileStandardInfo
+	if err := windows.GetFileInformationByHandleEx(
+		handle,
+		windows.FileStandardInfo,
+		(*byte)(unsafe.Pointer(&standard)),
+		uint32(unsafe.Sizeof(standard)),
+	); err == nil && standard.AllocationSize >= 0 {
+		usage.AllocatedSize = standard.AllocationSize
+	}
+
+	var id windowsFileIDInfo
+	if err := windows.GetFileInformationByHandleEx(
+		handle,
+		windows.FileIdInfo,
+		(*byte)(unsafe.Pointer(&id)),
+		uint32(unsafe.Sizeof(id)),
+	); err == nil {
+		usage.Identity = FileIdentity{
+			Volume: id.VolumeSerialNumber,
+			Low:    binary.LittleEndian.Uint64(id.FileID[:8]),
+			High:   binary.LittleEndian.Uint64(id.FileID[8:]),
+		}
+		usage.HasIdentity = true
+		return usage
+	}
+
+	var legacy windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &legacy); err == nil {
+		usage.Identity = FileIdentity{
+			Volume: uint64(legacy.VolumeSerialNumber),
+			Low:    uint64(legacy.FileIndexHigh)<<32 | uint64(legacy.FileIndexLow),
+		}
+		usage.HasIdentity = true
+	}
+	return usage
+}
 
 func (Windows) BaseName(p string) string {
 	b := filepath.Base(p)
