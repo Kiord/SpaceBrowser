@@ -52,8 +52,8 @@ func TestWindowsNetworkFilesystemClassification(t *testing.T) {
 				if got := isWindowsNetworkFS(test.path, volumePath, driveType, &cache); !got {
 					t.Fatal("cached mapped drive was not remote")
 				}
-				if volumeCalls != 2 || driveTypeCalls != 1 {
-					t.Fatalf("cached calls = %d volume and %d type, want 2 and 1", volumeCalls, driveTypeCalls)
+				if volumeCalls != 0 || driveTypeCalls != 1 {
+					t.Fatalf("cached calls = %d volume and %d type, want 0 and 1", volumeCalls, driveTypeCalls)
 				}
 			}
 		})

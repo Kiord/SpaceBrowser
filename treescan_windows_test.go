@@ -124,3 +124,20 @@ func mustStat(t *testing.T, path string) os.FileInfo {
 	}
 	return info
 }
+
+func BenchmarkScannerConfiguredWindowsRoot(b *testing.B) {
+	rootPath := os.Getenv("SPACEBROWSER_BENCH_SCAN_ROOT")
+	if rootPath == "" {
+		b.Skip("SPACEBROWSER_BENCH_SCAN_ROOT is not configured")
+	}
+	for i := 0; i < b.N; i++ {
+		profile := defaultProfile()
+		scanner := NewScanner(profile, 0)
+		var fileCount, dirCount int64
+		if _, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount); err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(fileCount), "files")
+		b.ReportMetric(float64(dirCount), "dirs")
+	}
+}

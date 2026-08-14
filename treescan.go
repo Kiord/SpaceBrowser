@@ -264,8 +264,16 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			if isDir {
-				if s.profile.SkipNetworkFS && !s.rootIsNetwork && platform.Impl.IsLikelyNetworkFS(full) {
-					return true
+				if s.profile.SkipNetworkFS && !s.rootIsNetwork {
+					networkPath := full
+					if isSymlink {
+						if resolved, err := filepath.EvalSymlinks(full); err == nil {
+							networkPath = resolved
+						}
+					}
+					if platform.Impl.IsLikelyNetworkFS(networkPath) {
+						return true
+					}
 				}
 				if info == nil {
 					info, _ = de.Info()

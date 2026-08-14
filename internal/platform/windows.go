@@ -87,10 +87,21 @@ func isWindowsNetworkFS(
 	if strings.HasPrefix(path, `\\`) {
 		return true
 	}
+	// A normal drive-letter path cannot cross to another drive without a
+	// reparse point, and the scanner does not traverse directory reparse
+	// points. Classify the drive root once instead of calling
+	// GetVolumePathNameW for every directory in the tree.
+	if volume := filepath.VolumeName(path); len(volume) == 2 && volume[1] == ':' {
+		return cachedWindowsDriveIsRemote(volume+`\`, driveType, cache)
+	}
 	root, err := volumePath(path)
 	if err != nil || root == "" {
 		return false
 	}
+	return cachedWindowsDriveIsRemote(root, driveType, cache)
+}
+
+func cachedWindowsDriveIsRemote(root string, driveType func(string) uint32, cache *sync.Map) bool {
 	cacheKey := strings.ToLower(filepath.Clean(root))
 	if cached, ok := cache.Load(cacheKey); ok {
 		return cached.(bool)
