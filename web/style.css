@@ -7,6 +7,17 @@ html, body {
   background: #fff;
 }
 
+/* Suppress platform-native mouse focus rings while retaining a consistent
+   indicator when the user navigates buttons with the keyboard. */
+button:focus {
+  outline: none;
+}
+
+html.keyboard-navigation button:focus {
+  outline: 1px solid #666;
+  outline-offset: 1px;
+}
+
 .container {
   display: flex;
   flex-direction: column;

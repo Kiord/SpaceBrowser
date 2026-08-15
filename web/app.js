@@ -11,7 +11,18 @@ import { getSelectedRect, initTreemapView, isPassiveRect, redraw } from "./treem
 import { initZoom } from "./zoom.js";
 import { AppState } from "./state.js";
 
+function initButtonFocusVisibility() {
+  const keyboardClass = "keyboard-navigation";
+  window.addEventListener("keydown", event => {
+    if (event.key === "Tab") document.documentElement.classList.add(keyboardClass);
+  }, true);
+  window.addEventListener("pointerdown", () => {
+    document.documentElement.classList.remove(keyboardClass);
+  }, true);
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+  initButtonFocusVisibility();
   byId("pathGroup").removeAttribute("title");
   const analyzeButton = byId("analyzeButton");
   analyzeButton.removeAttribute("title");
