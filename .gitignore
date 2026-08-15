@@ -15,6 +15,7 @@
 
 build/
 web/wailsjs
+output/
 
 .vscode/
 .idea/
