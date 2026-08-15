@@ -6,8 +6,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"spacebrowser/internal/platform"
+	"strings"
 	"testing"
 )
+
+type readDirFailurePlatform struct {
+	platform.API
+	failingPath string
+}
+
+func (p readDirFailurePlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
+	if filepath.Clean(path) == filepath.Clean(p.failingPath) {
+		return nil, os.ErrPermission
+	}
+	return p.API.ReadDir(path)
+}
 
 func TestScannerCollectsWideTreeConcurrently(t *testing.T) {
 	const branchCount = 256
@@ -194,5 +208,80 @@ func TestScannerAggregatesSmallFiles(t *testing.T) {
 		if !foundRect {
 			t.Fatalf("small-files aggregate rectangle not found for %q", folder.Name)
 		}
+	}
+}
+
+func TestScannerReportsUnreadableDirectories(t *testing.T) {
+	rootPath := t.TempDir()
+	unreadablePath := filepath.Join(rootPath, "unreadable")
+	if err := os.Mkdir(unreadablePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	originalPlatform := platform.Impl
+	platform.Impl = readDirFailurePlatform{API: originalPlatform, failingPath: unreadablePath}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root == nil || len(root.Children) != 1 {
+		t.Fatalf("partial tree = %+v, want unreadable folder node", root)
+	}
+
+	report := scanner.Report()
+	if report.Errors[scanErrorReadDirectory] != 1 || report.TotalErrors() != 1 {
+		t.Fatalf("report errors = %+v, want one unreadable directory", report.Errors)
+	}
+	if len(report.Examples) != 1 || report.Examples[0].Path != unreadablePath {
+		t.Fatalf("report examples = %+v, want %q", report.Examples, unreadablePath)
+	}
+}
+
+func TestScanReportLoggingIsCompactAndInformative(t *testing.T) {
+	var output strings.Builder
+	app := &App{logger: NewSeverityLogger(verbosityInfo, &output)}
+	report := ScanReportSnapshot{}
+	report.Skipped[scanSkipHidden] = 3
+	report.Errors[scanErrorFileMetadata] = 2
+	report.Examples = []ScanReportExample{{
+		Reason: scanErrorLabels[scanErrorFileMetadata],
+		Path:   "missing.dat",
+		Error:  "access denied",
+	}}
+
+	app.logScanReport(report)
+	logged := output.String()
+	for _, expected := range []string{
+		"scan report: 3 skipped paths, 2 filesystem or metadata errors",
+		"hidden=3",
+		"file metadata=2",
+		"missing.dat: access denied",
+	} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("scan report log %q does not contain %q", logged, expected)
+		}
+	}
+}
+
+func TestScanReportErrorRetentionFollowsVerbosityMode(t *testing.T) {
+	compact := NewScanReport(maximumScanReportExamples)
+	verbose := NewScanReport(-1)
+	for index := 0; index < maximumScanReportExamples+3; index++ {
+		err := fmt.Errorf("failure %d", index)
+		compact.RecordError(scanErrorFileMetadata, fmt.Sprintf("compact-%d", index), err)
+		verbose.RecordError(scanErrorFileMetadata, fmt.Sprintf("verbose-%d", index), err)
+	}
+
+	if got := len(compact.Snapshot().Examples); got != maximumScanReportExamples {
+		t.Fatalf("compact report retained %d entries, want %d", got, maximumScanReportExamples)
+	}
+	if got := len(verbose.Snapshot().Examples); got != maximumScanReportExamples+3 {
+		t.Fatalf("verbose report retained %d entries, want %d", got, maximumScanReportExamples+3)
 	}
 }

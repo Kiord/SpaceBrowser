@@ -32,6 +32,10 @@ func NewSeverityLogger(verbosity int, output io.Writer) *SeverityLogger {
 	return &SeverityLogger{verbosity: verbosity, output: output}
 }
 
+func (l *SeverityLogger) Enabled(level int) bool {
+	return l != nil && level <= l.verbosity
+}
+
 func (l *SeverityLogger) log(level int, label, message string) {
 	if l == nil || l.output == nil || level > l.verbosity {
 		return

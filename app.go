@@ -435,10 +435,12 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
 	var files, dirs int64
 	scanner := NewScanner(&profile, 0)
+	scanner.ReportAllErrors(a.logger.Enabled(verbosityDebug))
 	a.attachScanner(generation, scanner)
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	if err != nil {
+		a.logScanReport(scanner.Report())
 		if ctx.Err() != nil {
 			a.logger.Warningf("scan cancelled after %s: %s", time.Since(startedAt).Round(time.Millisecond), path)
 			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
@@ -471,8 +473,28 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	})
 
 	store.Replace(root, scanner.Nodes(), int(files), int(dirs))
+	a.logScanReport(scanner.Report())
 	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", time.Since(startedAt).Round(time.Millisecond), path, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil
+}
+
+func (a *App) logScanReport(report ScanReportSnapshot) {
+	skipped := report.TotalSkipped()
+	errors := report.TotalErrors()
+	a.logger.Infof("scan report: %d skipped paths, %d filesystem or metadata errors", skipped, errors)
+	if skipped > 0 {
+		a.logger.Infof("scan report skipped: %s", formatNonzeroScanCounts(report.Skipped[:], scanSkipLabels[:]))
+	}
+	if errors > 0 {
+		a.logger.Infof("scan report errors: %s", formatNonzeroScanCounts(report.Errors[:], scanErrorLabels[:]))
+		entryLabel := "example"
+		if a.logger.Enabled(verbosityDebug) {
+			entryLabel = "error"
+		}
+		for _, example := range report.Examples {
+			a.logger.Infof("scan report %s [%s]: %s: %s", entryLabel, example.Reason, example.Path, example.Error)
+		}
+	}
 }
 
 func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {

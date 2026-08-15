@@ -173,7 +173,11 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 				if pathPtr, err := windowsPathPtr(parent + `\` + name); err == nil {
 					if allocated, ok := windowsAllocatedSize(pathPtr); ok {
 						usage.AllocatedSize = allocated
+					} else {
+						usage.MetadataError = fmt.Errorf("read compressed or sparse allocation size")
 					}
+				} else {
+					usage.MetadataError = fmt.Errorf("prepare Windows metadata path: %w", err)
 				}
 			}
 

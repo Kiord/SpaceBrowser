@@ -24,7 +24,11 @@ func (Darwin) UsageFor(_ string, fi os.FileInfo) FileUsage {
 			LinkCount:   uint64(st.Nlink),
 		}
 	}
-	return FileUsage{AllocatedSize: fi.Size(), LinkCount: 1}
+	return FileUsage{
+		AllocatedSize: fi.Size(),
+		LinkCount:     1,
+		MetadataError: fmt.Errorf("native macOS file metadata is unavailable"),
+	}
 }
 func (Darwin) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {

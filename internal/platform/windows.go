@@ -4,6 +4,8 @@ package platform
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -116,11 +118,16 @@ func cachedWindowsDriveIsRemote(root string, driveType func(string) uint32, cach
 
 func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 	usage := w.Default.UsageFor(path, fi)
+	var metadataErrors []error
 	pathPtr, err := windowsPathPtr(path)
 	if err != nil {
+		usage.MetadataError = fmt.Errorf("prepare Windows metadata path: %w", err)
 		return usage
 	}
 	attributes, attributesErr := windows.GetFileAttributes(pathPtr)
+	if attributesErr != nil {
+		metadataErrors = append(metadataErrors, fmt.Errorf("read file attributes: %w", attributesErr))
+	}
 	usesSpecialAllocation := attributesErr == nil && attributes&(windows.FILE_ATTRIBUTE_COMPRESSED|windows.FILE_ATTRIBUTE_SPARSE_FILE) != 0
 	specialAllocationAvailable := false
 	// FILE_STANDARD_INFO provides cluster allocation for ordinary files.
@@ -130,6 +137,8 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		if allocatedSize, ok := windowsAllocatedSize(pathPtr); ok {
 			usage.AllocatedSize = allocatedSize
 			specialAllocationAvailable = true
+		} else {
+			metadataErrors = append(metadataErrors, fmt.Errorf("read compressed or sparse allocation size"))
 		}
 	}
 
@@ -143,6 +152,8 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		0,
 	)
 	if err != nil {
+		metadataErrors = append(metadataErrors, fmt.Errorf("open for metadata: %w", err))
+		usage.MetadataError = errors.Join(metadataErrors...)
 		return usage
 	}
 	defer windows.CloseHandle(handle)
@@ -160,20 +171,24 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		if standard.NumberOfLinks > 0 {
 			usage.LinkCount = uint64(standard.NumberOfLinks)
 		}
+	} else {
+		metadataErrors = append(metadataErrors, fmt.Errorf("read allocation and link metadata: %w", err))
 	}
 	var id windowsFileIDInfo
-	if err := windows.GetFileInformationByHandleEx(
+	idErr := windows.GetFileInformationByHandleEx(
 		handle,
 		windows.FileIdInfo,
 		(*byte)(unsafe.Pointer(&id)),
 		uint32(unsafe.Sizeof(id)),
-	); err == nil {
+	)
+	if idErr == nil {
 		usage.Identity = FileIdentity{
 			Volume: id.VolumeSerialNumber,
 			Low:    binary.LittleEndian.Uint64(id.FileID[:8]),
 			High:   binary.LittleEndian.Uint64(id.FileID[8:]),
 		}
 		usage.HasIdentity = true
+		usage.MetadataError = errors.Join(metadataErrors...)
 		return usage
 	}
 
@@ -184,7 +199,10 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 			Low:    uint64(legacy.FileIndexHigh)<<32 | uint64(legacy.FileIndexLow),
 		}
 		usage.HasIdentity = true
+	} else {
+		metadataErrors = append(metadataErrors, fmt.Errorf("read file identity: %w", errors.Join(idErr, err)))
 	}
+	usage.MetadataError = errors.Join(metadataErrors...)
 	return usage
 }
 

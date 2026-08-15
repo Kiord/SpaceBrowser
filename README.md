@@ -28,6 +28,7 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 - Optional free-space node for scanned volumes
 - Configurable small-file aggregation threshold
 - Live scan progress, time estimate, and cancellation
+- Terminal report for skipped paths and filesystem or metadata errors
 - Exclusions for paths, hidden files, symlinks, and network filesystems
 
 ### Navigation and actions

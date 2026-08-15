@@ -19,6 +19,7 @@ type FileUsage struct {
 	Identity      FileIdentity
 	HasIdentity   bool
 	LinkCount     uint64
+	MetadataError error
 }
 
 // DirectoryEntry carries metadata that a platform can obtain while enumerating

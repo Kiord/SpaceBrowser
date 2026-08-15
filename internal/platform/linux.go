@@ -26,7 +26,11 @@ func (Linux) UsageFor(_ string, fi os.FileInfo) FileUsage {
 			LinkCount:   uint64(st.Nlink),
 		}
 	}
-	return FileUsage{AllocatedSize: fi.Size(), LinkCount: 1}
+	return FileUsage{
+		AllocatedSize: fi.Size(),
+		LinkCount:     1,
+		MetadataError: fmt.Errorf("native Linux file metadata is unavailable"),
+	}
 }
 func (Linux) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {

@@ -66,6 +66,7 @@ type Scanner struct {
 	onProgress     func(string)
 	progressMu     sync.Mutex
 	lastProgressAt time.Time
+	report         ScanReport
 }
 
 // NewScanner(maxWorkers<=0 => sensible default)
@@ -80,6 +81,7 @@ func NewScanner(p *Profile, maxWorkers int) *Scanner {
 		seen:       make(map[platform.FileIdentity]*Node),
 		seenDirs:   make(map[string]struct{}),
 		ctx:        context.Background(),
+		report:     NewScanReport(maximumScanReportExamples),
 	}
 }
 
@@ -97,6 +99,18 @@ func (s *Scanner) WorkProgress() (processed, discovered int64) {
 
 func (s *Scanner) BytesProcessed() int64 {
 	return atomic.LoadInt64(&s.bytesProcessed)
+}
+
+func (s *Scanner) Report() ScanReportSnapshot {
+	return s.report.Snapshot()
+}
+
+func (s *Scanner) ReportAllErrors(reportAll bool) {
+	if reportAll {
+		s.report.SetExampleLimit(-1)
+		return
+	}
+	s.report.SetExampleLimit(maximumScanReportExamples)
 }
 
 func (s *Scanner) reportProgress(path string) {
@@ -117,6 +131,8 @@ func (s *Scanner) reportProgress(path string) {
 func (s *Scanner) seenDirectory(path string) bool {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved
+	} else {
+		s.report.RecordError(scanErrorResolveSymlink, path, err)
 	}
 	path = platform.Impl.Canonicalize(path)
 	if runtime.GOOS == "windows" {
@@ -185,6 +201,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		s.rootIsNetwork = platform.Impl.IsLikelyNetworkFS(abs)
 	}
 	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
+		s.report.RecordSkip(scanSkipRepeatedDirectory)
 		return nil, nil
 	}
 	s.reportProgress(abs)
@@ -205,7 +222,8 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 
 	entries, err := platform.Impl.ReadDir(abs)
 	if err != nil {
-		// unreadable directory -> return empty folder
+		s.report.RecordError(scanErrorReadDirectory, abs, err)
+		// Preserve the partial tree while making the omission visible in the report.
 		return root, nil
 	}
 	atomic.AddInt64(&s.workDiscovered, int64(len(entries)))
@@ -236,6 +254,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			full := filepath.Join(abs, name)
 
 			if shouldExclude(s.profile, full) {
+				s.report.RecordSkip(scanSkipExcluded)
 				return true
 			}
 			isSymlink := de.Type()&os.ModeSymlink != 0
@@ -243,11 +262,13 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			isDir := de.IsDir()
 			if isSymlink {
 				if !s.profile.FollowSymlinks {
+					s.report.RecordSkip(scanSkipSymlink)
 					return true
 				}
 				var err error
 				info, err = os.Stat(full)
 				if err != nil {
+					s.report.RecordError(scanErrorSymlinkTarget, full, err)
 					return true
 				}
 				isDir = info.IsDir()
@@ -259,6 +280,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					hidden = platform.Impl.IsHidden(full)
 				}
 				if hidden {
+					s.report.RecordSkip(scanSkipHidden)
 					return true
 				}
 			}
@@ -269,14 +291,21 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					if isSymlink {
 						if resolved, err := filepath.EvalSymlinks(full); err == nil {
 							networkPath = resolved
+						} else {
+							s.report.RecordError(scanErrorResolveSymlink, full, err)
 						}
 					}
 					if platform.Impl.IsLikelyNetworkFS(networkPath) {
+						s.report.RecordSkip(scanSkipNetwork)
 						return true
 					}
 				}
 				if info == nil {
-					info, _ = de.Info()
+					var err error
+					info, err = de.Info()
+					if err != nil {
+						s.report.RecordError(scanErrorDirectoryMetadata, full, err)
+					}
 				}
 				var modTime int64
 				if info != nil {
@@ -290,10 +319,12 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				var err error
 				info, err = de.Info()
 				if err != nil {
+					s.report.RecordError(scanErrorFileMetadata, full, err)
 					return true
 				}
 			}
 			if !info.Mode().IsRegular() {
+				s.report.RecordSkip(scanSkipNonRegular)
 				return true
 			}
 
@@ -301,10 +332,14 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			if !entry.HasUsage || isSymlink {
 				usage = platform.Impl.UsageFor(full, info)
 			}
+			if usage.MetadataError != nil {
+				s.report.RecordError(scanErrorUsageMetadata, full, usage.MetadataError)
+			}
 			sz := usage.AllocatedSize
 
 			if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
 				if usage.HasIdentity && s.recordIdentity(usage.Identity, nil) {
+					s.report.RecordSkip(scanSkipDuplicateIdentity)
 					return true
 				}
 				atomic.AddInt64(&s.bytesProcessed, sz)
@@ -325,6 +360,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				LinkCount: usage.LinkCount,
 			}
 			if usage.HasIdentity && s.recordIdentity(usage.Identity, child) {
+				s.report.RecordSkip(scanSkipDuplicateIdentity)
 				return true
 			}
 			atomic.AddInt64(&s.bytesProcessed, sz)
@@ -380,12 +416,18 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				go func(sd subdir) {
 					defer wg.Done()
 					defer func() { <-s.sem }()
-					n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+					n, err := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+					if err != nil && s.ctx.Err() == nil {
+						s.report.RecordError(scanErrorSubdirectory, sd.full, err)
+					}
 					appendResult(n)
 				}(sd)
 			default:
 				// inline to avoid deadlock
-				n, _ := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+				n, err := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+				if err != nil && s.ctx.Err() == nil {
+					s.report.RecordError(scanErrorSubdirectory, sd.full, err)
+				}
 				appendResult(n)
 			}
 		}
