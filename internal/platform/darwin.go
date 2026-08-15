@@ -20,8 +20,9 @@ func (Darwin) UsageFor(_ string, fi os.FileInfo) FileUsage {
 				Volume: uint64(st.Dev),
 				Low:    uint64(st.Ino),
 			},
-			HasIdentity: true,
-			LinkCount:   uint64(st.Nlink),
+			HasIdentity:  true,
+			LinkCount:    uint64(st.Nlink),
+			HasLinkCount: true,
 		}
 	}
 	return FileUsage{

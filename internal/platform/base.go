@@ -18,8 +18,12 @@ type FileUsage struct {
 	AllocatedSize int64
 	Identity      FileIdentity
 	HasIdentity   bool
-	LinkCount     uint64
-	MetadataError error
+	// IdentityNeedsConfirmation is set for identifiers, such as the legacy
+	// 64-bit Windows directory ID, that are not guaranteed collision-free.
+	IdentityNeedsConfirmation bool
+	LinkCount                 uint64
+	HasLinkCount              bool
+	MetadataError             error
 }
 
 // DirectoryEntry carries metadata that a platform can obtain while enumerating

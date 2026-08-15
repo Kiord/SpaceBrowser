@@ -8,6 +8,9 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -30,23 +33,85 @@ type windowsDirectoryRecordLayout struct {
 	idSize           int
 }
 
+// These headers mirror the fixed portion of the corresponding Windows SDK
+// structures. FileName is the first element of a variable-length UTF-16 name.
+// Offsets used by the parser are derived from these declarations rather than
+// repeated as unexplained byte constants.
+type windowsFileIDExtdDirectoryHeader struct {
+	NextEntryOffset uint32
+	FileIndex       uint32
+	CreationTime    int64
+	LastAccessTime  int64
+	LastWriteTime   int64
+	ChangeTime      int64
+	EndOfFile       int64
+	AllocationSize  int64
+	FileAttributes  uint32
+	FileNameLength  uint32
+	EaSize          uint32
+	ReparsePointTag uint32
+	FileID          [16]byte
+	FileName        [1]uint16
+}
+
+type windowsFileIDBothDirectoryHeader struct {
+	NextEntryOffset uint32
+	FileIndex       uint32
+	CreationTime    int64
+	LastAccessTime  int64
+	LastWriteTime   int64
+	ChangeTime      int64
+	EndOfFile       int64
+	AllocationSize  int64
+	FileAttributes  uint32
+	FileNameLength  uint32
+	EaSize          uint32
+	ShortNameLength byte
+	Reserved        byte
+	ShortName       [12]uint16
+	FileID          uint64
+	FileName        [1]uint16
+}
+
+var windowsDirectoryLayoutByVolume sync.Map
+
 var windowsDirectoryLayouts = [...]windowsDirectoryRecordLayout{
 	{
 		class:            windows.FileIdExtdDirectoryInfo,
 		restart:          windows.FileIdExtdDirectoryRestartInfo,
-		nameOffset:       88,
-		reparseTagOffset: 68,
-		idOffset:         72,
+		nameOffset:       int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.FileName)),
+		reparseTagOffset: int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.ReparsePointTag)),
+		idOffset:         int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.FileID)),
 		idSize:           16,
 	},
 	{
 		class:            windows.FileIdBothDirectoryInfo,
 		restart:          windows.FileIdBothDirectoryRestartInfo,
-		nameOffset:       104,
-		reparseTagOffset: 64, // EaSize contains the tag for reparse points.
-		idOffset:         96,
+		nameOffset:       int(unsafe.Offsetof(windowsFileIDBothDirectoryHeader{}.FileName)),
+		reparseTagOffset: int(unsafe.Offsetof(windowsFileIDBothDirectoryHeader{}.EaSize)), // EaSize contains the tag for reparse points.
+		idOffset:         int(unsafe.Offsetof(windowsFileIDBothDirectoryHeader{}.FileID)),
 		idSize:           8,
 	},
+}
+
+var windowsCommonDirectoryOffsets = struct {
+	nextEntry      int
+	creation       int
+	lastAccess     int
+	lastWrite      int
+	endOfFile      int
+	allocation     int
+	attributes     int
+	fileNameLength int
+}{
+	nextEntry:      int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.NextEntryOffset)),
+	creation:       int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.CreationTime)),
+	lastAccess:     int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.LastAccessTime)),
+	lastWrite:      int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.LastWriteTime)),
+	endOfFile:      int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.EndOfFile)),
+	allocation:     int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.AllocationSize)),
+	attributes:     int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.FileAttributes)),
+	fileNameLength: int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.FileNameLength)),
 }
 
 type windowsBatchFileInfo struct {
@@ -128,20 +193,25 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 			return nil, fmt.Errorf("invalid Windows directory record offset %d", offset)
 		}
 		record := buffer[offset:]
-		next := int(binary.LittleEndian.Uint32(record[0:4]))
-		nameLength := int(binary.LittleEndian.Uint32(record[60:64]))
+		nextOffset := windowsCommonDirectoryOffsets.nextEntry
+		nameLengthOffset := windowsCommonDirectoryOffsets.fileNameLength
+		next := int(binary.LittleEndian.Uint32(record[nextOffset : nextOffset+4]))
+		nameLength := int(binary.LittleEndian.Uint32(record[nameLengthOffset : nameLengthOffset+4]))
 		name, ok := windowsUTF16String(record, layout.nameOffset, nameLength)
 		if !ok {
 			return nil, fmt.Errorf("invalid Windows directory record name length %d", nameLength)
 		}
 		if name != "." && name != ".." {
-			attributes := binary.LittleEndian.Uint32(record[56:60])
+			attributesOffset := windowsCommonDirectoryOffsets.attributes
+			endOfFileOffset := windowsCommonDirectoryOffsets.endOfFile
+			allocationOffset := windowsCommonDirectoryOffsets.allocation
+			attributes := binary.LittleEndian.Uint32(record[attributesOffset : attributesOffset+4])
 			reparseTag := binary.LittleEndian.Uint32(record[layout.reparseTagOffset : layout.reparseTagOffset+4])
-			logicalSize := binary.LittleEndian.Uint64(record[40:48])
-			allocationSize := binary.LittleEndian.Uint64(record[48:56])
-			creation := *(*syscall.Filetime)(unsafe.Pointer(&record[8]))
-			access := *(*syscall.Filetime)(unsafe.Pointer(&record[16]))
-			write := *(*syscall.Filetime)(unsafe.Pointer(&record[24]))
+			logicalSize := binary.LittleEndian.Uint64(record[endOfFileOffset : endOfFileOffset+8])
+			allocationSize := binary.LittleEndian.Uint64(record[allocationOffset : allocationOffset+8])
+			creation := *(*syscall.Filetime)(unsafe.Pointer(&record[windowsCommonDirectoryOffsets.creation]))
+			access := *(*syscall.Filetime)(unsafe.Pointer(&record[windowsCommonDirectoryOffsets.lastAccess]))
+			write := *(*syscall.Filetime)(unsafe.Pointer(&record[windowsCommonDirectoryOffsets.lastWrite]))
 			if logicalSize > math.MaxInt64 || allocationSize > math.MaxInt64 {
 				return nil, fmt.Errorf("Windows directory record size overflows int64")
 			}
@@ -159,8 +229,6 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 			usage := FileUsage{
 				AllocatedSize: int64(allocationSize),
 				Identity:      FileIdentity{Volume: volume},
-				HasIdentity:   hasVolume,
-				LinkCount:     1,
 			}
 			if layout.idSize == 16 {
 				usage.Identity.Low = binary.LittleEndian.Uint64(record[layout.idOffset : layout.idOffset+8])
@@ -168,6 +236,10 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 			} else {
 				usage.Identity.Low = binary.LittleEndian.Uint64(record[layout.idOffset : layout.idOffset+8])
 			}
+			// Extended IDs may legally be all zero when the filesystem does not
+			// support them. Such an ID must not participate in hard-link deduplication.
+			usage.HasIdentity = hasVolume && (usage.Identity.Low != 0 || usage.Identity.High != 0)
+			usage.IdentityNeedsConfirmation = usage.HasIdentity && layout.idSize == 8
 
 			if attributes&(windows.FILE_ATTRIBUTE_COMPRESSED|windows.FILE_ATTRIBUTE_SPARSE_FILE) != 0 {
 				if pathPtr, err := windowsPathPtr(parent + `\` + name); err == nil {
@@ -220,10 +292,21 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 	}
 	defer windows.CloseHandle(handle)
 
-	var volumeSerial uint32
-	volumeErr := windows.GetVolumeInformationByHandle(handle, nil, 0, &volumeSerial, nil, nil, nil, 0)
-	if volumeErr != nil {
-		return nil, volumeErr
+	var volumeSerial uint64
+	var directoryID windowsFileIDInfo
+	if err := windows.GetFileInformationByHandleEx(
+		handle,
+		windows.FileIdInfo,
+		(*byte)(unsafe.Pointer(&directoryID)),
+		uint32(unsafe.Sizeof(directoryID)),
+	); err == nil {
+		volumeSerial = directoryID.VolumeSerialNumber
+	} else {
+		var legacyVolumeSerial uint32
+		if err := windows.GetVolumeInformationByHandle(handle, nil, 0, &legacyVolumeSerial, nil, nil, nil, 0); err != nil {
+			return nil, err
+		}
+		volumeSerial = uint64(legacyVolumeSerial)
 	}
 
 	buffer := make([]byte, windowsDirectoryBufferSize)
@@ -238,7 +321,7 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 			return nil, err
 		}
 		class = layout.class
-		batch, err := parseWindowsDirectoryBuffer(buffer, layout, uint64(volumeSerial), true, path)
+		batch, err := parseWindowsDirectoryBuffer(buffer, layout, volumeSerial, true, path)
 		if err != nil {
 			return nil, err
 		}
@@ -246,14 +329,65 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 	}
 }
 
+func windowsDirectoryVolumeKey(path string) string {
+	if volume := filepath.VolumeName(path); volume != "" {
+		return strings.ToLower(filepath.Clean(volume))
+	}
+	return strings.ToLower(filepath.Clean(path))
+}
+
+func windowsLayoutOrder(volumeKey string) []int {
+	order := make([]int, 0, len(windowsDirectoryLayouts))
+	if cached, ok := windowsDirectoryLayoutByVolume.Load(volumeKey); ok {
+		index := cached.(int)
+		if index >= 0 && index < len(windowsDirectoryLayouts) {
+			order = append(order, index)
+		}
+	}
+	for index := range windowsDirectoryLayouts {
+		if len(order) == 0 || order[0] != index {
+			order = append(order, index)
+		}
+	}
+	return order
+}
+
+func allWindowsDirectoryIdentitiesMissing(entries []DirectoryEntry) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Usage.HasIdentity {
+			return false
+		}
+	}
+	return true
+}
+
 // ReadDir uses the rich, batched Windows directory records so scanning ordinary
 // files does not need to open a handle for every entry. Older or unusual file
 // systems fall back to the portable implementation.
 func (w Windows) ReadDir(path string) ([]DirectoryEntry, error) {
-	for _, layout := range windowsDirectoryLayouts {
-		if entries, err := readWindowsDirectory(path, layout); err == nil {
-			return entries, nil
+	volumeKey := windowsDirectoryVolumeKey(path)
+	var usableEntries []DirectoryEntry
+	for _, index := range windowsLayoutOrder(volumeKey) {
+		layout := windowsDirectoryLayouts[index]
+		entries, readErr := readWindowsDirectory(path, layout)
+		if readErr != nil {
+			continue
 		}
+		usableEntries = entries
+		// A zero extended ID means that the filesystem does not support the
+		// 128-bit form. Retry with the 64-bit format instead of treating every
+		// such entry as the same file.
+		if layout.idSize == 16 && allWindowsDirectoryIdentitiesMissing(entries) {
+			continue
+		}
+		windowsDirectoryLayoutByVolume.Store(volumeKey, index)
+		return entries, nil
+	}
+	if usableEntries != nil {
+		return usableEntries, nil
 	}
 	return w.Default.ReadDir(path)
 }

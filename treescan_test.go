@@ -16,6 +16,44 @@ type readDirFailurePlatform struct {
 	failingPath string
 }
 
+type collidingIdentityPlatform struct {
+	platform.API
+	root                      string
+	identityNeedsConfirmation bool
+	usageCalls                *int
+}
+
+func (p collidingIdentityPlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
+	entries, err := p.API.ReadDir(path)
+	if err != nil || filepath.Clean(path) != filepath.Clean(p.root) {
+		return entries, err
+	}
+	for index := range entries {
+		if entries[index].IsDir() {
+			continue
+		}
+		info, infoErr := entries[index].Info()
+		if infoErr != nil {
+			return nil, infoErr
+		}
+		entries[index].Usage = platform.FileUsage{
+			AllocatedSize:             info.Size(),
+			Identity:                  platform.FileIdentity{Volume: 1, Low: 1},
+			HasIdentity:               true,
+			IdentityNeedsConfirmation: p.identityNeedsConfirmation,
+		}
+		entries[index].HasUsage = true
+	}
+	return entries, nil
+}
+
+func (p collidingIdentityPlatform) UsageFor(path string, info os.FileInfo) platform.FileUsage {
+	if p.usageCalls != nil {
+		*p.usageCalls++
+	}
+	return p.API.UsageFor(path, info)
+}
+
 func (p readDirFailurePlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
 	if filepath.Clean(path) == filepath.Clean(p.failingPath) {
 		return nil, os.ErrPermission
@@ -240,6 +278,74 @@ func TestScannerReportsUnreadableDirectories(t *testing.T) {
 	}
 	if len(report.Examples) != 1 || report.Examples[0].Path != unreadablePath {
 		t.Fatalf("report examples = %+v, want %q", report.Examples, unreadablePath)
+	}
+}
+
+func TestScannerDoesNotDeduplicateUnconfirmedIdentityCollision(t *testing.T) {
+	rootPath := t.TempDir()
+	for _, name := range []string{"first.bin", "second.bin"} {
+		if err := os.WriteFile(filepath.Join(rootPath, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	originalPlatform := platform.Impl
+	usageCalls := 0
+	platform.Impl = collidingIdentityPlatform{
+		API:                       originalPlatform,
+		root:                      rootPath,
+		identityNeedsConfirmation: true,
+		usageCalls:                &usageCalls,
+	}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 2 || len(root.Children) != 2 {
+		t.Fatalf("identity collision produced %d files and %d nodes, want 2 and 2", fileCount, len(root.Children))
+	}
+	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 0 {
+		t.Fatalf("reported %d duplicate identities, want 0", got)
+	}
+	if usageCalls == 0 {
+		t.Fatal("untrusted identity collision was not confirmed")
+	}
+}
+
+func TestScannerTrustsStrongBatchedIdentityWithoutMetadataLookup(t *testing.T) {
+	rootPath := t.TempDir()
+	for _, name := range []string{"first.bin", "second.bin"} {
+		if err := os.WriteFile(filepath.Join(rootPath, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	originalPlatform := platform.Impl
+	usageCalls := 0
+	platform.Impl = collidingIdentityPlatform{API: originalPlatform, root: rootPath, usageCalls: &usageCalls}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 1 || len(root.Children) != 1 {
+		t.Fatalf("strong duplicate identity produced %d files and %d nodes, want 1 and 1", fileCount, len(root.Children))
+	}
+	if usageCalls != 0 {
+		t.Fatalf("strong duplicate identity triggered %d metadata lookups, want 0", usageCalls)
 	}
 }
 

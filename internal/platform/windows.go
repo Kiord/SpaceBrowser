@@ -170,6 +170,7 @@ func (w Windows) UsageFor(path string, fi os.FileInfo) FileUsage {
 		}
 		if standard.NumberOfLinks > 0 {
 			usage.LinkCount = uint64(standard.NumberOfLinks)
+			usage.HasLinkCount = true
 		}
 	} else {
 		metadataErrors = append(metadataErrors, fmt.Errorf("read allocation and link metadata: %w", err))

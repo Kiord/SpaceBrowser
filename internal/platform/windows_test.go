@@ -200,9 +200,57 @@ func TestParseWindowsDirectoryRecordLayouts(t *testing.T) {
 		if entry.Usage.AllocatedSize != 4096 || entry.Usage.Identity.Volume != 7 || entry.Usage.Identity.Low != 42 {
 			t.Fatalf("layout %d usage = %+v", layout.class, entry.Usage)
 		}
+		if got, want := entry.Usage.IdentityNeedsConfirmation, layout.idSize == 8; got != want {
+			t.Fatalf("layout %d confirmation requirement = %v, want %v", layout.class, got, want)
+		}
 		if layout.idSize == 16 && entry.Usage.Identity.High != 84 {
 			t.Fatalf("layout %d high identity = %d, want 84", layout.class, entry.Usage.Identity.High)
 		}
+	}
+}
+
+func TestWindowsDirectoryRecordLayoutOffsetsMatchSDK(t *testing.T) {
+	want := []windowsDirectoryRecordLayout{
+		{nameOffset: 88, reparseTagOffset: 68, idOffset: 72, idSize: 16},
+		{nameOffset: 104, reparseTagOffset: 64, idOffset: 96, idSize: 8},
+	}
+	for index, layout := range windowsDirectoryLayouts {
+		expected := want[index]
+		if layout.nameOffset != expected.nameOffset ||
+			layout.reparseTagOffset != expected.reparseTagOffset ||
+			layout.idOffset != expected.idOffset ||
+			layout.idSize != expected.idSize {
+			t.Fatalf("layout %d offsets = name %d, tag %d, id %d/%d; want name %d, tag %d, id %d/%d",
+				layout.class, layout.nameOffset, layout.reparseTagOffset, layout.idOffset, layout.idSize,
+				expected.nameOffset, expected.reparseTagOffset, expected.idOffset, expected.idSize)
+		}
+	}
+}
+
+func TestWindowsDirectoryRecordRejectsZeroIdentity(t *testing.T) {
+	for _, layout := range windowsDirectoryLayouts {
+		buffer := make([]byte, layout.nameOffset+2)
+		binary.LittleEndian.PutUint32(buffer[windowsCommonDirectoryOffsets.fileNameLength:windowsCommonDirectoryOffsets.fileNameLength+4], 2)
+		binary.LittleEndian.PutUint16(buffer[layout.nameOffset:layout.nameOffset+2], 'x')
+
+		entries, err := parseWindowsDirectoryBuffer(buffer, layout, 7, true, "")
+		if err != nil {
+			t.Fatalf("layout %d: %v", layout.class, err)
+		}
+		if len(entries) != 1 || entries[0].Usage.HasIdentity {
+			t.Fatalf("layout %d accepted zero identity: %+v", layout.class, entries)
+		}
+	}
+}
+
+func TestWindowsDirectoryLayoutCacheOrdersPreferredFormatFirst(t *testing.T) {
+	key := `x:`
+	windowsDirectoryLayoutByVolume.Delete(key)
+	defer windowsDirectoryLayoutByVolume.Delete(key)
+	windowsDirectoryLayoutByVolume.Store(key, 1)
+	order := windowsLayoutOrder(key)
+	if len(order) != 2 || order[0] != 1 || order[1] != 0 {
+		t.Fatalf("layout order = %v, want [1 0]", order)
 	}
 }
 
@@ -260,6 +308,9 @@ func TestWindowsUsageReportsOrdinaryClusterAllocation(t *testing.T) {
 	}
 	if usage.LinkCount != 1 {
 		t.Fatalf("link count = %d, want 1", usage.LinkCount)
+	}
+	if !usage.HasLinkCount {
+		t.Fatal("link count was not marked as authoritative")
 	}
 }
 

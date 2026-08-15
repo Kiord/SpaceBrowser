@@ -148,18 +148,63 @@ func (s *Scanner) seenDirectory(path string) bool {
 	return exists
 }
 
-func (s *Scanner) recordIdentity(identity platform.FileIdentity, node *Node) bool {
+func updateNodeUsage(node *Node, usage platform.FileUsage) {
+	if node != nil {
+		node.Size = usage.AllocatedSize
+		node.LinkCount = usage.LinkCount
+	}
+}
+
+func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage platform.FileUsage, node *Node) (platform.FileUsage, bool) {
+	if !usage.HasIdentity {
+		return usage, false
+	}
+	updateNodeUsage(node, usage)
+
 	s.seenMu.Lock()
-	existing, ok := s.seen[identity]
+	existing, ok := s.seen[usage.Identity]
 	if !ok {
-		s.seen[identity] = node
-	} else if existing != nil {
-		// The exact link count is not part of Windows directory enumeration.
-		// Seeing the same identity is enough to flag deletion for a rescan.
-		existing.LinkCount = 2
+		s.seen[usage.Identity] = node
+		s.seenMu.Unlock()
+		return usage, false
+	}
+	if !usage.IdentityNeedsConfirmation {
+		linkCount := usage.LinkCount
+		if !usage.HasLinkCount || linkCount < 2 {
+			linkCount = 2
+		}
+		if existing != nil && existing.LinkCount < linkCount {
+			existing.LinkCount = linkCount
+		}
+		s.seenMu.Unlock()
+		return usage, true
 	}
 	s.seenMu.Unlock()
-	return ok
+
+	// Legacy 64-bit Windows directory IDs are not guaranteed collision-free.
+	// Open only apparent duplicates from that format to confirm identity and
+	// link count. Native 128-bit IDs take the fast path above.
+	usage = platform.Impl.UsageFor(path, info)
+	if !usage.HasIdentity {
+		return usage, false
+	}
+	updateNodeUsage(node, usage)
+
+	s.seenMu.Lock()
+	existing, ok = s.seen[usage.Identity]
+	if !ok {
+		s.seen[usage.Identity] = node
+		s.seenMu.Unlock()
+		return usage, false
+	}
+	confirmed := usage.HasLinkCount && usage.LinkCount > 1
+	if confirmed && existing != nil && existing.LinkCount < usage.LinkCount {
+		existing.LinkCount = usage.LinkCount
+	}
+	s.seenMu.Unlock()
+	// Never omit data based only on a colliding identifier. The filesystem
+	// must also confirm that the file actually has multiple hard links.
+	return usage, confirmed
 }
 
 func (s *Scanner) assignID(n *Node) int {
@@ -329,16 +374,33 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			usage := entry.Usage
-			if !entry.HasUsage || isSymlink {
+			batchedUsage := entry.HasUsage && !isSymlink
+			if !batchedUsage {
 				usage = platform.Impl.UsageFor(full, info)
 			}
+			isSmall := s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize
+			var child *Node
+			if !isSmall {
+				child = &Node{
+					ParentID:  root.ID,
+					Name:      name,
+					FullPath:  full,
+					Size:      usage.AllocatedSize,
+					IsFolder:  false,
+					Depth:     depth + 1,
+					ModTime:   info.ModTime().Unix(),
+					LinkCount: usage.LinkCount,
+				}
+			}
+			var duplicate bool
+			usage, duplicate = s.registerFileIdentity(full, info, usage, child)
 			if usage.MetadataError != nil {
 				s.report.RecordError(scanErrorUsageMetadata, full, usage.MetadataError)
 			}
 			sz := usage.AllocatedSize
 
-			if s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize {
-				if usage.HasIdentity && s.recordIdentity(usage.Identity, nil) {
+			if isSmall {
+				if duplicate {
 					s.report.RecordSkip(scanSkipDuplicateIdentity)
 					return true
 				}
@@ -349,17 +411,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				return true
 			}
 
-			child := &Node{
-				ParentID:  root.ID,
-				Name:      name,
-				FullPath:  full,
-				Size:      sz,
-				IsFolder:  false,
-				Depth:     depth + 1,
-				ModTime:   info.ModTime().Unix(),
-				LinkCount: usage.LinkCount,
-			}
-			if usage.HasIdentity && s.recordIdentity(usage.Identity, child) {
+			if duplicate {
 				s.report.RecordSkip(scanSkipDuplicateIdentity)
 				return true
 			}
