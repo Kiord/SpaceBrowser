@@ -23,6 +23,22 @@ type collidingIdentityPlatform struct {
 	usageCalls                *int
 }
 
+type fallbackDiagnosticPlatform struct {
+	platform.API
+	root string
+}
+
+func (p fallbackDiagnosticPlatform) ReadDirWithDiagnostics(path string) ([]platform.DirectoryEntry, *platform.DirectoryReadDiagnostic, error) {
+	entries, err := p.API.ReadDir(path)
+	if err != nil || filepath.Clean(path) != filepath.Clean(p.root) {
+		return entries, nil, err
+	}
+	return entries, &platform.DirectoryReadDiagnostic{
+		PortableFallback: true,
+		Cause:            errors.New("both native layouts are unsupported"),
+	}, nil
+}
+
 func (p collidingIdentityPlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
 	entries, err := p.API.ReadDir(path)
 	if err != nil || filepath.Clean(path) != filepath.Clean(p.root) {
@@ -319,6 +335,34 @@ func TestScannerDoesNotDeduplicateUnconfirmedIdentityCollision(t *testing.T) {
 	}
 }
 
+func TestScannerReportsPortableDirectoryEnumerationFallback(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, "content.bin"), []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalPlatform := platform.Impl
+	platform.Impl = fallbackDiagnosticPlatform{API: originalPlatform, root: rootPath}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	if _, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount); err != nil {
+		t.Fatal(err)
+	}
+
+	report := scanner.Report()
+	if got := report.Errors[scanErrorPortableDirectoryFallback]; got != 1 {
+		t.Fatalf("portable fallback count = %d, want 1", got)
+	}
+	if len(report.Examples) != 1 || !strings.Contains(report.Examples[0].Error, "both native layouts") {
+		t.Fatalf("portable fallback examples = %+v", report.Examples)
+	}
+}
+
 func TestScannerTrustsStrongBatchedIdentityWithoutMetadataLookup(t *testing.T) {
 	rootPath := t.TempDir()
 	for _, name := range []string{"first.bin", "second.bin"} {
@@ -389,5 +433,28 @@ func TestScanReportErrorRetentionFollowsVerbosityMode(t *testing.T) {
 	}
 	if got := len(verbose.Snapshot().Examples); got != maximumScanReportExamples+3 {
 		t.Fatalf("verbose report retained %d entries, want %d", got, maximumScanReportExamples+3)
+	}
+}
+
+func TestCompactScanReportRetainsPriorityDiagnostic(t *testing.T) {
+	report := NewScanReport(maximumScanReportExamples)
+	for index := 0; index < maximumScanReportExamples; index++ {
+		report.RecordError(scanErrorFileMetadata, fmt.Sprintf("file-%d", index), errors.New("metadata failure"))
+	}
+	report.RecordPriorityError(scanErrorPortableDirectoryFallback, "fallback-dir", errors.New("native layouts failed"))
+
+	snapshot := report.Snapshot()
+	if len(snapshot.Examples) != maximumScanReportExamples {
+		t.Fatalf("compact report retained %d entries, want %d", len(snapshot.Examples), maximumScanReportExamples)
+	}
+	found := false
+	for _, example := range snapshot.Examples {
+		if example.Path == "fallback-dir" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("priority diagnostic missing from %+v", snapshot.Examples)
 	}
 }

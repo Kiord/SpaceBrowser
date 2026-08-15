@@ -265,11 +265,14 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
 
-	entries, err := platform.Impl.ReadDir(abs)
+	entries, diagnostic, err := platform.ReadDirWithDiagnostics(platform.Impl, abs)
 	if err != nil {
 		s.report.RecordError(scanErrorReadDirectory, abs, err)
 		// Preserve the partial tree while making the omission visible in the report.
 		return root, nil
+	}
+	if diagnostic != nil && diagnostic.PortableFallback {
+		s.report.RecordPriorityError(scanErrorPortableDirectoryFallback, abs, diagnostic.Cause)
 	}
 	atomic.AddInt64(&s.workDiscovered, int64(len(entries)))
 

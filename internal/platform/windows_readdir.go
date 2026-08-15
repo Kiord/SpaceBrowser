@@ -4,6 +4,7 @@ package platform
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io/fs"
 	"math"
@@ -25,6 +26,7 @@ const (
 )
 
 type windowsDirectoryRecordLayout struct {
+	name             string
 	class            uint32
 	restart          uint32
 	nameOffset       int
@@ -77,6 +79,7 @@ var windowsDirectoryLayoutByVolume sync.Map
 
 var windowsDirectoryLayouts = [...]windowsDirectoryRecordLayout{
 	{
+		name:             "128-bit file ID layout",
 		class:            windows.FileIdExtdDirectoryInfo,
 		restart:          windows.FileIdExtdDirectoryRestartInfo,
 		nameOffset:       int(unsafe.Offsetof(windowsFileIDExtdDirectoryHeader{}.FileName)),
@@ -85,6 +88,7 @@ var windowsDirectoryLayouts = [...]windowsDirectoryRecordLayout{
 		idSize:           16,
 	},
 	{
+		name:             "64-bit file ID layout",
 		class:            windows.FileIdBothDirectoryInfo,
 		restart:          windows.FileIdBothDirectoryRestartInfo,
 		nameOffset:       int(unsafe.Offsetof(windowsFileIDBothDirectoryHeader{}.FileName)),
@@ -368,12 +372,19 @@ func allWindowsDirectoryIdentitiesMissing(entries []DirectoryEntry) bool {
 // files does not need to open a handle for every entry. Older or unusual file
 // systems fall back to the portable implementation.
 func (w Windows) ReadDir(path string) ([]DirectoryEntry, error) {
+	entries, _, err := w.ReadDirWithDiagnostics(path)
+	return entries, err
+}
+
+func (w Windows) ReadDirWithDiagnostics(path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
 	volumeKey := windowsDirectoryVolumeKey(path)
 	var usableEntries []DirectoryEntry
+	var nativeErrors []error
 	for _, index := range windowsLayoutOrder(volumeKey) {
 		layout := windowsDirectoryLayouts[index]
 		entries, readErr := readWindowsDirectory(path, layout)
 		if readErr != nil {
+			nativeErrors = append(nativeErrors, fmt.Errorf("%s: %w", layout.name, readErr))
 			continue
 		}
 		usableEntries = entries
@@ -384,10 +395,21 @@ func (w Windows) ReadDir(path string) ([]DirectoryEntry, error) {
 			continue
 		}
 		windowsDirectoryLayoutByVolume.Store(volumeKey, index)
-		return entries, nil
+		return entries, nil, nil
 	}
 	if usableEntries != nil {
-		return usableEntries, nil
+		return usableEntries, nil, nil
 	}
-	return w.Default.ReadDir(path)
+	entries, err := w.Default.ReadDir(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	nativeCause := errors.Join(nativeErrors...)
+	if nativeCause != nil {
+		nativeCause = fmt.Errorf("native enumeration failed: %s", strings.ReplaceAll(nativeCause.Error(), "\n", "; "))
+	}
+	return entries, &DirectoryReadDiagnostic{
+		PortableFallback: true,
+		Cause:            nativeCause,
+	}, nil
 }

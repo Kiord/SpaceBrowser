@@ -39,6 +39,7 @@ const (
 	scanErrorFileMetadata
 	scanErrorDirectoryMetadata
 	scanErrorUsageMetadata
+	scanErrorPortableDirectoryFallback
 	scanErrorResolveSymlink
 	scanErrorSubdirectory
 	scanErrorReasonCount
@@ -50,6 +51,7 @@ var scanErrorLabels = [scanErrorReasonCount]string{
 	"file metadata",
 	"directory metadata",
 	"allocation or identity metadata",
+	"portable directory enumeration fallbacks",
 	"symlink resolution",
 	"subdirectory scans",
 }
@@ -109,6 +111,14 @@ func (r *ScanReport) RecordSkip(reason scanSkipReason) {
 }
 
 func (r *ScanReport) RecordError(reason scanErrorReason, path string, err error) {
+	r.recordError(reason, path, err, false)
+}
+
+func (r *ScanReport) RecordPriorityError(reason scanErrorReason, path string, err error) {
+	r.recordError(reason, path, err, true)
+}
+
+func (r *ScanReport) recordError(reason scanErrorReason, path string, err error, priority bool) {
 	if r == nil || reason >= scanErrorReasonCount {
 		return
 	}
@@ -116,12 +126,20 @@ func (r *ScanReport) RecordError(reason scanErrorReason, path string, err error)
 
 	r.examplesMu.Lock()
 	defer r.examplesMu.Unlock()
-	if r.exampleLimit >= 0 && len(r.examples) >= r.exampleLimit {
-		return
-	}
 	example := ScanReportExample{Reason: scanErrorLabels[reason], Path: path}
 	if err != nil {
 		example.Error = err.Error()
+	}
+	if r.exampleLimit >= 0 && len(r.examples) >= r.exampleLimit {
+		if priority && r.exampleLimit > 0 {
+			for _, existing := range r.examples {
+				if existing.Reason == example.Reason {
+					return
+				}
+			}
+			r.examples[len(r.examples)-1] = example
+		}
+		return
 	}
 	r.examples = append(r.examples, example)
 }

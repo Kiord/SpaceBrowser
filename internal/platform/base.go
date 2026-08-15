@@ -37,6 +37,23 @@ type DirectoryEntry struct {
 	HasHidden bool
 }
 
+type DirectoryReadDiagnostic struct {
+	PortableFallback bool
+	Cause            error
+}
+
+type diagnosticDirectoryReader interface {
+	ReadDirWithDiagnostics(string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error)
+}
+
+func ReadDirWithDiagnostics(api API, path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
+	if reader, ok := api.(diagnosticDirectoryReader); ok {
+		return reader.ReadDirWithDiagnostics(path)
+	}
+	entries, err := api.ReadDir(path)
+	return entries, nil, err
+}
+
 type API interface {
 	ReadDir(string) ([]DirectoryEntry, error)
 	UsageFor(string, os.FileInfo) FileUsage
