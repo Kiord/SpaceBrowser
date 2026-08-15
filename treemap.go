@@ -18,6 +18,7 @@ type frame struct {
 	x, y  float64
 	w, h  float64
 	depth int
+	rect  int
 }
 
 // Rect is the draw-ready rectangle returned to the frontend.
@@ -62,16 +63,17 @@ func ComputeTreemapRects(root *Node, W, H, scale float64) []Rect {
 	out := make([]Rect, 0, 4096)
 	st := make([]frame, 0, 128)
 
-	// Push root
-	st = append(st, frame{n: root, x: 0, y: 0, w: W, h: H, depth: 0})
+	// Emit and queue the root. Descendant folders are likewise emitted by their
+	// parent before being queued, so every node has exactly one rectangle.
+	rootRect := emitRect(&out, root, 0, 0, W, H)
+	st = append(st, frame{n: root, x: 0, y: 0, w: W, h: H, depth: 0, rect: rootRect})
 
 	for len(st) > 0 {
 		// Pop
 		f := st[len(st)-1]
 		st = st[:len(st)-1]
 
-		// Emit the container rect for this node; record its rect index for attaching children later
-		parentRectIdx := emitRect(&out, f.n, f.x, f.y, f.w, f.h)
+		parentRectIdx := f.rect
 
 		// If this node has no visible inner area or no children, continue
 		if !f.n.IsFolder || len(f.n.Children) == 0 {
@@ -340,7 +342,7 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, pa
 			// If it's a folder with children, queue it for inner layout (only if visible at this level)
 			if n.IsFolder && len(n.Children) > 0 {
 				*st = append(*st, frame{
-					n: n, x: bx + 0.5*negPad, y: by + 0.5*negPad, w: bw, h: bh, depth: depth,
+					n: n, x: bx + 0.5*negPad, y: by + 0.5*negPad, w: bw, h: bh, depth: depth, rect: childIdx,
 				})
 			}
 		}

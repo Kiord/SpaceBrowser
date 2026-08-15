@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"spacebrowser/internal/platform"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type readDirFailurePlatform struct {
@@ -26,6 +28,49 @@ type collidingIdentityPlatform struct {
 type fallbackDiagnosticPlatform struct {
 	platform.API
 	root string
+}
+
+type blockingReadDirPlatform struct {
+	platform.API
+	path    string
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+type metadataFailurePlatform struct {
+	platform.API
+	root     string
+	fileName string
+}
+
+type metadataFailureDirEntry struct {
+	os.DirEntry
+}
+
+func (entry metadataFailureDirEntry) Info() (os.FileInfo, error) {
+	return nil, os.ErrPermission
+}
+
+func (p *blockingReadDirPlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
+	if filepath.Clean(path) == filepath.Clean(p.path) {
+		p.once.Do(func() { close(p.entered) })
+		<-p.release
+	}
+	return p.API.ReadDir(path)
+}
+
+func (p metadataFailurePlatform) ReadDir(path string) ([]platform.DirectoryEntry, error) {
+	entries, err := p.API.ReadDir(path)
+	if err != nil || filepath.Clean(path) != filepath.Clean(p.root) {
+		return entries, err
+	}
+	for index := range entries {
+		if entries[index].Name() == p.fileName {
+			entries[index].DirEntry = metadataFailureDirEntry{DirEntry: entries[index].DirEntry}
+		}
+	}
+	return entries, nil
 }
 
 func (p fallbackDiagnosticPlatform) ReadDirWithDiagnostics(path string) ([]platform.DirectoryEntry, *platform.DirectoryReadDiagnostic, error) {
@@ -141,6 +186,204 @@ func TestScannerHonorsCancelledContext(t *testing.T) {
 	_, err := scanner.buildTree(t.TempDir(), 0, -1, &fileCount, &dirCount)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("buildTree error = %v, want context.Canceled", err)
+	}
+}
+
+func TestScannerCancelsActiveScan(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, "content.bin"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalPlatform := platform.Impl
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	platform.Impl = &blockingReadDirPlatform{
+		API:     originalPlatform,
+		path:    rootPath,
+		entered: entered,
+		release: release,
+	}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	scanner.SetContext(ctx, nil)
+
+	result := make(chan error, 1)
+	go func() {
+		var fileCount, dirCount int64
+		_, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+		result <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		close(release)
+		t.Fatal("scan did not enter directory enumeration")
+	}
+	cancel()
+	close(release)
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("active scan error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("active scan did not stop after cancellation")
+	}
+}
+
+func TestScannerSkipsAndFollowsDirectorySymlinks(t *testing.T) {
+	rootPath := t.TempDir()
+	targetPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(targetPath, "content.bin"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(rootPath, "linked")
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Skipf("directory symlinks are unavailable: %v", err)
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	profile.FollowSymlinks = false
+	skippingScanner := NewScanner(profile, 1)
+	var skippedFiles, skippedDirs int64
+	skippedRoot, err := skippingScanner.buildTree(rootPath, 0, -1, &skippedFiles, &skippedDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skippedFiles != 0 || len(skippedRoot.Children) != 0 {
+		t.Fatalf("non-following scan found %d files and %d children, want none", skippedFiles, len(skippedRoot.Children))
+	}
+	if got := skippingScanner.Report().Skipped[scanSkipSymlink]; got != 1 {
+		t.Fatalf("skipped symlink count = %d, want 1", got)
+	}
+
+	profile.FollowSymlinks = true
+	followingScanner := NewScanner(profile, 1)
+	var followedFiles, followedDirs int64
+	followedRoot, err := followingScanner.buildTree(rootPath, 0, -1, &followedFiles, &followedDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if followedFiles != 1 || followedDirs != 2 {
+		t.Fatalf("following scan found %d files and %d directories, want 1 and 2", followedFiles, followedDirs)
+	}
+	if len(followedRoot.Children) != 1 || followedRoot.Children[0].Name != "linked" || !followedRoot.Children[0].IsFolder {
+		t.Fatalf("followed symlink node = %+v", followedRoot.Children)
+	}
+	if len(followedRoot.Children[0].Children) != 1 || followedRoot.Children[0].Children[0].Name != "content.bin" {
+		t.Fatalf("followed symlink contents = %+v", followedRoot.Children[0].Children)
+	}
+}
+
+func TestScannerReportsBrokenSymlink(t *testing.T) {
+	rootPath := t.TempDir()
+	linkPath := filepath.Join(rootPath, "broken-link")
+	if err := os.Symlink(filepath.Join(rootPath, "missing-target"), linkPath); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	profile.FollowSymlinks = true
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 0 || len(root.Children) != 0 {
+		t.Fatalf("broken symlink produced %d files and %d children, want none", fileCount, len(root.Children))
+	}
+	if got := scanner.Report().Errors[scanErrorSymlinkTarget]; got != 1 {
+		t.Fatalf("broken symlink errors = %d, want 1", got)
+	}
+}
+
+func TestScannerExcludesExactPathsAndDescendants(t *testing.T) {
+	rootPath := t.TempDir()
+	excludedDir := filepath.Join(rootPath, "excluded")
+	keptDir := filepath.Join(rootPath, "excluded-sibling")
+	for _, path := range []string{excludedDir, keptDir} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, data := range map[string][]byte{
+		filepath.Join(rootPath, "excluded.bin"):  []byte("excluded file"),
+		filepath.Join(rootPath, "kept.bin"):      []byte("kept file"),
+		filepath.Join(excludedDir, "nested.bin"): []byte("excluded descendant"),
+		filepath.Join(keptDir, "nested.bin"):     []byte("kept descendant"),
+	} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	profile.ExcludedPaths = []string{excludedDir, filepath.Join(rootPath, "excluded.bin")}
+	scanner := NewScanner(profile, 2)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 2 || dirCount != 2 {
+		t.Fatalf("scan counts = %d files and %d directories, want 2 and 2", fileCount, dirCount)
+	}
+	if got := scanner.Report().Skipped[scanSkipExcluded]; got != 2 {
+		t.Fatalf("excluded path count = %d, want 2", got)
+	}
+	for _, child := range root.Children {
+		if child.Name == "excluded" || child.Name == "excluded.bin" {
+			t.Fatalf("excluded node remained in tree: %+v", child)
+		}
+	}
+}
+
+func TestScannerReportsFileMetadataFailures(t *testing.T) {
+	rootPath := t.TempDir()
+	fileName := "unreadable-metadata.bin"
+	filePath := filepath.Join(rootPath, fileName)
+	if err := os.WriteFile(filePath, []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalPlatform := platform.Impl
+	platform.Impl = metadataFailurePlatform{API: originalPlatform, root: rootPath, fileName: fileName}
+	defer func() { platform.Impl = originalPlatform }()
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScanner(profile, 1)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 0 || len(root.Children) != 0 {
+		t.Fatalf("metadata failure produced %d files and %d children, want none", fileCount, len(root.Children))
+	}
+	report := scanner.Report()
+	if report.Errors[scanErrorFileMetadata] != 1 || report.TotalErrors() != 1 {
+		t.Fatalf("report errors = %+v, want one file metadata error", report.Errors)
+	}
+	if len(report.Examples) != 1 || report.Examples[0].Path != filePath {
+		t.Fatalf("report examples = %+v, want %q", report.Examples, filePath)
 	}
 }
 
