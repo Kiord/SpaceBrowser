@@ -48,7 +48,13 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		return DeleteResult{}, err
 	}
 	if len(result.trashRefreshes) > 0 {
-		result = a.refreshDisplayedTrash(result)
+		if profile.RescanOnDelete || result.RescanRequired {
+			// The frontend will perform a full scan, so avoid scanning displayed
+			// Trash subtrees only to discard those results immediately afterward.
+			result.trashRefreshes = nil
+		} else {
+			result = a.refreshDisplayedTrash(result)
+		}
 	}
 	a.refreshDiskUsageAfterFilesystemChange(&result)
 	return result, nil

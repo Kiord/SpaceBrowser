@@ -350,6 +350,44 @@ func TestAppTargetedTrashRefreshMakesMovedItemActionable(t *testing.T) {
 	}
 }
 
+func TestAppSkipsTargetedTrashRefreshWhenDeleteWillRescan(t *testing.T) {
+	rootPath := t.TempDir()
+	trashPath := filepath.Join(rootPath, "$Recycle.Bin")
+	if err := os.Mkdir(trashPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targetPath := filepath.Join(rootPath, "target.txt")
+	if err := os.WriteFile(targetPath, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	trashDestination := filepath.Join(trashPath, "target.txt")
+
+	root := &Node{ID: 0, ParentID: -1, Name: "root", FullPath: rootPath, Size: 4, IsFolder: true, EntryFiles: 1, EntryDirs: 2}
+	target := &Node{ID: 1, ParentID: 0, Name: "target.txt", FullPath: targetPath, Size: 4, Depth: 1}
+	trash := &Node{ID: 2, ParentID: 0, Name: "$Recycle.Bin", FullPath: trashPath, IsFolder: true, Depth: 1, EntryDirs: 1}
+	root.Children = []*Node{target, trash}
+	app := &App{
+		profile:    Profile{AllowDelete: true, RescanOnDelete: true},
+		desktop:    trashActionDesktop{path: trashPath, moveDestination: trashDestination},
+		filesystem: platform.Impl,
+		store:      TreeStore{root: root, nodes: []*Node{root, target, trash}, fileCount: 1, dirCount: 2},
+	}
+
+	result, err := app.DeleteNode(target.ID)
+	if err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if _, err := os.Stat(trashDestination); err != nil {
+		t.Fatalf("trashed file was not moved: %v", err)
+	}
+	if len(result.trashRefreshes) != 0 {
+		t.Fatalf("trash refreshes = %d, want 0 before a full rescan", len(result.trashRefreshes))
+	}
+	if len(trash.Children) != 0 {
+		t.Fatalf("trash children = %d, want no targeted refresh before a full rescan", len(trash.Children))
+	}
+}
+
 func TestAppPermanentDeletionRequiresSeparatePermission(t *testing.T) {
 	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
 	itemPath := filepath.Join(trashPath, "deleted.bin")
