@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -33,6 +34,8 @@ type ScanProgress struct {
 
 const scanProgressSlowdown = 10.0
 
+const networkFilesystemScanDisabledMessage = "network filesystem scanning is disabled; go to Settings and untick Skip network filesystems"
+
 func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFilesystem) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("missing path")
@@ -53,7 +56,18 @@ func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFile
 }
 
 func (a *App) ValidateScanPath(path string) (string, error) {
-	return validateScanPathWithFilesystem(path, a.filesystem)
+	return a.validateScanPath(path)
+}
+
+func (a *App) validateScanPath(path string) (string, error) {
+	path, err := validateScanPathWithFilesystem(path, a.filesystem)
+	if err != nil {
+		return "", err
+	}
+	if a.GetProfile().SkipNetworkFS && a.filesystem.IsLikelyNetworkFS(path) {
+		return "", errors.New(networkFilesystemScanDisabledMessage)
+	}
+	return path, nil
 }
 
 func (a *App) GetScanProgress() ScanProgress {
@@ -166,7 +180,7 @@ func (a *App) finishScan(generation uint64) {
 }
 
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {
-	path, err := validateScanPathWithFilesystem(path, a.filesystem)
+	path, err := a.validateScanPath(path)
 	if err != nil {
 		a.logger.Errorf("cannot start scan: %v", err)
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
@@ -197,6 +211,9 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	if err != nil {
+		if errors.Is(err, errNetworkFilesystemRootSkipped) {
+			err = errors.New(networkFilesystemScanDisabledMessage)
+		}
 		a.logScanReport(scanner.Report())
 		if ctx.Err() != nil {
 			a.logger.Warningf("scan cancelled after %s: %s", time.Since(startedAt).Round(time.Millisecond), path)

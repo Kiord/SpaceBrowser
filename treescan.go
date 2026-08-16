@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,14 +51,13 @@ type Scanner struct {
 	maxWorkers int
 
 	// dense array: nodes[id] == *Node
-	nodes         []*Node
-	nodesMu       sync.Mutex
-	idCounter     int64
-	seen          map[platform.FileIdentity]*Node
-	seenMu        sync.Mutex
-	seenDirs      map[string]struct{}
-	seenDirsMu    sync.Mutex
-	rootIsNetwork bool
+	nodes      []*Node
+	nodesMu    sync.Mutex
+	idCounter  int64
+	seen       map[platform.FileIdentity]*Node
+	seenMu     sync.Mutex
+	seenDirs   map[string]struct{}
+	seenDirsMu sync.Mutex
 
 	workDiscovered int64
 	workProcessed  int64
@@ -69,6 +69,8 @@ type Scanner struct {
 	lastProgressAt time.Time
 	report         ScanReport
 }
+
+var errNetworkFilesystemRootSkipped = errors.New("network filesystem root is excluded by the scan profile")
 
 // NewScanner(maxWorkers<=0 => sensible default)
 func NewScanner(p *Profile, maxWorkers int) *Scanner {
@@ -250,9 +252,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 	abs := s.filesystem.Canonicalize(path)
 	if depth == 0 && s.profile.SkipNetworkFS {
-		// An explicitly selected network root is intentional. Skip network
-		// crossings only when the scan itself started on a local filesystem.
-		s.rootIsNetwork = s.filesystem.IsLikelyNetworkFS(abs)
+		if s.filesystem.IsLikelyNetworkFS(abs) {
+			return nil, errNetworkFilesystemRootSkipped
+		}
 	}
 	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
 		s.report.RecordSkip(scanSkipRepeatedDirectory)
@@ -343,7 +345,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			if isDir {
-				if s.profile.SkipNetworkFS && !s.rootIsNetwork {
+				if s.profile.SkipNetworkFS {
 					networkPath := full
 					if isSymlink {
 						if resolved, err := filepath.EvalSymlinks(full); err == nil {

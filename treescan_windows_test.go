@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"spacebrowser/internal/platform"
@@ -12,7 +13,7 @@ import (
 	winapi "golang.org/x/sys/windows"
 )
 
-func TestScannerTraversesExplicitMappedDriveRoot(t *testing.T) {
+func TestScannerRejectsExplicitMappedDriveRootWhenNetworkSkippingIsEnabled(t *testing.T) {
 	mappedRoot := os.Getenv("SPACEBROWSER_TEST_MAPPED_DRIVE")
 	if mappedRoot == "" {
 		t.Skip("SPACEBROWSER_TEST_MAPPED_DRIVE is not configured")
@@ -37,12 +38,19 @@ func TestScannerTraversesExplicitMappedDriveRoot(t *testing.T) {
 	}
 	scanner := NewScanner(profile, 1)
 	var fileCount, dirCount int64
+	if _, err := scanner.buildTree(root, 0, -1, &fileCount, &dirCount); !errors.Is(err, errNetworkFilesystemRootSkipped) {
+		t.Fatalf("mapped-root scan error = %v, want %v", err, errNetworkFilesystemRootSkipped)
+	}
+
+	profile.SkipNetworkFS = false
+	scanner = NewScanner(profile, 1)
+	fileCount, dirCount = 0, 0
 	scanned, err := scanner.buildTree(root, 0, -1, &fileCount, &dirCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fileCount != 1 || dirCount != 2 || len(scanned.Children) != 1 || !scanned.Children[0].IsFolder || !strings.EqualFold(scanned.Children[0].Name, "nested") {
-		t.Fatalf("mapped-root scan = %d files, %d directories, children %+v; want nested content", fileCount, dirCount, scanned.Children)
+		t.Fatalf("mapped-root scan with network skipping disabled = %d files, %d directories, children %+v, error %v; want nested content", fileCount, dirCount, scanned.Children, err)
 	}
 }
 

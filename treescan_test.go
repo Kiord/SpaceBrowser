@@ -44,6 +44,15 @@ type metadataFailurePlatform struct {
 	fileName string
 }
 
+type networkRootPlatform struct {
+	platform.API
+	root string
+}
+
+func (p networkRootPlatform) IsLikelyNetworkFS(path string) bool {
+	return filepath.Clean(path) == filepath.Clean(p.root)
+}
+
 type metadataFailureDirEntry struct {
 	os.DirEntry
 }
@@ -172,6 +181,22 @@ func TestScannerCollectsWideTreeConcurrently(t *testing.T) {
 		if node == nil || node.ID != id {
 			t.Fatalf("node index %d contains %+v", id, node)
 		}
+	}
+}
+
+func TestAppRejectsNetworkRootWhenNetworkSkippingIsEnabled(t *testing.T) {
+	root := t.TempDir()
+	filesystem := networkRootPlatform{API: platform.Impl, root: root}
+	profile := *defaultProfile()
+	app := &App{filesystem: filesystem, profile: profile}
+
+	if _, err := app.ValidateScanPath(root); err == nil || !strings.Contains(err.Error(), "go to Settings and untick Skip network filesystems") {
+		t.Fatalf("ValidateScanPath() error = %v, want actionable network-filesystem message", err)
+	}
+
+	app.profile.SkipNetworkFS = false
+	if path, err := app.ValidateScanPath(root); err != nil || path != filesystem.Canonicalize(root) {
+		t.Fatalf("ValidateScanPath() with network skipping disabled = %q, %v", path, err)
 	}
 }
 
