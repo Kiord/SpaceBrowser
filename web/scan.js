@@ -12,6 +12,7 @@ let scanProgressTimer = null;
 let scanProgressToken = 0;
 let scanCancelledByUser = false;
 let scanDotsTimer = null;
+let analyzeInFlight = false;
 
 function setUIBusy(state) {
   queryAll(".controls button").forEach(button => { button.disabled = state; });
@@ -118,7 +119,12 @@ async function cancelActiveScan() {
 export async function analyze() {
   const path = byId("pathInput").value?.trim();
   if (!path) return;
+  if (analyzeInFlight) {
+    logDebug("analyze ignored: a scan request is already active");
+    return;
+  }
 
+  analyzeInFlight = true;
   let scanStarted = false;
   setUIBusy(true);
   try {
@@ -149,6 +155,7 @@ export async function analyze() {
     if (!wasCancelled) showErrorToast(error);
   } finally {
     if (scanStarted) stopScanProgress();
+    analyzeInFlight = false;
     setUIBusy(false);
     updateNavButtons();
   }
