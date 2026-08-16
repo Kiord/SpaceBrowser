@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func (Windows) DefaultApplicationName(path string) (string, error) {
 	return name, nil
 }
 
-func (Windows) OpenWith(path string) error {
+func (Windows) OpenWith(_ context.Context, path string) error {
 	file, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return err

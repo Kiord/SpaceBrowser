@@ -1,11 +1,18 @@
 package platform
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+)
+
+var (
+	ErrFolderPickerUnavailable = errors.New("platform folder picker unavailable")
+	ErrOperationCancelled      = errors.New("platform operation cancelled")
 )
 
 type FileIdentity struct {
@@ -63,7 +70,8 @@ type API interface {
 	OpenInFileBrowser(string) error
 	OpenPath(string) error
 	DefaultApplicationName(string) (string, error)
-	OpenWith(string) error
+	OpenWith(context.Context, string) error
+	PickFolder(context.Context, string) (string, error)
 	ShowProperties(string) error
 	MoveToTrash(string) error
 	AssociatedIcon(string, bool) ([]byte, error)
@@ -123,8 +131,12 @@ func (Default) DefaultApplicationName(string) (string, error) {
 	return "", fmt.Errorf("default application lookup is not supported on this platform")
 }
 
-func (Default) OpenWith(string) error {
+func (Default) OpenWith(context.Context, string) error {
 	return fmt.Errorf("application selection is not supported on this platform")
+}
+
+func (Default) PickFolder(context.Context, string) (string, error) {
+	return "", ErrFolderPickerUnavailable
 }
 
 func (Default) ShowProperties(string) error {

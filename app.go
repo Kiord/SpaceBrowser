@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -548,7 +549,11 @@ func (a *App) OpenWith(path string) error {
 	if err := validateExistingPath(path); err != nil {
 		return err
 	}
-	return platform.Impl.OpenWith(path)
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return platform.Impl.OpenWith(ctx, path)
 }
 
 func (a *App) ShowProperties(path string) error {
@@ -587,14 +592,27 @@ func (a *App) PickFolder() (string, error) {
 	if a.ctx == nil {
 		return "", fmt.Errorf("app not initialized")
 	}
-	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Choose a folder to analyze",
-	})
+	const title = "Choose a folder to analyze"
+	path, err := platform.Impl.PickFolder(a.ctx, title)
+	if errors.Is(err, platform.ErrOperationCancelled) {
+		return "", nil
+	}
+	if err == nil {
+		if path == "" {
+			return "", nil
+		}
+		return validateScanPath(path)
+	}
+	if !errors.Is(err, platform.ErrFolderPickerUnavailable) {
+		return "", err
+	}
+
+	path, err = runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title})
 	if err != nil {
 		return "", err
 	}
 	if path == "" {
-		return "", fmt.Errorf("cancelled")
+		return "", nil
 	}
-	return platform.Impl.Canonicalize(path), nil
+	return validateScanPath(path)
 }

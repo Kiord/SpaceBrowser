@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,7 +59,7 @@ end run`
 	return strings.TrimSuffix(name, ".app"), nil
 }
 
-func (Darwin) OpenWith(p string) error {
+func (Darwin) OpenWith(_ context.Context, p string) error {
 	const script = `on run argv
 set chosenApplication to choose application with title "Open With" with prompt "Choose an application:"
 tell application "Finder" to open (POSIX file (item 1 of argv) as alias) using chosenApplication

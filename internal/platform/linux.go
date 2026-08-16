@@ -3,14 +3,17 @@
 package platform
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"github.com/godbus/dbus/v5"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"spacebrowser/internal/desktopportal"
 )
 
 type Linux struct{ Default }
@@ -105,65 +108,52 @@ func linuxDesktopApplicationName(desktopID string) string {
 	return ""
 }
 
-func (Linux) OpenWith(p string) error {
-	file, err := os.Open(p)
+func (Linux) OpenWith(ctx context.Context, path string) error {
+	client, err := desktopportal.Connect(ctx)
 	if err != nil {
-		return fmt.Errorf("open item for application chooser: %w", err)
+		return portalChooserError("application", err)
 	}
-	defer file.Close()
+	defer client.Close()
 
-	conn, err := dbus.ConnectSessionBus()
+	err = client.OpenFile(ctx, path, desktopportal.OpenFileOptions{Ask: true})
+	if errors.Is(err, desktopportal.ErrCancelled) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("connect to desktop application portal: %w", err)
+		return portalChooserError("application", err)
 	}
-	defer conn.Close()
-
-	match := []dbus.MatchOption{
-		dbus.WithMatchInterface("org.freedesktop.portal.Request"),
-		dbus.WithMatchMember("Response"),
-	}
-	responses := make(chan *dbus.Signal, 8)
-	conn.Signal(responses)
-	defer conn.RemoveSignal(responses)
-	if err := conn.AddMatchSignal(match...); err != nil {
-		return fmt.Errorf("listen for application selector response: %w", err)
-	}
-	defer conn.RemoveMatchSignal(match...)
-
-	options := map[string]dbus.Variant{"ask": dbus.MakeVariant(true)}
-	portal := conn.Object("org.freedesktop.portal.Desktop", dbus.ObjectPath("/org/freedesktop/portal/desktop"))
-	var requestPath dbus.ObjectPath
-	if err := portal.Call(
-		"org.freedesktop.portal.OpenURI.OpenFile",
-		0,
-		"",
-		dbus.UnixFD(file.Fd()),
-		options,
-	).Store(&requestPath); err != nil {
-		return fmt.Errorf("open application selector: %w", err)
-	}
-
-	for signal := range responses {
-		if signal == nil || signal.Name != "org.freedesktop.portal.Request.Response" || signal.Path != requestPath {
-			continue
-		}
-		var response uint32
-		var results map[string]dbus.Variant
-		if err := dbus.Store(signal.Body, &response, &results); err != nil {
-			return fmt.Errorf("read application selector response: %w", err)
-		}
-		return linuxOpenWithResponseError(response)
-	}
-	return fmt.Errorf("application selector closed without a response")
+	return nil
 }
 
-func linuxOpenWithResponseError(response uint32) error {
-	switch response {
-	case 0, 1: // Success, or the user cancelled the chooser.
-		return nil
-	default:
-		return fmt.Errorf("application selector failed (portal response %d)", response)
+func (Linux) PickFolder(ctx context.Context, title string) (string, error) {
+	client, err := desktopportal.Connect(ctx)
+	if err != nil {
+		return "", portalFolderPickerError(err)
 	}
+	defer client.Close()
+
+	path, err := client.PickDirectory(ctx, desktopportal.PickDirectoryOptions{Title: title})
+	if errors.Is(err, desktopportal.ErrCancelled) {
+		return "", ErrOperationCancelled
+	}
+	if err != nil {
+		return "", portalFolderPickerError(err)
+	}
+	return path, nil
+}
+
+func portalChooserError(kind string, err error) error {
+	if errors.Is(err, desktopportal.ErrUnavailable) || errors.Is(err, desktopportal.ErrUnsupported) {
+		return fmt.Errorf("%s chooser unavailable: %w", kind, err)
+	}
+	return fmt.Errorf("%s chooser failed: %w", kind, err)
+}
+
+func portalFolderPickerError(err error) error {
+	if errors.Is(err, desktopportal.ErrUnavailable) || errors.Is(err, desktopportal.ErrUnsupported) {
+		return fmt.Errorf("%w: %v", ErrFolderPickerUnavailable, err)
+	}
+	return fmt.Errorf("folder chooser failed: %w", err)
 }
 
 func (Linux) ShowProperties(p string) error {
