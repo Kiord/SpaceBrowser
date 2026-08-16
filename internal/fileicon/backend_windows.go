@@ -1,6 +1,6 @@
 //go:build windows
 
-package platform
+package fileicon
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"os"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -18,7 +17,6 @@ const (
 	shgfiIcon       = 0x000000100
 	dibRGBColors    = 0
 	biRGB           = 0
-	swShowNormal    = 1
 	sOK             = 0
 	sFalse          = 1
 	rpcEChangedMode = 0x80010106
@@ -30,7 +28,6 @@ var (
 	gdi32                  = syscall.NewLazyDLL("gdi32.dll")
 	ole32                  = syscall.NewLazyDLL("ole32.dll")
 	procSHGetFileInfoW     = shell32.NewProc("SHGetFileInfoW")
-	procShellExecuteW      = shell32.NewProc("ShellExecuteW")
 	procDestroyIcon        = user32.NewProc("DestroyIcon")
 	procGetIconInfo        = user32.NewProc("GetIconInfo")
 	procGetObjectW         = gdi32.NewProc("GetObjectW")
@@ -41,6 +38,8 @@ var (
 	procCoInitializeEx     = ole32.NewProc("CoInitializeEx")
 	procCoUninitialize     = ole32.NewProc("CoUninitialize")
 )
+
+type windowsBackend struct{}
 
 type shellFileInfo struct {
 	Icon        syscall.Handle
@@ -87,36 +86,12 @@ type bitmapInfo struct {
 	Colors [1]uint32
 }
 
-func (Windows) OpenPath(path string) error {
-	verb, err := syscall.UTF16PtrFromString("open")
-	if err != nil {
-		return err
-	}
-	file, err := syscall.UTF16PtrFromString(path)
-	if err != nil {
-		return err
-	}
-	result, _, callErr := procShellExecuteW.Call(
-		0,
-		uintptr(unsafe.Pointer(verb)),
-		uintptr(unsafe.Pointer(file)),
-		0,
-		0,
-		swShowNormal,
-	)
-	if result <= 32 {
-		return fmt.Errorf("open path failed (ShellExecute code %d): %v", result, callErr)
-	}
-	return nil
-}
+func newPlatformBackend() backend { return windowsBackend{} }
 
-func (Windows) AssociatedIcon(path string, _ bool) ([]byte, error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
-	}
+func (windowsBackend) Lookup(path string, _ bool) (Icon, error) {
 	pathUTF16, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
-		return nil, err
+		return Icon{}, err
 	}
 
 	// Shell icon handlers may use COM. Keep initialization and the shell call
@@ -127,7 +102,7 @@ func (Windows) AssociatedIcon(path string, _ bool) ([]byte, error) {
 	if hresult == sOK || hresult == sFalse {
 		defer procCoUninitialize.Call()
 	} else if hresult != rpcEChangedMode {
-		return nil, fmt.Errorf("initialise COM for file icon: HRESULT 0x%x", hresult)
+		return Icon{}, fmt.Errorf("initialise COM for file icon: HRESULT 0x%x", hresult)
 	}
 
 	var fileInfo shellFileInfo
@@ -139,11 +114,15 @@ func (Windows) AssociatedIcon(path string, _ bool) ([]byte, error) {
 		shgfiIcon,
 	)
 	if result == 0 || fileInfo.Icon == 0 {
-		return nil, fmt.Errorf("get associated icon: %v", callErr)
+		return Icon{}, fmt.Errorf("get associated icon: %v", callErr)
 	}
 	defer procDestroyIcon.Call(uintptr(fileInfo.Icon))
 
-	return iconHandlePNG(fileInfo.Icon)
+	data, err := iconHandlePNG(fileInfo.Icon)
+	if err != nil {
+		return Icon{}, err
+	}
+	return Icon{Data: data, MediaType: "image/png"}, nil
 }
 
 func iconHandlePNG(handle syscall.Handle) ([]byte, error) {

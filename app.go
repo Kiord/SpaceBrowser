@@ -2,20 +2,21 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"sort"
-	"spacebrowser/internal/platform"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"spacebrowser/internal/fileicon"
+	"spacebrowser/internal/platform"
 )
 
 type App struct {
@@ -27,6 +28,8 @@ type App struct {
 	settingsPath        string
 	defaultSettingsPath string
 	settingsMu          sync.RWMutex
+	iconServiceOnce     sync.Once
+	iconService         *fileicon.Service
 
 	scanMu         sync.RWMutex
 	scanGeneration uint64
@@ -583,14 +586,10 @@ func validateExistingPath(path string) error {
 }
 
 func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf("missing path")
-	}
-	icon, err := platform.Impl.AssociatedIcon(path, isFolder)
-	if err != nil || len(icon) == 0 {
-		return "", err
-	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(icon), nil
+	a.iconServiceOnce.Do(func() {
+		a.iconService = fileicon.NewService()
+	})
+	return a.iconService.DataURL(path, isFolder)
 }
 
 func (a *App) DefaultPath() string {

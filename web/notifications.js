@@ -8,20 +8,28 @@ let rectAtPoint = null;
 let hoveredRect = null;
 let hoveredRectIndex = -1;
 const associatedIconCache = new Map();
+const maximumAssociatedIconCacheSize = 256;
 let toastRevision = 0;
 
 export const mousePosition = { x: 0, y: 0 };
+
+function cacheAssociatedIcon(key, value) {
+  associatedIconCache.set(key, value);
+  while (associatedIconCache.size > maximumAssociatedIconCacheSize) {
+    associatedIconCache.delete(associatedIconCache.keys().next().value);
+  }
+}
 
 function rectSupportsDetailsToast(rect) {
   return !!(rect?.full_path && rect.parent_id != null && !rect.is_free_space);
 }
 
 function associatedIconKey(rect) {
-  if (rect.is_folder) return "<folder>";
+  if (rect.is_folder) return `folder:${String(rect.full_path).toLocaleLowerCase()}`;
   const name = String(rect.name || "").toLocaleLowerCase();
   const dot = name.lastIndexOf(".");
   const extension = dot > 0 ? name.slice(dot) : "<file>";
-  return extension === ".exe" || extension === ".lnk" || extension === ".ico"
+  return extension === ".exe" || extension === ".lnk" || extension === ".ico" || extension === ".desktop"
     ? String(rect.full_path).toLocaleLowerCase()
     : extension;
 }
@@ -59,14 +67,14 @@ function updateAssociatedIcon(rect) {
   const request = Promise.resolve(GetAssociatedIcon(rect.full_path, !!rect.is_folder))
     .then(icon => {
       const value = String(icon || "");
-      associatedIconCache.set(key, value);
+      cacheAssociatedIcon(key, value);
       return value;
     })
     .catch(() => {
-      associatedIconCache.set(key, "");
+      cacheAssociatedIcon(key, "");
       return "";
     });
-  associatedIconCache.set(key, request);
+  cacheAssociatedIcon(key, request);
   request.then(icon => applyAssociatedIcon(rect, icon));
 }
 

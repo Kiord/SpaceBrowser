@@ -74,7 +74,6 @@ type API interface {
 	PickFolder(context.Context, string) (string, error)
 	ShowProperties(string) error
 	MoveToTrash(string) error
-	AssociatedIcon(string, bool) ([]byte, error)
 	Canonicalize(string) string
 	DefaultStartPath() string
 	IsLikelyNetworkFS(string) bool
@@ -152,8 +151,6 @@ func (Default) MoveToTrash(p string) error {
 	}
 	return nil
 }
-
-func (Default) AssociatedIcon(string, bool) ([]byte, error) { return nil, nil }
 
 func (Default) Canonicalize(p string) string {
 	abs, _ := filepath.Abs(p)
