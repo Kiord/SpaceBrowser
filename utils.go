@@ -53,7 +53,7 @@ func defaultAppearanceSettings() AppearanceSettings {
 		Palette:        "default",
 		ZoomFactor:     1,
 		CornerRadius:   0,
-		ReliefStrength: 0.10,
+		ReliefStrength: 0.30,
 	}
 }
 
