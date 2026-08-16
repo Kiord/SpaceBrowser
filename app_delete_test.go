@@ -20,6 +20,38 @@ type trashActionDesktop struct {
 	moveDestination    string
 }
 
+type globalTrashDesktop struct {
+	platform.DesktopActions
+	roots []string
+}
+
+func (desktop globalTrashDesktop) IsTrashRoot(path string) bool {
+	for _, root := range desktop.roots {
+		if filepath.Clean(path) == filepath.Clean(root) {
+			return true
+		}
+	}
+	return false
+}
+
+func (desktop globalTrashDesktop) EmptyTrash(path string) error {
+	if !desktop.IsTrashRoot(path) {
+		return errors.New("unexpected Trash path")
+	}
+	for _, root := range desktop.roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := os.RemoveAll(filepath.Join(root, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (desktop trashActionDesktop) MoveToTrash(path string) error {
 	if desktop.moveDestination == "" {
 		return errors.New("move to Trash was not expected")
@@ -304,6 +336,53 @@ func TestAppDeleteCommandRoutesTrashRootToEmptyTrash(t *testing.T) {
 	}
 	if result.FileCount != 0 || result.DirCount != 2 || trash.Size != 0 {
 		t.Fatalf("result after routed EmptyTrash = %+v, Trash size %d", result, trash.Size)
+	}
+}
+
+func TestAppEmptyGlobalTrashRefreshesEveryDisplayedTrashRoot(t *testing.T) {
+	rootPath := t.TempDir()
+	firstPath := filepath.Join(rootPath, ".Trash-1000")
+	secondPath := filepath.Join(rootPath, ".Trash-1001")
+	for _, trashPath := range []string{firstPath, secondPath} {
+		if err := os.Mkdir(trashPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(trashPath, "deleted.bin"), []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root := &Node{ID: 0, ParentID: -1, Name: "root", FullPath: rootPath, Size: 8, IsFolder: true, EntryFiles: 2, EntryDirs: 3}
+	first := &Node{ID: 1, ParentID: 0, Name: ".Trash-1000", FullPath: firstPath, Size: 4, IsFolder: true, Depth: 1, EntryFiles: 1, EntryDirs: 1}
+	firstFile := &Node{ID: 2, ParentID: 1, Name: "deleted.bin", FullPath: filepath.Join(firstPath, "deleted.bin"), Size: 4, Depth: 2}
+	second := &Node{ID: 3, ParentID: 0, Name: ".Trash-1001", FullPath: secondPath, Size: 4, IsFolder: true, Depth: 1, EntryFiles: 1, EntryDirs: 1}
+	secondFile := &Node{ID: 4, ParentID: 3, Name: "deleted.bin", FullPath: filepath.Join(secondPath, "deleted.bin"), Size: 4, Depth: 2}
+	root.Children = []*Node{first, second}
+	first.Children = []*Node{firstFile}
+	second.Children = []*Node{secondFile}
+	app := &App{
+		ctx:        context.Background(),
+		profile:    Profile{AllowDelete: true},
+		desktop:    globalTrashDesktop{roots: []string{firstPath, secondPath}},
+		filesystem: platform.Impl,
+		store: TreeStore{
+			root: root, nodes: []*Node{root, first, firstFile, second, secondFile},
+			fileCount: 2, dirCount: 3,
+		},
+	}
+
+	result, err := app.DeleteNode(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RescanRequired {
+		t.Fatalf("global Trash refresh unexpectedly requires a full rescan: %+v", result)
+	}
+	if result.FileCount != 0 || result.DirCount != 3 {
+		t.Fatalf("counts after refreshing every Trash root = (%d, %d), want (0, 3)", result.FileCount, result.DirCount)
+	}
+	if len(first.Children) != 0 || len(second.Children) != 0 || first.Size != 0 || second.Size != 0 || root.Size != 0 {
+		t.Fatalf("displayed Trash roots remained stale: first=%+v second=%+v root size=%d", first, second, root.Size)
 	}
 }
 

@@ -285,6 +285,7 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 	if emptyTrash == nil {
 		return DeleteResult{}, fmt.Errorf("empty Trash command is unavailable")
 	}
+	trashRefreshes := displayedTrashNodes(s.root, nil, isTrashRoot)
 	if err := emptyTrash(node.FullPath); err != nil {
 		return DeleteResult{}, err
 	}
@@ -306,7 +307,12 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 	}
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
-	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
+	return DeleteResult{
+		FileCount:      s.fileCount,
+		DirCount:       s.dirCount,
+		RescanRequired: rescanRequired,
+		trashRefreshes: trashRefreshes,
+	}, nil
 }
 
 func (s *TreeStore) detachSubtree(current *Node) (files, dirs int) {
