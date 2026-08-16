@@ -54,6 +54,14 @@ type TrashRestoreInfo struct {
 	OriginalPath string
 }
 
+// ScanLocation is a user-visible filesystem root that can be selected as a
+// scan target, such as a Windows drive, a macOS volume, or a Linux mount.
+type ScanLocation struct {
+	Name string
+	Path string
+	Kind string
+}
+
 type diagnosticDirectoryReader interface {
 	ReadDirWithDiagnostics(string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error)
 }
@@ -99,12 +107,20 @@ type DesktopActions interface {
 	DefaultStartPath() string
 }
 
+// LocationProvider discovers user-visible filesystem roots. It is separate
+// from DesktopActions because enumeration is read-only and does not open or
+// control desktop UI.
+type LocationProvider interface {
+	ListScanLocations() ([]ScanLocation, error)
+}
+
 // API is retained as the combined native platform implementation used by the
-// application today. Later dependency injection can provide its two embedded
-// interfaces independently without another method-level reorganization.
+// application today. Dependency injection can provide its embedded interfaces
+// independently.
 type API interface {
 	ScannerFilesystem
 	DesktopActions
+	LocationProvider
 }
 
 // -------- defaults (POSIX-ish + xdg-open) --------
@@ -216,6 +232,11 @@ func (Default) DefaultStartPath() string {
 		}
 	}
 	return string(os.PathSeparator)
+}
+
+func (d Default) ListScanLocations() ([]ScanLocation, error) {
+	path := d.DefaultStartPath()
+	return []ScanLocation{{Name: "File system", Path: path, Kind: "volume"}}, nil
 }
 
 func (Default) IsHidden(path string) bool {

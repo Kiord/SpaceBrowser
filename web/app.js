@@ -4,6 +4,7 @@ import { hideContextMenu, initFileActions } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";
 import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
+import { initLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
 import { analyze, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
@@ -33,6 +34,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSettings({ redraw });
   initFileActions({ redraw, getSelectedRect, isPassiveRect });
   initScan({ redraw, hideContextMenu });
+  initLocationSelector({ analyze });
   initFolderPicker();
   initZoom({ redraw });
 

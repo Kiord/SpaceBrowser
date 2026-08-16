@@ -184,6 +184,167 @@ html.keyboard-navigation button:focus {
   overflow: hidden;
 }
 
+.location-selector {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 28px;
+  box-sizing: border-box;
+  background: #f7f7f7;
+}
+
+.location-selector[hidden] {
+  display: none;
+}
+
+.location-selector-panel {
+  width: min(720px, 100%);
+  padding: 18px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 2px;
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, .10);
+}
+
+.location-selector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.location-selector-header h1 {
+  margin: 0 0 3px;
+  color: #202020;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.location-selector-header p,
+.location-status {
+  margin: 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.location-refresh-button {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #333;
+  background: #fff;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, .10);
+}
+
+.location-refresh-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.location-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.location-card {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  color: #202020;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #b9b9b9;
+  border-radius: 2px;
+  box-shadow: 1px 2px 3px rgba(0, 0, 0, .08);
+}
+
+.location-card:hover {
+  background: #f1f3f5;
+  border-color: #858585;
+}
+
+.location-card-icon {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+}
+
+.location-card-icon img {
+  display: block;
+  max-width: 32px;
+  max-height: 32px;
+}
+
+.location-card-icon svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: #3a3a3a;
+  stroke-width: 1.5;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.location-card-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.location-card-text strong,
+.location-card-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-card-text strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.location-card-text span {
+  color: #666;
+  font-size: 11px;
+}
+
+.location-status {
+  padding: 10px 2px 2px;
+}
+
+@media (max-width: 520px) {
+  .location-selector {
+    place-items: start stretch;
+    padding: 12px;
+  }
+
+  .location-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 #idCanvas {
   z-index: 0;
   pointer-events: none;

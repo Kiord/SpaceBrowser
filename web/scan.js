@@ -4,6 +4,7 @@ import { formatCount, formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logDebug, logError } from "./logging.js";
+import { hideLocationSelector, showLocationSelector } from "./locations.js";
 import { AppState } from "./state.js";
 
 let redraw = async () => {};
@@ -36,6 +37,7 @@ function setUIBusy(state) {
 }
 
 function clearTreemapForScan() {
+  hideLocationSelector();
   hideRectToast();
   for (const context of [AppState.colorCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx]) {
     if (context) context.clearRect(0, 0, context.canvas.width, context.canvas.height);
@@ -222,6 +224,7 @@ export async function analyze() {
     analyzeInFlight = false;
     setUIBusy(false);
     updateNavButtons();
+    if (AppState.node_id == null) showLocationSelector({ refresh: true });
   }
 }
 

@@ -82,6 +82,24 @@
       <canvas id="idCanvas" style="display: none"></canvas>
       <canvas id="tmpCanvas" style="display: none"></canvas>
       <canvas id="maskCanvas" style="display: none"></canvas>
+      <section id="locationSelector" class="location-selector" aria-labelledby="locationSelectorTitle">
+        <div class="location-selector-panel">
+          <header class="location-selector-header">
+            <div>
+              <h1 id="locationSelectorTitle">Select a location</h1>
+              <p>Choose a drive or mounted volume to scan.</p>
+            </div>
+            <button id="refreshLocationsButton" class="location-refresh-button" type="button" aria-label="Refresh locations" data-tooltip="Refresh locations">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 7v5h-5"></path>
+                <path d="M18.2 17a8 8 0 1 1 .8-9l1 4"></path>
+              </svg>
+            </button>
+          </header>
+          <div id="locationList" class="location-list"></div>
+          <p id="locationStatus" class="location-status" role="status">Finding available locations...</p>
+        </div>
+      </section>
     </div>
     
   </div>

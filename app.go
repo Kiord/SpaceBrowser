@@ -16,6 +16,7 @@ type App struct {
 	logger              *SeverityLogger
 	filesystem          platform.ScannerFilesystem
 	desktop             platform.DesktopActions
+	locations           platform.LocationProvider
 	store               TreeStore
 	showFreeSpace       bool
 	profile             Profile
@@ -55,15 +56,18 @@ func newAppWithPaths(settingsPath, defaultPath string) *App {
 }
 
 func newAppWithPathsAndLogger(settingsPath, defaultPath string, logger *SeverityLogger) *App {
-	return newAppWithDependencies(settingsPath, defaultPath, logger, platform.Impl, platform.Impl)
+	return newAppWithDependencies(settingsPath, defaultPath, logger, platform.Impl, platform.Impl, platform.Impl)
 }
 
-func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLogger, filesystem platform.ScannerFilesystem, desktop platform.DesktopActions) *App {
+func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLogger, filesystem platform.ScannerFilesystem, desktop platform.DesktopActions, locations platform.LocationProvider) *App {
 	if filesystem == nil {
 		filesystem = platform.Impl
 	}
 	if desktop == nil {
 		desktop = platform.Impl
+	}
+	if locations == nil {
+		locations = platform.Impl
 	}
 	profile := *defaultProfile()
 	if settingsPath != "" {
@@ -81,6 +85,7 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 		logger:              logger,
 		filesystem:          filesystem,
 		desktop:             desktop,
+		locations:           locations,
 	}
 }
 

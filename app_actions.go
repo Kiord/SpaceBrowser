@@ -205,6 +205,31 @@ func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
 	return a.iconService.DataURL(path, isFolder)
 }
 
+type ScanLocation struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	IconURL string `json:"iconUrl"`
+}
+
+func (a *App) GetScanLocations() ([]ScanLocation, error) {
+	locations, err := a.locations.ListScanLocations()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ScanLocation, 0, len(locations))
+	for _, location := range locations {
+		entry := ScanLocation{Name: location.Name, Path: location.Path, Kind: location.Kind}
+		if iconURL, iconErr := a.GetAssociatedIcon(location.Path, true); iconErr == nil {
+			entry.IconURL = iconURL
+		} else if a.logger != nil {
+			a.logger.Debugf("native location icon unavailable for %s: %v", location.Path, iconErr)
+		}
+		result = append(result, entry)
+	}
+	return result, nil
+}
+
 func (a *App) DefaultPath() string {
 	return a.desktop.DefaultStartPath()
 }
