@@ -64,19 +64,13 @@ cd SpaceBrowser
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 ```
 
-On Windows, build the console-subsystem executable so the terminal waits correctly and displays logs:
-
-```powershell
-wails build -windowsconsole
-```
-
-On Linux and macOS, use:
+Build the application with:
 
 ```sh
 wails build
 ```
 
-The resulting application is placed in `build/bin`. For development with automatic reloads, use:
+For development with automatic reloads, use:
 
 ```sh
 wails dev

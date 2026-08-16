@@ -50,13 +50,7 @@ jobs:
           python -c 'import json, pathlib, sys; path = pathlib.Path("wails.json"); config = json.loads(path.read_text()); config["info"]["productVersion"] = sys.argv[1]; path.write_text(json.dumps(config, indent=2) + "\n")' "$VERSION"
 
       - name: Build Wails app
-        run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            wails build -trimpath -tags webkit2_41 -windowsconsole
-          else
-            wails build -trimpath -tags webkit2_41
-          fi
-        shell: bash
+        run: wails build -trimpath -tags webkit2_41
 
       - name: Package artifact
         id: pkg

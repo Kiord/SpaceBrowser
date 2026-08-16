@@ -21,11 +21,14 @@ var assets embed.FS
 var appIcon []byte
 
 func main() {
+	attachParentConsole()
+	logOutput := terminalLogOutput()
+
 	cliOptions, err := parseCommandLine(os.Args[1:])
 	if err != nil {
-		consoleLogger := NewSeverityLogger(defaultVerbosity, os.Stderr)
+		consoleLogger := NewSeverityLogger(defaultVerbosity, logOutput)
 		consoleLogger.Criticalf("%v", err)
-		fmt.Fprintln(os.Stderr, commandLineUsage(filepath.Base(os.Args[0])))
+		fmt.Fprintln(logOutput, commandLineUsage(filepath.Base(os.Args[0])))
 		os.Exit(2)
 	}
 	if cliOptions.showHelp {
@@ -37,7 +40,7 @@ func main() {
 		return
 	}
 
-	consoleLogger := NewSeverityLogger(cliOptions.verbosity, os.Stderr)
+	consoleLogger := NewSeverityLogger(cliOptions.verbosity, logOutput)
 	app := newAppWithLogger(consoleLogger)
 	app.initialScanPath = cliOptions.initialPath
 	consoleLogger.Infof("starting SpaceBrowser %s (verbosity %d)", applicationVersion(), cliOptions.verbosity)
