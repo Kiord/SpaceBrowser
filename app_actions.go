@@ -25,7 +25,13 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		return DeleteResult{}, fmt.Errorf("items cannot be deleted while a scan is running")
 	}
 
-	result, err := a.store.DeleteNode(nodeID, a.desktop.MoveToTrash)
+	var result DeleteResult
+	var err error
+	if a.store.IsTrashNode(nodeID, a.desktop.IsTrashRoot) {
+		result, err = a.store.EmptyTrashNode(nodeID, a.desktop.IsTrashRoot, a.desktop.EmptyTrash)
+	} else {
+		result, err = a.store.DeleteNode(nodeID, a.desktop.IsTrashRoot, a.desktop.MoveToTrash)
+	}
 	if err != nil {
 		return DeleteResult{}, err
 	}

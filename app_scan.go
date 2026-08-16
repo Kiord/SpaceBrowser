@@ -295,5 +295,14 @@ func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	a.settingsMu.RLock()
 	showFreeSpace := a.showFreeSpace
 	a.settingsMu.RUnlock()
-	return a.store.Layout(nodeID, width, height, scale, showFreeSpace)
+	rects, err := a.store.Layout(nodeID, width, height, scale, showFreeSpace)
+	if err != nil {
+		return nil, err
+	}
+	for index := range rects {
+		if a.desktop != nil && rects[index].IsFolder && rects[index].FullPath != "" {
+			rects[index].IsTrashRoot = a.desktop.IsTrashRoot(rects[index].FullPath)
+		}
+	}
+	return rects, nil
 }

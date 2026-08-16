@@ -58,6 +58,20 @@ func TestWindowsNetworkFilesystemClassification(t *testing.T) {
 	}
 }
 
+func TestWindowsTrashRootClassification(t *testing.T) {
+	windowsPlatform := Windows{}
+	for _, path := range []string{`C:\$Recycle.Bin`, `c:\$RECYCLE.BIN\`} {
+		if !windowsPlatform.IsTrashRoot(path) {
+			t.Fatalf("IsTrashRoot(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{`C:\folder\$Recycle.Bin`, `C:\Recycle Bin`, `C:\$Recycle.Bin\owner`} {
+		if windowsPlatform.IsTrashRoot(path) {
+			t.Fatalf("IsTrashRoot(%q) = true, want false", path)
+		}
+	}
+}
+
 func TestWindowsLocalTempPathIsNotNetworkFilesystem(t *testing.T) {
 	if (Windows{}).IsLikelyNetworkFS(t.TempDir()) {
 		t.Fatal("local temporary directory was classified as a network filesystem")

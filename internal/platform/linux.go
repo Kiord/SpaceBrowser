@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -195,6 +196,63 @@ func (Linux) MoveToTrash(p string) error {
 		return fmt.Errorf("move to Trash: %w", lastErr)
 	}
 	return fmt.Errorf("no desktop Trash service is available")
+}
+
+func (Linux) IsTrashRoot(p string) bool {
+	clean, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	clean = filepath.Clean(clean)
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil {
+		dataHome := os.Getenv("XDG_DATA_HOME")
+		if dataHome == "" {
+			dataHome = filepath.Join(home, ".local", "share")
+		}
+		if clean == filepath.Clean(filepath.Join(dataHome, "Trash")) {
+			return true
+		}
+	}
+	uid := strconv.Itoa(os.Getuid())
+	base := filepath.Base(clean)
+	if base == ".Trash-"+uid {
+		return true
+	}
+	if base == uid && filepath.Base(filepath.Dir(clean)) == ".Trash" {
+		return true
+	}
+	if base == ".Trash" {
+		info, statErr := os.Stat(filepath.Join(clean, uid))
+		return statErr == nil && info.IsDir()
+	}
+	return false
+}
+
+func (l Linux) EmptyTrash(p string) error {
+	if !l.IsTrashRoot(p) {
+		return fmt.Errorf("the selected folder is not a supported Trash root")
+	}
+	commands := [][]string{
+		{"gio", "trash", "--empty"},
+		{"ktrash6", "--empty"},
+		{"ktrash5", "--empty"},
+	}
+	var lastErr error
+	for _, command := range commands {
+		if _, err := exec.LookPath(command[0]); err != nil {
+			continue
+		}
+		if err := exec.Command(command[0], command[1:]...).Run(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("empty Trash: %w", lastErr)
+	}
+	return fmt.Errorf("no desktop Trash service capable of emptying Trash is available")
 }
 
 func (Linux) DefaultStartPath() string {

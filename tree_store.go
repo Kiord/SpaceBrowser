@@ -94,7 +94,7 @@ func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpa
 	return ComputeTreemapRects(&viewRoot, float64(width), float64(height), scale), nil
 }
 
-func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (DeleteResult, error) {
+func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -104,6 +104,9 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 	node := s.nodes[nodeID]
 	if node.ParentID < 0 || node.FullPath == "" || node.IsFreeSpace || node.IsSmallFiles {
 		return DeleteResult{}, fmt.Errorf("the scan root and virtual items cannot be deleted")
+	}
+	if isTrashRoot != nil && isTrashRoot(node.FullPath) {
+		return DeleteResult{}, fmt.Errorf("the Trash root cannot be deleted; use Empty Trash instead")
 	}
 	if node.ParentID >= len(s.nodes) || s.nodes[node.ParentID] == nil {
 		return DeleteResult{}, fmt.Errorf("selected item's parent is no longer available")
@@ -138,33 +141,83 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 		return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
 	}
 
-	var deletedFiles, deletedDirs int
-	var detach func(*Node)
-	detach = func(current *Node) {
-		if current == nil {
-			return
-		}
-		if current.IsSmallFiles {
-			deletedFiles += int(current.SmallFileCount)
-		} else if !current.IsFreeSpace {
-			if current.IsFolder {
-				deletedDirs++
-			} else {
-				deletedFiles++
-			}
-		}
-		for _, child := range current.Children {
-			detach(child)
-		}
-		if current.ID >= 0 && current.ID < len(s.nodes) {
-			s.nodes[current.ID] = nil
-		}
-	}
-	detach(node)
+	deletedFiles, deletedDirs := s.detachSubtree(node)
 
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
 	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
+}
+
+func (s *TreeStore) IsTrashNode(nodeID int, isTrashRoot func(string) bool) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return nodeID >= 0 && nodeID < len(s.nodes) && s.nodes[nodeID] != nil && isTrashRoot != nil && isTrashRoot(s.nodes[nodeID].FullPath)
+}
+
+func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, emptyTrash func(string) error) (DeleteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
+		return DeleteResult{}, fmt.Errorf("selected item is no longer available")
+	}
+	node := s.nodes[nodeID]
+	if !node.IsFolder || node.FullPath == "" || isTrashRoot == nil || !isTrashRoot(node.FullPath) {
+		return DeleteResult{}, fmt.Errorf("the selected item is not a supported Trash root")
+	}
+	if _, err := os.Lstat(node.FullPath); err != nil {
+		if os.IsNotExist(err) {
+			return DeleteResult{}, fmt.Errorf("selected Trash no longer exists")
+		}
+		return DeleteResult{}, fmt.Errorf("inspect selected Trash: %w", err)
+	}
+	if emptyTrash == nil {
+		return DeleteResult{}, fmt.Errorf("empty Trash command is unavailable")
+	}
+	if err := emptyTrash(node.FullPath); err != nil {
+		return DeleteResult{}, err
+	}
+
+	emptiedSize := node.Size
+	rescanRequired := subtreeHasSharedAllocation(node)
+	var deletedFiles, deletedDirs int
+	for _, child := range node.Children {
+		files, dirs := s.detachSubtree(child)
+		deletedFiles += files
+		deletedDirs += dirs
+	}
+	node.Children = nil
+	node.Size = 0
+	if node.ParentID >= 0 && node.ParentID < len(s.nodes) {
+		s.adjustAncestorSizes(s.nodes[node.ParentID], -emptiedSize)
+	}
+	s.fileCount = max(0, s.fileCount-deletedFiles)
+	s.dirCount = max(0, s.dirCount-deletedDirs)
+	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
+}
+
+func (s *TreeStore) detachSubtree(current *Node) (files, dirs int) {
+	if current == nil {
+		return 0, 0
+	}
+	if current.IsSmallFiles {
+		files += int(current.SmallFileCount)
+	} else if !current.IsFreeSpace {
+		if current.IsFolder {
+			dirs++
+		} else {
+			files++
+		}
+	}
+	for _, child := range current.Children {
+		childFiles, childDirs := s.detachSubtree(child)
+		files += childFiles
+		dirs += childDirs
+	}
+	if current.ID >= 0 && current.ID < len(s.nodes) {
+		s.nodes[current.ID] = nil
+	}
+	return files, dirs
 }
 
 func (s *TreeStore) adjustAncestorSizes(node *Node, delta int64) {

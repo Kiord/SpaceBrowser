@@ -4,8 +4,27 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"spacebrowser/internal/platform"
 	"testing"
 )
+
+type trashActionDesktop struct {
+	platform.DesktopActions
+	path    string
+	emptied *bool
+}
+
+func (desktop trashActionDesktop) IsTrashRoot(path string) bool {
+	return path == desktop.path
+}
+
+func (desktop trashActionDesktop) EmptyTrash(path string) error {
+	if path != desktop.path {
+		return errors.New("unexpected Trash path")
+	}
+	*desktop.emptied = true
+	return nil
+}
 
 func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "folder")
@@ -23,7 +42,7 @@ func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, folder, nested, kept}, fileCount: 4, dirCount: 2}
 
 	calledWith := ""
-	result, err := store.DeleteNode(folder.ID, func(path string) error {
+	result, err := store.DeleteNode(folder.ID, nil, func(path string) error {
 		calledWith = path
 		return nil
 	})
@@ -55,7 +74,7 @@ func TestTreeStoreDeleteNodeLeavesTreeUntouchedWhenTrashFails(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
 	wantErr := errors.New("trash unavailable")
 
-	if _, err := store.DeleteNode(file.ID, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
+	if _, err := store.DeleteNode(file.ID, nil, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
 		t.Fatalf("deleteNode() error = %v, want %v", err, wantErr)
 	}
 	if root.Size != 4 || len(root.Children) != 1 || store.nodes[file.ID] != file {
@@ -67,7 +86,7 @@ func TestTreeStoreDeleteNodeRejectsRoot(t *testing.T) {
 	root := &Node{ID: 0, ParentID: -1, Name: "root", IsFolder: true}
 	store := &TreeStore{root: root, nodes: []*Node{root}}
 	called := false
-	if _, err := store.DeleteNode(root.ID, func(string) error {
+	if _, err := store.DeleteNode(root.ID, nil, func(string) error {
 		called = true
 		return nil
 	}); err == nil {
@@ -88,7 +107,7 @@ func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
 	root.Children = []*Node{file}
 	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
 
-	result, err := store.DeleteNode(file.ID, func(string) error { return nil })
+	result, err := store.DeleteNode(file.ID, nil, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +136,7 @@ func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
 		fileCount: 3, dirCount: 3,
 	}
 
-	result, err := store.DeleteNode(folder.ID, func(string) error { return nil })
+	result, err := store.DeleteNode(folder.ID, nil, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,6 +154,85 @@ func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
 	}
 	if store.nodes[folder.ID] != folder || store.nodes[nested.ID] != nested {
 		t.Fatal("virtually moved subtree is no longer visitable")
+	}
+}
+
+func TestTreeStoreProtectsAndEmptiesTrashRoot(t *testing.T) {
+	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
+	if err := os.Mkdir(trashPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	root := &Node{ID: 0, ParentID: -1, Name: "root", Size: 75, IsFolder: true}
+	trash := &Node{ID: 1, ParentID: 0, Name: "$Recycle.Bin", FullPath: trashPath, Size: 60, IsFolder: true}
+	nested := &Node{ID: 2, ParentID: 1, Name: "owner", Size: 60, IsFolder: true}
+	file := &Node{ID: 3, ParentID: 2, Name: "deleted.bin", Size: 60}
+	kept := &Node{ID: 4, ParentID: 0, Name: "kept.bin", Size: 15}
+	root.Children = []*Node{trash, kept}
+	trash.Children = []*Node{nested}
+	nested.Children = []*Node{file}
+	store := &TreeStore{root: root, nodes: []*Node{root, trash, nested, file, kept}, fileCount: 2, dirCount: 3}
+	isTrashRoot := func(path string) bool { return path == trashPath }
+
+	moved := false
+	if _, err := store.DeleteNode(trash.ID, isTrashRoot, func(string) error {
+		moved = true
+		return nil
+	}); err == nil {
+		t.Fatal("DeleteNode() allowed a Trash root to be moved")
+	}
+	if moved {
+		t.Fatal("MoveToTrash was called for a Trash root")
+	}
+
+	emptyCalledWith := ""
+	result, err := store.EmptyTrashNode(trash.ID, isTrashRoot, func(path string) error {
+		emptyCalledWith = path
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emptyCalledWith != trashPath {
+		t.Fatalf("EmptyTrash called with %q, want %q", emptyCalledWith, trashPath)
+	}
+	if trash.Size != 0 || len(trash.Children) != 0 || root.Size != 15 {
+		t.Fatalf("tree after emptying Trash = root size %d, Trash size %d, children %d", root.Size, trash.Size, len(trash.Children))
+	}
+	if result.FileCount != 1 || result.DirCount != 2 {
+		t.Fatalf("counts after emptying Trash = (%d, %d), want (1, 2)", result.FileCount, result.DirCount)
+	}
+	if store.nodes[nested.ID] != nil || store.nodes[file.ID] != nil || store.nodes[trash.ID] != trash {
+		t.Fatal("emptying Trash detached the wrong nodes")
+	}
+}
+
+func TestAppDeleteCommandRoutesTrashRootToEmptyTrash(t *testing.T) {
+	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
+	if err := os.Mkdir(trashPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := &Node{ID: 0, ParentID: -1, Size: 10, IsFolder: true}
+	trash := &Node{ID: 1, ParentID: 0, FullPath: trashPath, Size: 10, IsFolder: true}
+	file := &Node{ID: 2, ParentID: 1, Size: 10}
+	root.Children = []*Node{trash}
+	trash.Children = []*Node{file}
+	emptied := false
+	app := &App{
+		profile: Profile{AllowDelete: true},
+		desktop: trashActionDesktop{path: trashPath, emptied: &emptied},
+		store:   TreeStore{root: root, nodes: []*Node{root, trash, file}, fileCount: 1, dirCount: 2},
+	}
+
+	result, err := app.DeleteNode(trash.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !emptied {
+		t.Fatal("DeleteNode did not route the Trash root to EmptyTrash")
+	}
+	if result.FileCount != 0 || result.DirCount != 2 || trash.Size != 0 {
+		t.Fatalf("result after routed EmptyTrash = %+v, Trash size %d", result, trash.Size)
 	}
 }
 

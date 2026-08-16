@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -94,6 +96,44 @@ tell application "Finder" to delete POSIX file (item 1 of argv)
 end run`
 	if err := exec.Command("osascript", "-e", script, p).Run(); err != nil {
 		return fmt.Errorf("move to Trash: %w", err)
+	}
+	return nil
+}
+
+func (Darwin) IsTrashRoot(p string) bool {
+	clean, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	clean = filepath.Clean(clean)
+	if clean == filepath.Clean(filepath.Join(home, ".Trash")) {
+		return true
+	}
+	uid := strconv.Itoa(os.Getuid())
+	base := filepath.Base(clean)
+	if base == uid && filepath.Base(filepath.Dir(clean)) == ".Trashes" {
+		return true
+	}
+	if base != ".Trashes" {
+		return false
+	}
+	if filepath.Clean(filepath.Dir(filepath.Dir(clean))) == "/Volumes" {
+		return true
+	}
+	info, statErr := os.Stat(filepath.Join(clean, uid))
+	return statErr == nil && info.IsDir()
+}
+
+func (d Darwin) EmptyTrash(p string) error {
+	if !d.IsTrashRoot(p) {
+		return fmt.Errorf("the selected folder is not a supported Trash root")
+	}
+	if err := exec.Command("osascript", "-e", `tell application "Finder" to empty trash`).Run(); err != nil {
+		return fmt.Errorf("empty Trash: %w", err)
 	}
 	return nil
 }

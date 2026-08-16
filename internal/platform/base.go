@@ -85,6 +85,8 @@ type DesktopActions interface {
 	PickFolder(context.Context, string) (string, error)
 	ShowProperties(string) error
 	MoveToTrash(string) error
+	IsTrashRoot(string) bool
+	EmptyTrash(string) error
 	DefaultStartPath() string
 }
 
@@ -167,6 +169,14 @@ func (Default) MoveToTrash(p string) error {
 		return fmt.Errorf("move to Trash: %w", err)
 	}
 	return nil
+}
+
+func (Default) IsTrashRoot(string) bool {
+	return false
+}
+
+func (Default) EmptyTrash(string) error {
+	return fmt.Errorf("emptying Trash is not supported on this platform")
 }
 
 func (Default) Canonicalize(p string) string {

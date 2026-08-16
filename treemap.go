@@ -36,6 +36,7 @@ type Rect struct {
 	Name           string `json:"name"`
 	Size           int64  `json:"size"`
 	IsFolder       bool   `json:"is_folder"`
+	IsTrashRoot    bool   `json:"is_trash_root,omitempty"`
 	IsFree         bool   `json:"is_free_space"`
 	IsSmallFiles   bool   `json:"is_small_files"`
 	SmallFileCount int64  `json:"small_file_count,omitempty"`

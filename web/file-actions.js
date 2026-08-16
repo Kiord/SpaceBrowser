@@ -35,23 +35,35 @@ function requestSelectedDeletion() {
     showErrorToast("Another deletion is already in progress");
     return;
   }
+  const emptyTrash = !!rect.is_trash_root;
+  const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
   if (!AppState.profile?.allowDelete) {
-    showErrorToast("Delete commands are disabled. Enable Allow delete command in Settings");
+    showErrorToast(emptyTrash
+      ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
+      : "Delete commands are disabled. Enable Allow delete command in Settings");
     return;
   }
   if (isPassiveRect(rect) || !rect.full_path) {
     showErrorToast("This item cannot be deleted");
     return;
   }
-  if (rect.node_id === AppState.node_id) {
+  if (!emptyTrash && rect.node_id === AppState.node_id) {
     showErrorToast("The current view cannot be deleted. Go to its parent first");
     return;
   }
 
-  pendingDeletion = { nodeId: rect.node_id, path: rect.full_path, size: rect.size };
-  byId("deleteConfirmTitle").textContent = `Move this item to ${trashDestinationName()}?`;
-  byId("deleteConfirmPath").textContent = rect.full_path;
+  pendingDeletion = { nodeId: rect.node_id, path: rect.full_path, size: rect.size, emptyTrash };
+  byId("deleteConfirmTitle").textContent = emptyTrash
+    ? `Empty ${trashDestinationName()}?`
+    : `Move this item to ${trashDestinationName()}?`;
+  byId("deleteConfirmPath").textContent = emptiesAllTrashLocations
+    ? "All Trash locations for the current user will be emptied."
+    : rect.full_path;
+  byId("deleteConfirmSizeLabel").textContent = emptiesAllTrashLocations
+    ? "Displayed size:"
+    : emptyTrash ? "Contents size:" : "Size:";
   byId("deleteConfirmSize").textContent = detailedByteSize(rect.size);
+  byId("confirmDeleteButton").textContent = emptyTrash ? "Empty" : "Delete";
   const dialog = byId("deleteConfirmDialog");
   if (!dialog.open) dialog.showModal();
 }
@@ -77,7 +89,8 @@ async function confirmSelectedDeletion() {
   cancelButton.disabled = true;
   byId("deleteConfirmDialog").close();
   pendingDeletion = null;
-  const dismissMovingToast = showToastAt(mousePosition.x, mousePosition.y, `Moving to ${trashDestinationName()}…`, 30000);
+  const actionText = target.emptyTrash ? `Emptying ${trashDestinationName()}...` : `Moving to ${trashDestinationName()}...`;
+  const dismissMovingToast = showToastAt(mousePosition.x, mousePosition.y, actionText, 30000);
 
   try {
     await waitForNextPaint();
@@ -94,7 +107,8 @@ async function confirmSelectedDeletion() {
       trimInvalidForwardNavigation();
       await redraw();
       updateNavButtons();
-      showToastAt(mousePosition.x, mousePosition.y, `Moved to ${trashDestinationName()}`, 1600);
+      const completedText = target.emptyTrash ? `${trashDestinationName()} emptied` : `Moved to ${trashDestinationName()}`;
+      showToastAt(mousePosition.x, mousePosition.y, completedText, 1600);
     }
   } catch (error) {
     dismissMovingToast();
@@ -139,6 +153,9 @@ export function showContextMenu(x, y) {
   if (goTo) goTo.classList.toggle("disabled", !rect?.is_folder);
   const properties = menu.querySelector('[data-action="properties"]');
   if (properties) properties.classList.toggle("disabled", !rect?.full_path || isPassiveRect(rect));
+  const deleteAction = menu.querySelector('[data-action="delete"]');
+  const deleteLabel = deleteAction?.querySelector("span");
+  if (deleteLabel) deleteLabel.textContent = rect?.is_trash_root ? `Empty ${trashDestinationName()}` : "Delete";
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");
   if (defaultOpen) defaultOpen.hidden = !rect || rect.is_folder;
