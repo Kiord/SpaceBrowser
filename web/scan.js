@@ -18,7 +18,18 @@ let displayedScanProgress = 0;
 
 const SCAN_PROGRESS_CAP = 0.96;
 const SCAN_PROGRESS_SMOOTHING = 0.08;
+const SCAN_PROGRESS_STEP_COUNT = 50;
 const SCAN_COMPLETION_DELAY_MS = 180;
+
+function renderScanProgress(fraction) {
+  const clamped = Math.max(0, Math.min(1, fraction));
+  const stepped = clamped === 1
+    ? 1
+    : Math.floor(clamped * SCAN_PROGRESS_STEP_COUNT) / SCAN_PROGRESS_STEP_COUNT;
+  const percentage = stepped * 100;
+  query(".scan-progress-bar").style.setProperty("--scan-progress", `${percentage}%`);
+  query(".scan-progress").setAttribute("aria-valuenow", String(Math.round(percentage)));
+}
 
 function setUIBusy(state) {
   queryAll(".controls button").forEach(button => { button.disabled = state; });
@@ -83,16 +94,14 @@ function startScanProgress(path) {
   const dialog = byId("scanDialog");
   const cancelButton = byId("cancelScanButton");
   const progressElement = query(".scan-progress");
-  const progressBar = query(".scan-progress-bar");
   const dotsElement = byId("scanningDots");
   byId("scanQueryPath").textContent = path;
   byId("scanQueryPath").title = path;
   byId("scanCurrentPath").textContent = path;
-  progressBar.style.width = "0%";
   progressElement.setAttribute("aria-valuemin", "0");
   progressElement.setAttribute("aria-valuemax", "100");
-  progressElement.setAttribute("aria-valuenow", "0");
   displayedScanProgress = 0;
+  renderScanProgress(0);
   byId("scanElapsedTime").textContent = "0:00";
   byId("scanFileCount").textContent = "0";
   byId("scanFolderCount").textContent = "0";
@@ -119,8 +128,7 @@ function startScanProgress(path) {
       if (target > displayedScanProgress) {
         displayedScanProgress += (target - displayedScanProgress) * SCAN_PROGRESS_SMOOTHING;
       }
-      progressBar.style.width = `${displayedScanProgress * 100}%`;
-      progressElement.setAttribute("aria-valuenow", String(Math.round(displayedScanProgress * 100)));
+      renderScanProgress(displayedScanProgress);
       byId("scanElapsedTime").textContent = formatDuration(progress?.elapsedMilliseconds || 0);
       byId("scanFileCount").textContent = formatCount(progress?.fileCount);
       byId("scanFolderCount").textContent = formatCount(progress?.dirCount);
@@ -141,9 +149,7 @@ async function completeScanProgress(fileCount, dirCount) {
   scanDotsTimer = null;
   byId("scanFileCount").textContent = formatCount(fileCount);
   byId("scanFolderCount").textContent = formatCount(dirCount);
-  const progressElement = query(".scan-progress");
-  query(".scan-progress-bar").style.width = "100%";
-  progressElement.setAttribute("aria-valuenow", "100");
+  renderScanProgress(1);
   await new Promise(resolve => setTimeout(resolve, SCAN_COMPLETION_DELAY_MS));
   const dialog = byId("scanDialog");
   if (dialog.open) dialog.close();

@@ -1051,35 +1051,42 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 
 .scan-progress {
   position: relative;
-  height: 12px;
+  height: 13px;
   margin-top: 12px;
   overflow: hidden;
-  background: #f1f1f1;
-  border: 1px solid #aaa;
-  border-radius: 1px;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.09);
+  background: #f4f4f2;
+  border: 1px solid #858585;
+  border-radius: 0;
+  box-shadow:
+    inset 1px 1px 0 rgba(0,0,0,.13),
+    inset -1px -1px 0 #fff,
+    1px 1px 0 rgba(0,0,0,.07);
 }
 
 .scan-progress-bar {
   position: absolute;
-  top: 1px;
-  bottom: 1px;
-  left: 0;
-  width: 0;
-  background: #b9c3b5;
-  border: 1px solid #879381;
-  box-sizing: border-box;
-  transition: width .18s ease-out;
+  inset: 2px;
+  background: repeating-linear-gradient(
+    to right,
+    #aeb8aa 0,
+    #8f9c8b 1px,
+    #8f9c8b calc(2% - 3px),
+    #6f7d6c calc(2% - 2px),
+    transparent calc(2% - 2px),
+    transparent 2%
+  );
+  clip-path: inset(0 calc(100% - var(--scan-progress, 0%)) 0 0);
 }
 
 .scan-time {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 17px;
-  margin-top: 5px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  margin-top: 4px;
   color: #777;
   font-size: 11px;
+  line-height: 14px;
 }
 
 .scan-time strong {
