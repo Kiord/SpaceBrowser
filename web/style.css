@@ -393,6 +393,120 @@ button:disabled:hover {
   background: #fff;
 }
 
+.scan-warning-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+}
+
+.scan-warning-indicator[hidden] {
+  display: none;
+}
+
+.scan-warning-symbol {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  color: #b76516;
+  cursor: help;
+}
+
+.scan-warning-symbol:focus {
+  outline: none;
+}
+
+html.keyboard-navigation .scan-warning-symbol:focus {
+  outline: 1px solid #8d5c20;
+  outline-offset: 1px;
+}
+
+.scan-warning-symbol svg {
+  width: 18px;
+  height: 18px;
+  overflow: visible;
+}
+
+.scan-warning-symbol svg path:first-child {
+  fill: #efb25b;
+  stroke: #a65a18;
+  stroke-width: 1.3;
+  stroke-linejoin: miter;
+}
+
+.scan-warning-symbol svg path:last-child {
+  fill: none;
+  stroke: #4c2d10;
+  stroke-width: 1.8;
+  stroke-linecap: square;
+}
+
+.scan-warning-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  max-width: min(330px, calc(100vw - 16px));
+  padding: 7px 9px;
+  box-sizing: border-box;
+  color: #fff;
+  background: #1f1f1f;
+  border: 1px solid #111;
+  border-radius: 2px;
+  box-shadow: 0 2px 5px rgba(0,0,0,.2);
+  font: 11px/1.35 "Segoe UI", sans-serif;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity 80ms linear, transform 80ms linear;
+  z-index: 10002;
+}
+
+.scan-warning-popover::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  width: 100%;
+  height: 7px;
+}
+
+.scan-warning-indicator:hover .scan-warning-popover,
+.scan-warning-indicator:focus-within .scan-warning-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.scan-report-save-error {
+  color: #ffc4bd;
+}
+
+.controls .scan-report-link {
+  align-self: flex-start;
+  min-height: 0;
+  padding: 0;
+  color: #ffd69c;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.controls .scan-report-link:hover,
+.controls .scan-report-link:active {
+  color: #fff;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
 /* (Optional) make the topbar behave well with any zoom compensation */
 #topbar {
   transform-origin: top left;

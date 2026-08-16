@@ -1,4 +1,4 @@
-import { CancelScan, GetFullTree, GetScanProgress, ValidateScanPath } from "./wailsjs/go/main/App.js";
+import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
@@ -13,6 +13,7 @@ let scanProgressToken = 0;
 let scanCancelledByUser = false;
 let scanDotsTimer = null;
 let analyzeInFlight = false;
+let scanReportPath = "";
 
 function setUIBusy(state) {
   queryAll(".controls button").forEach(button => { button.disabled = state; });
@@ -33,6 +34,44 @@ function clearTreemapForScan() {
   AppState.selectedNodeId = null;
   hideContextMenu();
   updateNavButtons();
+}
+
+function clearScanWarning() {
+  scanReportPath = "";
+  byId("scanWarningIndicator").hidden = true;
+}
+
+function showScanWarning(report) {
+  const errorCount = Number(report?.errorCount || 0);
+  if (errorCount <= 0) {
+    clearScanWarning();
+    return;
+  }
+
+  scanReportPath = String(report?.reportPath || "");
+  const details = String(report?.details || "").replace(/=(\d+)/g, ": $1");
+  byId("scanWarningSummary").textContent = `${errorCount} scan ${errorCount === 1 ? "issue was" : "issues were"} recorded${details ? `: ${details}` : ""}.`;
+  const saveError = byId("scanReportSaveError");
+  saveError.hidden = !report?.saveError;
+  saveError.textContent = report?.saveError
+    ? scanReportPath
+      ? "The report was saved, but old-report cleanup was incomplete."
+      : "The scan report could not be saved."
+    : "";
+  const reportButton = byId("viewScanReportButton");
+  reportButton.hidden = !scanReportPath;
+  reportButton.title = scanReportPath;
+  byId("scanWarningIndicator").hidden = false;
+}
+
+async function openScanReport() {
+  if (!scanReportPath) return;
+  try {
+    await OpenPath(scanReportPath);
+  } catch (error) {
+    logError("opening scan report failed:", error);
+    showErrorToast(error);
+  }
 }
 
 function startScanProgress(path) {
@@ -130,11 +169,12 @@ export async function analyze() {
   try {
     const canonicalPath = await ValidateScanPath(path);
     byId("pathInput").value = canonicalPath;
+    clearScanWarning();
     clearTreemapForScan();
     startScanProgress(canonicalPath);
     scanStarted = true;
 
-    const { rootId, fileCount, dirCount } = await GetFullTree(canonicalPath);
+    const { rootId, fileCount, dirCount, scanReport } = await GetFullTree(canonicalPath);
     stopScanProgress();
     scanStarted = false;
 
@@ -147,6 +187,7 @@ export async function analyze() {
     replaceBrowserHistoryEntry(rootId, 0);
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
+    showScanWarning(scanReport);
     await redraw();
   } catch (error) {
     logError("analyze failed:", error);
@@ -165,6 +206,7 @@ export function initScan(options) {
   redraw = options.redraw;
   hideContextMenu = options.hideContextMenu;
   byId("analyzeButton").addEventListener("click", analyze);
+  byId("viewScanReportButton").addEventListener("click", openScanReport);
   byId("cancelScanButton").addEventListener("click", cancelActiveScan);
   byId("scanDialog").addEventListener("cancel", event => {
     event.preventDefault();

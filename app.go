@@ -261,9 +261,10 @@ func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, err
 var store TreeStore
 
 type TreeInfo struct {
-	RootID    int `json:"rootId"`
-	FileCount int `json:"fileCount"`
-	DirCount  int `json:"dirCount"`
+	RootID     int             `json:"rootId"`
+	FileCount  int             `json:"fileCount"`
+	DirCount   int             `json:"dirCount"`
+	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
 }
 
 type ScanProgress struct {
@@ -436,7 +437,9 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
 	var files, dirs int64
 	scanner := NewScanner(&profile, 0)
-	scanner.ReportAllErrors(a.logger.Enabled(verbosityDebug))
+	// Persisted scan reports need the complete error list independently of the
+	// terminal verbosity selected by the user.
+	scanner.ReportAllErrors(true)
 	a.attachScanner(generation, scanner)
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
@@ -474,9 +477,12 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	})
 
 	store.Replace(root, scanner.Nodes(), int(files), int(dirs))
-	a.logScanReport(scanner.Report())
-	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", time.Since(startedAt).Round(time.Millisecond), path, files, dirs, root.Size)
-	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs)}, nil
+	report := scanner.Report()
+	a.logScanReport(report)
+	duration := time.Since(startedAt)
+	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
+	reportInfo := a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
+	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
 }
 
 func (a *App) logScanReport(report ScanReportSnapshot) {
@@ -489,10 +495,13 @@ func (a *App) logScanReport(report ScanReportSnapshot) {
 	if errors > 0 {
 		a.logger.Infof("scan report errors: %s", formatNonzeroScanCounts(report.Errors[:], scanErrorLabels[:]))
 		entryLabel := "example"
+		examples := report.Examples
 		if a.logger.Enabled(verbosityDebug) {
 			entryLabel = "error"
+		} else if len(examples) > maximumScanReportExamples {
+			examples = examples[:maximumScanReportExamples]
 		}
-		for _, example := range report.Examples {
+		for _, example := range examples {
 			a.logger.Infof("scan report %s [%s]: %s: %s", entryLabel, example.Reason, example.Path, example.Error)
 		}
 	}
