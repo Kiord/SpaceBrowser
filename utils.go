@@ -55,7 +55,7 @@ func defaultAppearanceSettings() AppearanceSettings {
 		ZoomFactor:      1,
 		CornerRadius:    0,
 		ReliefStrength:  0.30,
-		HoverBrightness: 0.07,
+		HoverBrightness: 0.12,
 	}
 }
 

@@ -76,7 +76,7 @@ function renderHoverOverlay() {
   clearRenderedHoverRect();
   const strength = AppearanceState.hoverBrightness;
   const rect = AppState.rects?.[requestedHoverRectIndex];
-  if (!(strength > 0) || !rect || rect.w <= 0 || rect.h <= 0) return;
+  if (!(strength > 0) || !rect || rect.is_free_space || rect.node_id === AppState.selectedNodeId || rect.w <= 0 || rect.h <= 0) return;
 
   const ctx = AppState.hoverCtx;
   ctx.save();
