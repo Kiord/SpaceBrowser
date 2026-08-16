@@ -199,43 +199,65 @@ func (Linux) MoveToTrash(p string) error {
 }
 
 func (Linux) IsTrashRoot(p string) bool {
-	clean, err := filepath.Abs(p)
+	dataHome, ok := linuxTrashConfiguration()
+	if !ok {
+		return false
+	}
+	return isLinuxTrashRoot(p, dataHome, os.Getuid(), (Linux{}).IsMountRoot)
+}
+
+func (l Linux) IsInTrash(p string) bool {
+	dataHome, ok := linuxTrashConfiguration()
+	if !ok {
+		return false
+	}
+	return isLinuxPathInTrash(p, dataHome, os.Getuid(), l.IsMountRoot)
+}
+
+func linuxTrashConfiguration() (dataHome string, ok bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	dataHome = os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" || !filepath.IsAbs(dataHome) {
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Clean(dataHome), true
+}
+
+func isLinuxTrashRoot(path, dataHome string, uid int, isMountRoot func(string) bool) bool {
+	clean, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
 	clean = filepath.Clean(clean)
-	home, homeErr := os.UserHomeDir()
-	if homeErr == nil {
-		dataHome := os.Getenv("XDG_DATA_HOME")
-		if dataHome == "" {
-			dataHome = filepath.Join(home, ".local", "share")
-		}
-		if clean == filepath.Clean(filepath.Join(dataHome, "Trash")) {
-			return true
-		}
+	uidText := strconv.Itoa(uid)
+	if clean == filepath.Clean(filepath.Join(dataHome, "Trash")) {
+		return linuxOwnedDirectory(clean, uid)
 	}
-	uid := strconv.Itoa(os.Getuid())
+
 	base := filepath.Base(clean)
-	if base == ".Trash-"+uid {
-		return true
+	switch {
+	case base == ".Trash-"+uidText:
+		return isMountRoot(filepath.Dir(clean)) && linuxOwnedDirectory(clean, uid)
+	case base == uidText && filepath.Base(filepath.Dir(clean)) == ".Trash":
+		sharedTrash := filepath.Dir(clean)
+		return isMountRoot(filepath.Dir(sharedTrash)) && linuxSafeSharedTrash(sharedTrash) && linuxOwnedDirectory(clean, uid)
+	case base == ".Trash":
+		return isMountRoot(filepath.Dir(clean)) && linuxSafeSharedTrash(clean) && linuxOwnedDirectory(filepath.Join(clean, uidText), uid)
+	default:
+		return false
 	}
-	if base == uid && filepath.Base(filepath.Dir(clean)) == ".Trash" {
-		return true
-	}
-	if base == ".Trash" {
-		info, statErr := os.Stat(filepath.Join(clean, uid))
-		return statErr == nil && info.IsDir()
-	}
-	return false
 }
 
-func (l Linux) IsInTrash(p string) bool {
-	clean, err := filepath.Abs(p)
+func isLinuxPathInTrash(path, dataHome string, uid int, isMountRoot func(string) bool) bool {
+	clean, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
 	for current := filepath.Clean(clean); ; current = filepath.Dir(current) {
-		if l.IsTrashRoot(current) {
+		if isLinuxTrashRoot(current, dataHome, uid, isMountRoot) {
 			return true
 		}
 		parent := filepath.Dir(current)
@@ -243,6 +265,20 @@ func (l Linux) IsInTrash(p string) bool {
 			return false
 		}
 	}
+}
+
+func linuxOwnedDirectory(path string, uid int) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(stat.Uid) == uid
+}
+
+func linuxSafeSharedTrash(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 && info.Mode()&os.ModeSticky != 0
 }
 
 func (l Linux) EmptyTrash(p string) error {

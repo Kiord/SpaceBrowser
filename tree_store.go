@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -389,7 +390,7 @@ func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []tr
 		if current == nil || current == moving {
 			return
 		}
-		if current != root && current.IsFolder && current.FullPath != "" && isSystemTrashName(current.Name) && isTrashRoot != nil && isTrashRoot(current.FullPath) {
+		if current != root && current.IsFolder && current.FullPath != "" && isPotentialSystemTrashName(current.Name) && isTrashRoot != nil && isTrashRoot(current.FullPath) {
 			if !subtreeContains(current, moving) && !subtreeContains(moving, current) {
 				found = append(found, trashRefreshTarget{NodeID: current.ID, Path: current.FullPath})
 				return
@@ -403,9 +404,20 @@ func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []tr
 	return found
 }
 
-func isSystemTrashName(name string) bool {
-	lower := strings.ToLower(strings.TrimSpace(name))
-	return lower == "$recycle.bin" || lower == "trash" || lower == ".trash" || lower == ".trashes" || strings.HasPrefix(lower, ".trash-")
+func isPotentialSystemTrashName(name string) bool {
+	trimmed := strings.TrimSpace(name)
+	lower := strings.ToLower(trimmed)
+	if lower == "$recycle.bin" || lower == "trash" || lower == ".trash" || lower == ".trashes" {
+		return true
+	}
+	if strings.HasPrefix(lower, ".trash-") {
+		_, err := strconv.ParseUint(strings.TrimPrefix(lower, ".trash-"), 10, 32)
+		return err == nil
+	}
+	// Linux/macOS per-volume shared Trash containers place the current user's
+	// Trash in a directory named with their numeric UID.
+	_, err := strconv.ParseUint(trimmed, 10, 32)
+	return err == nil
 }
 
 func subtreeContains(root, target *Node) bool {

@@ -101,40 +101,51 @@ end run`
 }
 
 func (Darwin) IsTrashRoot(p string) bool {
-	clean, err := filepath.Abs(p)
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return false
 	}
+	return isDarwinTrashRoot(p, home, os.Getuid(), (Darwin{}).IsMountRoot)
+}
+
+func (d Darwin) IsInTrash(p string) bool {
 	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	return isDarwinPathInTrash(p, home, os.Getuid(), d.IsMountRoot)
+}
+
+func isDarwinTrashRoot(path, home string, uid int, isMountRoot func(string) bool) bool {
+	clean, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
 	clean = filepath.Clean(clean)
 	if clean == filepath.Clean(filepath.Join(home, ".Trash")) {
-		return true
+		return darwinOwnedDirectory(clean, uid)
 	}
-	uid := strconv.Itoa(os.Getuid())
+
+	uidText := strconv.Itoa(uid)
 	base := filepath.Base(clean)
-	if base == uid && filepath.Base(filepath.Dir(clean)) == ".Trashes" {
-		return true
-	}
-	if base != ".Trashes" {
+	switch {
+	case base == uidText && filepath.Base(filepath.Dir(clean)) == ".Trashes":
+		sharedTrash := filepath.Dir(clean)
+		return isMountRoot(filepath.Dir(sharedTrash)) && darwinSafeSharedTrash(sharedTrash) && darwinOwnedDirectory(clean, uid)
+	case base == ".Trashes":
+		return isMountRoot(filepath.Dir(clean)) && darwinSafeSharedTrash(clean) && darwinOwnedDirectory(filepath.Join(clean, uidText), uid)
+	default:
 		return false
 	}
-	if filepath.Clean(filepath.Dir(filepath.Dir(clean))) == "/Volumes" {
-		return true
-	}
-	info, statErr := os.Stat(filepath.Join(clean, uid))
-	return statErr == nil && info.IsDir()
 }
 
-func (d Darwin) IsInTrash(p string) bool {
-	clean, err := filepath.Abs(p)
+func isDarwinPathInTrash(path, home string, uid int, isMountRoot func(string) bool) bool {
+	clean, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
 	for current := filepath.Clean(clean); ; current = filepath.Dir(current) {
-		if d.IsTrashRoot(current) {
+		if isDarwinTrashRoot(current, home, uid, isMountRoot) {
 			return true
 		}
 		parent := filepath.Dir(current)
@@ -142,6 +153,23 @@ func (d Darwin) IsInTrash(p string) bool {
 			return false
 		}
 	}
+}
+
+func darwinOwnedDirectory(path string, uid int) bool {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(stat.Uid) == uid
+}
+
+func darwinSafeSharedTrash(path string) bool {
+	info, err := os.Lstat(path)
+	// Unlike the FreeDesktop .Trash convention, external macOS volumes may
+	// use filesystems that do not expose a Unix sticky bit. The verified mount
+	// location, directory type, and no-symlink rule are authoritative here.
+	return err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0
 }
 
 func (d Darwin) EmptyTrash(p string) error {
