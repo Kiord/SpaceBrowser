@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"spacebrowser/internal/platform"
+	"strings"
 	"testing"
 )
 
@@ -42,7 +43,7 @@ func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, folder, nested, kept}, fileCount: 4, dirCount: 2}
 
 	calledWith := ""
-	result, err := store.DeleteNode(folder.ID, nil, func(path string) error {
+	result, err := store.DeleteNode(folder.ID, nil, nil, func(path string) error {
 		calledWith = path
 		return nil
 	})
@@ -74,7 +75,7 @@ func TestTreeStoreDeleteNodeLeavesTreeUntouchedWhenTrashFails(t *testing.T) {
 	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
 	wantErr := errors.New("trash unavailable")
 
-	if _, err := store.DeleteNode(file.ID, nil, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
+	if _, err := store.DeleteNode(file.ID, nil, nil, func(string) error { return wantErr }); !errors.Is(err, wantErr) {
 		t.Fatalf("deleteNode() error = %v, want %v", err, wantErr)
 	}
 	if root.Size != 4 || len(root.Children) != 1 || store.nodes[file.ID] != file {
@@ -86,7 +87,7 @@ func TestTreeStoreDeleteNodeRejectsRoot(t *testing.T) {
 	root := &Node{ID: 0, ParentID: -1, Name: "root", IsFolder: true}
 	store := &TreeStore{root: root, nodes: []*Node{root}}
 	called := false
-	if _, err := store.DeleteNode(root.ID, nil, func(string) error {
+	if _, err := store.DeleteNode(root.ID, nil, nil, func(string) error {
 		called = true
 		return nil
 	}); err == nil {
@@ -107,7 +108,7 @@ func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
 	root.Children = []*Node{file}
 	store := &TreeStore{root: root, nodes: []*Node{root, file}, fileCount: 1, dirCount: 1}
 
-	result, err := store.DeleteNode(file.ID, nil, func(string) error { return nil })
+	result, err := store.DeleteNode(file.ID, nil, nil, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
 		fileCount: 3, dirCount: 3,
 	}
 
-	result, err := store.DeleteNode(folder.ID, nil, func(string) error { return nil })
+	result, err := store.DeleteNode(folder.ID, nil, nil, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,17 +166,20 @@ func TestTreeStoreProtectsAndEmptiesTrashRoot(t *testing.T) {
 
 	root := &Node{ID: 0, ParentID: -1, Name: "root", Size: 75, IsFolder: true}
 	trash := &Node{ID: 1, ParentID: 0, Name: "$Recycle.Bin", FullPath: trashPath, Size: 60, IsFolder: true}
-	nested := &Node{ID: 2, ParentID: 1, Name: "owner", Size: 60, IsFolder: true}
-	file := &Node{ID: 3, ParentID: 2, Name: "deleted.bin", Size: 60}
+	nested := &Node{ID: 2, ParentID: 1, Name: "owner", FullPath: filepath.Join(trashPath, "owner"), Size: 60, IsFolder: true}
+	file := &Node{ID: 3, ParentID: 2, Name: "deleted.bin", FullPath: filepath.Join(trashPath, "owner", "deleted.bin"), Size: 60}
 	kept := &Node{ID: 4, ParentID: 0, Name: "kept.bin", Size: 15}
 	root.Children = []*Node{trash, kept}
 	trash.Children = []*Node{nested}
 	nested.Children = []*Node{file}
 	store := &TreeStore{root: root, nodes: []*Node{root, trash, nested, file, kept}, fileCount: 2, dirCount: 3}
 	isTrashRoot := func(path string) bool { return path == trashPath }
+	isInTrash := func(path string) bool {
+		return path == trashPath || strings.HasPrefix(path, trashPath+string(os.PathSeparator))
+	}
 
 	moved := false
-	if _, err := store.DeleteNode(trash.ID, isTrashRoot, func(string) error {
+	if _, err := store.DeleteNode(trash.ID, isTrashRoot, isInTrash, func(string) error {
 		moved = true
 		return nil
 	}); err == nil {
@@ -183,6 +187,15 @@ func TestTreeStoreProtectsAndEmptiesTrashRoot(t *testing.T) {
 	}
 	if moved {
 		t.Fatal("MoveToTrash was called for a Trash root")
+	}
+	if _, err := store.DeleteNode(file.ID, isTrashRoot, isInTrash, func(string) error {
+		moved = true
+		return nil
+	}); err == nil {
+		t.Fatal("DeleteNode() allowed an item inside Trash to be moved")
+	}
+	if moved {
+		t.Fatal("MoveToTrash was called for an item inside Trash")
 	}
 
 	emptyCalledWith := ""

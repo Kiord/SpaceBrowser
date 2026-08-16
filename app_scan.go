@@ -299,10 +299,24 @@ func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	if err != nil {
 		return nil, err
 	}
+	inTrashByNodeID := make(map[int]bool, len(rects))
 	for index := range rects {
-		if a.desktop != nil && rects[index].IsFolder && rects[index].FullPath != "" {
-			rects[index].IsTrashRoot = a.desktop.IsTrashRoot(rects[index].FullPath)
+		rect := &rects[index]
+		if a.desktop == nil || rect.FullPath == "" {
+			continue
 		}
+		if rect.IsFolder {
+			rect.IsTrashRoot = a.desktop.IsTrashRoot(rect.FullPath)
+		}
+		parentInTrash, parentIsVisible := false, false
+		if rect.ParentID != nil {
+			parentInTrash, parentIsVisible = inTrashByNodeID[*rect.ParentID]
+		}
+		rect.IsInTrash = rect.IsTrashRoot || parentInTrash
+		if !parentIsVisible && !rect.IsTrashRoot {
+			rect.IsInTrash = a.desktop.IsInTrash(rect.FullPath)
+		}
+		inTrashByNodeID[rect.NodeID] = rect.IsInTrash
 	}
 	return rects, nil
 }

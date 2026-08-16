@@ -86,6 +86,7 @@ type DesktopActions interface {
 	ShowProperties(string) error
 	MoveToTrash(string) error
 	IsTrashRoot(string) bool
+	IsInTrash(string) bool
 	EmptyTrash(string) error
 	DefaultStartPath() string
 }
@@ -172,6 +173,10 @@ func (Default) MoveToTrash(p string) error {
 }
 
 func (Default) IsTrashRoot(string) bool {
+	return false
+}
+
+func (Default) IsInTrash(string) bool {
 	return false
 }
 

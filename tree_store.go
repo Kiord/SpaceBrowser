@@ -94,7 +94,7 @@ func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpa
 	return ComputeTreemapRects(&viewRoot, float64(width), float64(height), scale), nil
 }
 
-func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {
+func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -107,6 +107,9 @@ func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot func(string) bool, moveTo
 	}
 	if isTrashRoot != nil && isTrashRoot(node.FullPath) {
 		return DeleteResult{}, fmt.Errorf("the Trash root cannot be deleted; use Empty Trash instead")
+	}
+	if isInTrash != nil && isInTrash(node.FullPath) {
+		return DeleteResult{}, fmt.Errorf("items inside Trash cannot be deleted; restore them using the system Trash")
 	}
 	if node.ParentID >= len(s.nodes) || s.nodes[node.ParentID] == nil {
 		return DeleteResult{}, fmt.Errorf("selected item's parent is no longer available")
@@ -148,10 +151,10 @@ func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot func(string) bool, moveTo
 	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
 }
 
-func (s *TreeStore) IsTrashNode(nodeID int, isTrashRoot func(string) bool) bool {
+func (s *TreeStore) NodePathMatches(nodeID int, predicate func(string) bool) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return nodeID >= 0 && nodeID < len(s.nodes) && s.nodes[nodeID] != nil && isTrashRoot != nil && isTrashRoot(s.nodes[nodeID].FullPath)
+	return nodeID >= 0 && nodeID < len(s.nodes) && s.nodes[nodeID] != nil && predicate != nil && predicate(s.nodes[nodeID].FullPath)
 }
 
 func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, emptyTrash func(string) error) (DeleteResult, error) {

@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf16"
@@ -61,6 +62,19 @@ func (w Windows) IsTrashRoot(p string) bool {
 	}
 	volume := filepath.VolumeName(clean)
 	return len(volume) == 2 && volume[1] == ':' && strings.EqualFold(filepath.Clean(filepath.Dir(clean)), filepath.Clean(volume+`\`))
+}
+
+func (w Windows) IsInTrash(p string) bool {
+	clean := w.Canonicalize(p)
+	volume := filepath.VolumeName(clean)
+	if len(volume) != 2 || volume[1] != ':' {
+		return false
+	}
+	trashRoot := filepath.Clean(volume + `\$Recycle.Bin`)
+	if strings.EqualFold(clean, trashRoot) {
+		return true
+	}
+	return len(clean) > len(trashRoot) && strings.EqualFold(clean[:len(trashRoot)], trashRoot) && os.IsPathSeparator(clean[len(trashRoot)])
 }
 
 func (w Windows) EmptyTrash(p string) error {

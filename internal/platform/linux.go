@@ -229,6 +229,22 @@ func (Linux) IsTrashRoot(p string) bool {
 	return false
 }
 
+func (l Linux) IsInTrash(p string) bool {
+	clean, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	for current := filepath.Clean(clean); ; current = filepath.Dir(current) {
+		if l.IsTrashRoot(current) {
+			return true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return false
+		}
+	}
+}
+
 func (l Linux) EmptyTrash(p string) error {
 	if !l.IsTrashRoot(p) {
 		return fmt.Errorf("the selected folder is not a supported Trash root")

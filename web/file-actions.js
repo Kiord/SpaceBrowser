@@ -36,7 +36,12 @@ function requestSelectedDeletion() {
     return;
   }
   const emptyTrash = !!rect.is_trash_root;
+  const protectedTrashItem = !!rect.is_in_trash && !emptyTrash;
   const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
+  if (protectedTrashItem) {
+    showErrorToast(`Items inside ${trashDestinationName()} are protected. Restore them using the system ${trashDestinationName()}`);
+    return;
+  }
   if (!AppState.profile?.allowDelete) {
     showErrorToast(emptyTrash
       ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
@@ -155,7 +160,16 @@ export function showContextMenu(x, y) {
   if (properties) properties.classList.toggle("disabled", !rect?.full_path || isPassiveRect(rect));
   const deleteAction = menu.querySelector('[data-action="delete"]');
   const deleteLabel = deleteAction?.querySelector("span");
-  if (deleteLabel) deleteLabel.textContent = rect?.is_trash_root ? `Empty ${trashDestinationName()}` : "Delete";
+  const protectedTrashItem = !!rect?.is_in_trash && !rect?.is_trash_root;
+  if (deleteAction) {
+    deleteAction.classList.toggle("disabled", protectedTrashItem);
+    deleteAction.classList.toggle("context-menu-delete", !protectedTrashItem);
+  }
+  if (deleteLabel) {
+    deleteLabel.textContent = rect?.is_trash_root
+      ? `Empty ${trashDestinationName()}`
+      : protectedTrashItem ? `Restore using system ${trashDestinationName()}` : "Delete";
+  }
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");
   if (defaultOpen) defaultOpen.hidden = !rect || rect.is_folder;

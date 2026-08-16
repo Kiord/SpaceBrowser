@@ -29,6 +29,9 @@ func TestLinuxTrashRootClassification(t *testing.T) {
 		if !linuxPlatform.IsTrashRoot(path) {
 			t.Fatalf("IsTrashRoot(%q) = false, want true", path)
 		}
+		if !linuxPlatform.IsInTrash(filepath.Join(path, "files", "deleted.txt")) {
+			t.Fatalf("a descendant of %q was not classified as inside Trash", path)
+		}
 	}
 	if linuxPlatform.IsTrashRoot(filepath.Join(dataHome, "not-trash")) {
 		t.Fatal("an ordinary folder was recognized as Trash")

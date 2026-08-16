@@ -128,6 +128,22 @@ func (Darwin) IsTrashRoot(p string) bool {
 	return statErr == nil && info.IsDir()
 }
 
+func (d Darwin) IsInTrash(p string) bool {
+	clean, err := filepath.Abs(p)
+	if err != nil {
+		return false
+	}
+	for current := filepath.Clean(clean); ; current = filepath.Dir(current) {
+		if d.IsTrashRoot(current) {
+			return true
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return false
+		}
+	}
+}
+
 func (d Darwin) EmptyTrash(p string) error {
 	if !d.IsTrashRoot(p) {
 		return fmt.Errorf("the selected folder is not a supported Trash root")

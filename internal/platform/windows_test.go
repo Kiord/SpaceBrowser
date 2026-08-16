@@ -70,6 +70,14 @@ func TestWindowsTrashRootClassification(t *testing.T) {
 			t.Fatalf("IsTrashRoot(%q) = true, want false", path)
 		}
 	}
+	for _, path := range []string{`C:\$Recycle.Bin`, `C:\$Recycle.Bin\S-1-5-21\$R123.txt`} {
+		if !windowsPlatform.IsInTrash(path) {
+			t.Fatalf("IsInTrash(%q) = false, want true", path)
+		}
+	}
+	if windowsPlatform.IsInTrash(`C:\folder\$Recycle.Bin\file.txt`) {
+		t.Fatal("a similarly named ordinary folder was classified as the Recycle Bin")
+	}
 }
 
 func TestWindowsLocalTempPathIsNotNetworkFilesystem(t *testing.T) {
