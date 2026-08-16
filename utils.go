@@ -57,12 +57,36 @@ func defaultAppearanceSettings() AppearanceSettings {
 }
 
 func shouldExclude(p *Profile, absPath string) bool {
+	candidate := filepath.Clean(absPath)
+	caseInsensitive := p.PlatformSystem == "windows"
 	for _, ex := range p.ExcludedPaths {
-		if absPath == ex || strings.HasPrefix(absPath, filepath.Clean(ex)+string(os.PathSeparator)) {
+		if strings.TrimSpace(ex) == "" {
+			continue
+		}
+		excluded := filepath.Clean(ex)
+		if pathsEqual(candidate, excluded, caseInsensitive) {
+			return true
+		}
+		prefix := strings.TrimRight(excluded, `/\`) + string(os.PathSeparator)
+		if pathHasPrefix(candidate, prefix, caseInsensitive) {
 			return true
 		}
 	}
 	return false
+}
+
+func pathsEqual(left, right string, caseInsensitive bool) bool {
+	if caseInsensitive {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
+
+func pathHasPrefix(path, prefix string, caseInsensitive bool) bool {
+	if len(path) < len(prefix) {
+		return false
+	}
+	return pathsEqual(path[:len(prefix)], prefix, caseInsensitive)
 }
 
 func defaultProfile() *Profile {
