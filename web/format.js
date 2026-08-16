@@ -38,12 +38,17 @@ export function detailedByteSize(bytes) {
   return `${Number(bytes || 0).toLocaleString()} bytes`;
 }
 
-export function formatSize(bytes) {
+export function formatSize(bytes, fractionDigits = null) {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   const value = bytes / Math.pow(1024, index);
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[index]}`;
+  const digits = fractionDigits ?? (value < 10 ? 1 : 0);
+  return `${value.toFixed(digits)} ${units[index]}`;
+}
+
+export function formatCount(value) {
+  return Math.trunc(Number(value) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 export function formatCompactSize(bytes) {

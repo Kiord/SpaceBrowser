@@ -1,6 +1,6 @@
 import { Layout } from "./wailsjs/go/main/App.js";
 import { hideContextMenu, showContextMenu } from "./file-actions.js";
-import { debounce, formatCompactSize, formatModTime, formatSize } from "./format.js";
+import { debounce, formatCompactSize, formatCount, formatModTime, formatSize } from "./format.js";
 import { navigateToSelected, updateNavButtons } from "./navigation.js";
 import { hideRectToast, initNotifications } from "./notifications.js";
 import { logDebug, logWarning } from "./logging.js";
@@ -244,18 +244,18 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
   if (rect.is_free_space) {
     const percent = 100 * rect.size / rect.disk_total;
-    const fileCount = AppState.fileCount ?? '?';
-    const dirCount = AppState.dirCount ?? '?';
+    const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
+    const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
       {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
-      {text:`${sizeStr} Free`, ellipsize:false},
+      {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
       {text:`Files: ${fileCount}`, ellipsize:false},
       {text:`Folders: ${dirCount}`, ellipsize:false}
     ];
     writeCenteredLinesInRect(ctx, lines, fontBounds, rect);
   }
   else if (rect.is_small_files) {
-    const count = Number(rect.small_file_count || 0).toLocaleString();
+    const count = formatCount(rect.small_file_count);
     const limit = formatCompactSize(rect.small_file_limit || 0);
     writeCenteredLinesInRect(ctx, [
       { text: `${count} <${limit} files`, ellipsize: false },
