@@ -53,20 +53,31 @@ type diagnosticDirectoryReader interface {
 	ReadDirWithDiagnostics(string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error)
 }
 
-func ReadDirWithDiagnostics(api API, path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
-	if reader, ok := api.(diagnosticDirectoryReader); ok {
+func ReadDirWithDiagnostics(filesystem ScannerFilesystem, path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
+	if reader, ok := filesystem.(diagnosticDirectoryReader); ok {
 		return reader.ReadDirWithDiagnostics(path)
 	}
-	entries, err := api.ReadDir(path)
+	entries, err := filesystem.ReadDir(path)
 	return entries, nil, err
 }
 
-type API interface {
+// ScannerFilesystem is the filesystem surface required to discover and
+// account for a scan tree. It deliberately excludes user-facing desktop
+// operations so scanners can later receive only the dependency they need.
+type ScannerFilesystem interface {
 	ReadDir(string) ([]DirectoryEntry, error)
 	UsageFor(string, os.FileInfo) FileUsage
 	BaseName(string) string
 	IsHidden(string) bool
 	IsMountRoot(string) bool
+	Canonicalize(string) string
+	IsLikelyNetworkFS(string) bool
+}
+
+// DesktopActions contains operations initiated by the application UI. These
+// methods may open native dialogs, launch applications, or modify filesystem
+// state and therefore do not belong in the scanner contract.
+type DesktopActions interface {
 	OpenInFileBrowser(string) error
 	OpenPath(string) error
 	DefaultApplicationName(string) (string, error)
@@ -74,9 +85,15 @@ type API interface {
 	PickFolder(context.Context, string) (string, error)
 	ShowProperties(string) error
 	MoveToTrash(string) error
-	Canonicalize(string) string
 	DefaultStartPath() string
-	IsLikelyNetworkFS(string) bool
+}
+
+// API is retained as the combined native platform implementation used by the
+// application today. Later dependency injection can provide its two embedded
+// interfaces independently without another method-level reorganization.
+type API interface {
+	ScannerFilesystem
+	DesktopActions
 }
 
 // -------- defaults (POSIX-ish + xdg-open) --------
