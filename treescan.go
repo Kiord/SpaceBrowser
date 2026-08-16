@@ -51,13 +51,15 @@ type Scanner struct {
 	maxWorkers int
 
 	// dense array: nodes[id] == *Node
-	nodes      []*Node
-	nodesMu    sync.Mutex
-	idCounter  int64
-	seen       map[platform.FileIdentity]*Node
-	seenMu     sync.Mutex
-	seenDirs   map[string]struct{}
-	seenDirsMu sync.Mutex
+	nodes               []*Node
+	nodesMu             sync.Mutex
+	idCounter           int64
+	seen                map[platform.FileIdentity]*Node
+	untrustedSeen       map[platform.FileIdentity]untrustedIdentityReference
+	untrustedCollisions map[platform.FileIdentity]*untrustedIdentityBucket
+	seenMu              sync.Mutex
+	seenDirs            map[string]struct{}
+	seenDirsMu          sync.Mutex
 
 	workDiscovered int64
 	workProcessed  int64
@@ -68,6 +70,23 @@ type Scanner struct {
 	progressMu     sync.Mutex
 	lastProgressAt time.Time
 	report         ScanReport
+}
+
+type untrustedIdentityCandidate struct {
+	path     string
+	node     *Node
+	usage    platform.FileUsage
+	resolved bool
+}
+
+type untrustedIdentityReference struct {
+	path string
+	node *Node
+}
+
+type untrustedIdentityBucket struct {
+	mu         sync.Mutex
+	candidates []*untrustedIdentityCandidate
 }
 
 var errNetworkFilesystemRootSkipped = errors.New("network filesystem root is excluded by the scan profile")
@@ -85,14 +104,16 @@ func NewScannerWithFilesystem(p *Profile, maxWorkers int, filesystem platform.Sc
 		maxWorkers = runtime.NumCPU() * 4 // good starting point for NVMe; tune for HDDs
 	}
 	return &Scanner{
-		profile:    p,
-		filesystem: filesystem,
-		sem:        make(chan struct{}, maxWorkers),
-		maxWorkers: maxWorkers,
-		seen:       make(map[platform.FileIdentity]*Node),
-		seenDirs:   make(map[string]struct{}),
-		ctx:        context.Background(),
-		report:     NewScanReport(maximumScanReportExamples),
+		profile:             p,
+		filesystem:          filesystem,
+		sem:                 make(chan struct{}, maxWorkers),
+		maxWorkers:          maxWorkers,
+		seen:                make(map[platform.FileIdentity]*Node),
+		untrustedSeen:       make(map[platform.FileIdentity]untrustedIdentityReference),
+		untrustedCollisions: make(map[platform.FileIdentity]*untrustedIdentityBucket),
+		seenDirs:            make(map[string]struct{}),
+		ctx:                 context.Background(),
+		report:              NewScanReport(maximumScanReportExamples),
 	}
 }
 
@@ -171,6 +192,9 @@ func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage plat
 		return usage, false
 	}
 	updateNodeUsage(node, usage)
+	if usage.IdentityNeedsConfirmation {
+		return s.registerUntrustedFileIdentity(path, info, usage, node)
+	}
 
 	s.seenMu.Lock()
 	existing, ok := s.seen[usage.Identity]
@@ -179,43 +203,100 @@ func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage plat
 		s.seenMu.Unlock()
 		return usage, false
 	}
-	if !usage.IdentityNeedsConfirmation {
-		linkCount := usage.LinkCount
-		if !usage.HasLinkCount || linkCount < 2 {
-			linkCount = 2
-		}
-		if existing != nil && existing.LinkCount < linkCount {
-			existing.LinkCount = linkCount
-		}
+	linkCount := usage.LinkCount
+	if !usage.HasLinkCount || linkCount < 2 {
+		linkCount = 2
+	}
+	if existing != nil && existing.LinkCount < linkCount {
+		existing.LinkCount = linkCount
+	}
+	s.seenMu.Unlock()
+	return usage, true
+}
+
+func (s *Scanner) registerUntrustedFileIdentity(path string, info os.FileInfo, usage platform.FileUsage, node *Node) (platform.FileUsage, bool) {
+	candidate := &untrustedIdentityCandidate{path: path, node: node}
+
+	s.seenMu.Lock()
+	first, exists := s.untrustedSeen[usage.Identity]
+	if !exists {
+		s.untrustedSeen[usage.Identity] = untrustedIdentityReference{path: path, node: node}
 		s.seenMu.Unlock()
-		return usage, true
+		return usage, false
+	}
+	bucket := s.untrustedCollisions[usage.Identity]
+	if bucket == nil {
+		bucket = &untrustedIdentityBucket{
+			candidates: []*untrustedIdentityCandidate{{path: first.path, node: first.node}},
+		}
+		s.untrustedCollisions[usage.Identity] = bucket
 	}
 	s.seenMu.Unlock()
 
 	// Legacy 64-bit Windows directory IDs are not guaranteed collision-free.
-	// Open only apparent duplicates from that format to confirm identity and
-	// link count. Native 128-bit IDs take the fast path above.
-	usage = s.filesystem.UsageFor(path, info)
-	if !usage.HasIdentity {
-		return usage, false
-	}
-	updateNodeUsage(node, usage)
+	// Resolve both sides of an apparent collision: resolving only the new path
+	// cannot match it against the unresolved identifier stored for the first.
+	bucket.mu.Lock()
+	defer bucket.mu.Unlock()
 
-	s.seenMu.Lock()
-	existing, ok = s.seen[usage.Identity]
-	if !ok {
-		s.seen[usage.Identity] = node
-		s.seenMu.Unlock()
-		return usage, false
+	candidate.usage = s.filesystem.UsageFor(path, info)
+	candidate.resolved = true
+	updateNodeUsage(node, candidate.usage)
+
+	for _, previous := range bucket.candidates {
+		previousUsage := s.resolveUntrustedIdentity(previous)
+		linkCount, confirmed := confirmedHardLink(previousUsage, candidate.usage)
+		if !confirmed {
+			continue
+		}
+		if previous.node != nil && previous.node.LinkCount < linkCount {
+			previous.node.LinkCount = linkCount
+		}
+		return candidate.usage, true
 	}
-	confirmed := usage.HasLinkCount && usage.LinkCount > 1
-	if confirmed && existing != nil && existing.LinkCount < usage.LinkCount {
-		existing.LinkCount = usage.LinkCount
+
+	bucket.candidates = append(bucket.candidates, candidate)
+	return candidate.usage, false
+}
+
+func (s *Scanner) resolveUntrustedIdentity(candidate *untrustedIdentityCandidate) platform.FileUsage {
+	if candidate.resolved {
+		return candidate.usage
 	}
-	s.seenMu.Unlock()
-	// Never omit data based only on a colliding identifier. The filesystem
-	// must also confirm that the file actually has multiple hard links.
-	return usage, confirmed
+	info, err := os.Stat(candidate.path)
+	if err != nil {
+		s.report.RecordError(scanErrorFileMetadata, candidate.path, err)
+		candidate.resolved = true
+		return candidate.usage
+	}
+	candidate.usage = s.filesystem.UsageFor(candidate.path, info)
+	candidate.resolved = true
+	if candidate.usage.MetadataError != nil {
+		s.report.RecordError(scanErrorUsageMetadata, candidate.path, candidate.usage.MetadataError)
+	}
+	// The candidate's size may already have contributed to an ancestor total.
+	// Only link metadata is safe and relevant to update retroactively here.
+	if candidate.node != nil && candidate.usage.HasLinkCount {
+		candidate.node.LinkCount = candidate.usage.LinkCount
+	}
+	return candidate.usage
+}
+
+func confirmedHardLink(first, second platform.FileUsage) (uint64, bool) {
+	if !first.HasIdentity || !second.HasIdentity || first.Identity != second.Identity {
+		return 0, false
+	}
+	if (!first.HasLinkCount || first.LinkCount < 2) && (!second.HasLinkCount || second.LinkCount < 2) {
+		return 0, false
+	}
+	linkCount := first.LinkCount
+	if second.LinkCount > linkCount {
+		linkCount = second.LinkCount
+	}
+	if linkCount < 2 {
+		linkCount = 2
+	}
+	return linkCount, true
 }
 
 func (s *Scanner) assignID(n *Node) int {

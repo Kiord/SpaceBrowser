@@ -23,6 +23,7 @@ type collidingIdentityPlatform struct {
 	root                      string
 	identityNeedsConfirmation bool
 	usageCalls                *int
+	confirmedIdentity         *platform.FileIdentity
 }
 
 type fallbackDiagnosticPlatform struct {
@@ -120,6 +121,15 @@ func (p collidingIdentityPlatform) ReadDir(path string) ([]platform.DirectoryEnt
 func (p collidingIdentityPlatform) UsageFor(path string, info os.FileInfo) platform.FileUsage {
 	if p.usageCalls != nil {
 		*p.usageCalls++
+	}
+	if p.confirmedIdentity != nil {
+		return platform.FileUsage{
+			AllocatedSize: info.Size(),
+			Identity:      *p.confirmedIdentity,
+			HasIdentity:   true,
+			LinkCount:     2,
+			HasLinkCount:  true,
+		}
 	}
 	return p.API.UsageFor(path, info)
 }
@@ -471,6 +481,10 @@ func TestPublishScanResultCommitsCurrentGeneration(t *testing.T) {
 	persisted := false
 	report, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, func() *ScanReportInfo {
 		persisted = true
+		if !app.scanMu.TryLock() {
+			t.Fatal("scan lock remained held while persisting the accepted report")
+		}
+		app.scanMu.Unlock()
 		return wantReport
 	})
 	if err != nil {
@@ -669,8 +683,46 @@ func TestScannerDoesNotDeduplicateUnconfirmedIdentityCollision(t *testing.T) {
 	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 0 {
 		t.Fatalf("reported %d duplicate identities, want 0", got)
 	}
-	if usageCalls == 0 {
-		t.Fatal("untrusted identity collision was not confirmed")
+	if usageCalls != 2 {
+		t.Fatalf("untrusted identity collision triggered %d metadata lookups, want both paths confirmed", usageCalls)
+	}
+}
+
+func TestScannerDeduplicatesConfirmedUntrustedHardLinkIdentity(t *testing.T) {
+	rootPath := t.TempDir()
+	for _, name := range []string{"first.bin", "second.bin"} {
+		if err := os.WriteFile(filepath.Join(rootPath, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	usageCalls := 0
+	confirmedIdentity := platform.FileIdentity{Volume: 7, Low: 11, High: 13}
+	filesystem := collidingIdentityPlatform{
+		API:                       platform.Impl,
+		root:                      rootPath,
+		identityNeedsConfirmation: true,
+		usageCalls:                &usageCalls,
+		confirmedIdentity:         &confirmedIdentity,
+	}
+
+	profile := defaultProfile()
+	profile.MinFileSize = 0
+	profile.SkipNetworkFS = false
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 1 || len(root.Children) != 1 {
+		t.Fatalf("confirmed hard-link identity produced %d files and %d nodes, want 1 and 1", fileCount, len(root.Children))
+	}
+	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 1 {
+		t.Fatalf("reported %d duplicate identities, want 1", got)
+	}
+	if usageCalls != 2 {
+		t.Fatalf("hard-link confirmation triggered %d metadata lookups, want 2", usageCalls)
 	}
 }
 

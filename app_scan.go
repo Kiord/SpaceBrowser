@@ -190,16 +190,17 @@ func (a *App) publishScanResult(
 	persistReport func() *ScanReportInfo,
 ) (*ScanReportInfo, error) {
 	a.scanMu.Lock()
-	defer a.scanMu.Unlock()
-
 	if a.scanGeneration != generation || !a.scanActive {
+		a.scanMu.Unlock()
 		return nil, errScanSuperseded
 	}
 	if err := ctx.Err(); err != nil {
+		a.scanMu.Unlock()
 		return nil, err
 	}
 
 	a.store.Replace(root, nodes, files, dirs)
+	a.scanMu.Unlock()
 	return persistReport(), nil
 }
 
