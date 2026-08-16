@@ -96,3 +96,17 @@ func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
 		t.Fatal("deleting a multiply linked file did not require a rescan")
 	}
 }
+
+func TestAppsOwnIndependentTreeStores(t *testing.T) {
+	root := &Node{ID: 0, ParentID: -1, Name: "first", IsFolder: true}
+	first := &App{}
+	second := &App{}
+	first.store.Replace(root, []*Node{root}, 0, 1)
+
+	if _, err := first.Layout(root.ID, 100, 100, 1); err != nil {
+		t.Fatalf("first app Layout() error = %v", err)
+	}
+	if _, err := second.Layout(root.ID, 100, 100, 1); err == nil {
+		t.Fatal("second app unexpectedly accessed the first app's tree")
+	}
+}
