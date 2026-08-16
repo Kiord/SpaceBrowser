@@ -420,11 +420,20 @@ func TestScannerReportsFileMetadataFailures(t *testing.T) {
 
 func TestScanProgressLifecycleAndCancellation(t *testing.T) {
 	app := NewApp()
-	ctx, generation := app.beginScan("first", 0)
+	ctx, generation := app.beginScan("first")
+	scanner := NewScanner(defaultProfile(), 1)
+	scanner.workDiscovered = 10
+	scanner.workProcessed = 4
+	scanner.fileCount = 12
+	scanner.dirCount = 3
+	app.attachScanner(generation, scanner)
 
 	progress := app.GetScanProgress()
-	if !progress.Active || progress.Path != "first" {
+	if !progress.Active || progress.Path != "first" || progress.Fraction != 0.4 {
 		t.Fatalf("initial progress = %+v", progress)
+	}
+	if progress.FileCount != 12 || progress.DirCount != 3 {
+		t.Fatalf("live scan counts = %d files and %d folders, want 12 and 3", progress.FileCount, progress.DirCount)
 	}
 
 	app.updateScanPath(generation, "second")
@@ -448,8 +457,8 @@ func TestPublishScanResultRejectsSupersededGeneration(t *testing.T) {
 	original := &Node{ID: 0, ParentID: -1, Name: "original", IsFolder: true}
 	app.store.Replace(original, []*Node{original}, 0, 1)
 
-	oldContext, oldGeneration := app.beginScan("old", 0)
-	_, currentGeneration := app.beginScan("current", 0)
+	oldContext, oldGeneration := app.beginScan("old")
+	_, currentGeneration := app.beginScan("current")
 	defer app.finishScan(currentGeneration)
 
 	replacement := &Node{ID: 0, ParentID: -1, Name: "replacement", IsFolder: true}
@@ -473,7 +482,7 @@ func TestPublishScanResultRejectsSupersededGeneration(t *testing.T) {
 
 func TestPublishScanResultCommitsCurrentGeneration(t *testing.T) {
 	app := NewApp()
-	ctx, generation := app.beginScan("current", 0)
+	ctx, generation := app.beginScan("current")
 	defer app.finishScan(generation)
 
 	root := &Node{ID: 0, ParentID: -1, Name: "current", IsFolder: true}
@@ -503,7 +512,7 @@ func TestPublishScanResultCommitsCurrentGeneration(t *testing.T) {
 
 func TestPublishScanResultRejectsCancelledContext(t *testing.T) {
 	app := NewApp()
-	ctx, generation := app.beginScan("cancelled", 0)
+	ctx, generation := app.beginScan("cancelled")
 	defer app.finishScan(generation)
 	app.CancelScan()
 

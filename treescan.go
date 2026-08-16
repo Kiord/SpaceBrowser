@@ -63,7 +63,8 @@ type Scanner struct {
 
 	workDiscovered int64
 	workProcessed  int64
-	bytesProcessed int64
+	fileCount      int64
+	dirCount       int64
 
 	ctx            context.Context
 	onProgress     func(string)
@@ -129,8 +130,8 @@ func (s *Scanner) WorkProgress() (processed, discovered int64) {
 	return atomic.LoadInt64(&s.workProcessed), atomic.LoadInt64(&s.workDiscovered)
 }
 
-func (s *Scanner) BytesProcessed() int64 {
-	return atomic.LoadInt64(&s.bytesProcessed)
+func (s *Scanner) LiveCounts() (files, dirs int64) {
+	return atomic.LoadInt64(&s.fileCount), atomic.LoadInt64(&s.dirCount)
 }
 
 func (s *Scanner) Report() ScanReportSnapshot {
@@ -356,6 +357,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
+	atomic.AddInt64(&s.dirCount, 1)
 
 	entries, diagnostic, err := platform.ReadDirWithDiagnostics(s.filesystem, abs)
 	if err != nil {
@@ -496,6 +498,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			// FileCount describes directory entries, while allocation and treemap
 			// nodes remain deduplicated for hard links.
 			atomic.AddInt64(fileCount, 1)
+			atomic.AddInt64(&s.fileCount, 1)
 
 			if isSmall {
 				smallFileCount++
@@ -503,7 +506,6 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					s.report.RecordSkip(scanSkipDuplicateIdentity)
 					return true
 				}
-				atomic.AddInt64(&s.bytesProcessed, sz)
 				smallFilesSize += sz
 				return true
 			}
@@ -512,7 +514,6 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				s.report.RecordSkip(scanSkipDuplicateIdentity)
 				return true
 			}
-			atomic.AddInt64(&s.bytesProcessed, sz)
 			s.assignID(child)
 			root.Children = append(root.Children, child)
 			root.Size += sz

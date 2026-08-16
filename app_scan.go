@@ -22,17 +22,15 @@ type TreeInfo struct {
 }
 
 type ScanProgress struct {
-	Active                bool    `json:"active"`
-	Path                  string  `json:"path"`
-	Processed             int64   `json:"processed"`
-	Discovered            int64   `json:"discovered"`
-	Determinate           bool    `json:"determinate"`
-	Fraction              float64 `json:"fraction"`
-	ElapsedMilliseconds   int64   `json:"elapsedMilliseconds"`
-	RemainingMilliseconds int64   `json:"remainingMilliseconds"`
+	Active              bool    `json:"active"`
+	Path                string  `json:"path"`
+	Processed           int64   `json:"processed"`
+	Discovered          int64   `json:"discovered"`
+	Fraction            float64 `json:"fraction"`
+	FileCount           int64   `json:"fileCount"`
+	DirCount            int64   `json:"dirCount"`
+	ElapsedMilliseconds int64   `json:"elapsedMilliseconds"`
 }
-
-const scanProgressSlowdown = 10.0
 
 const networkFilesystemScanDisabledMessage = "network filesystem scanning is disabled; go to Settings and untick Skip network filesystems"
 
@@ -78,45 +76,32 @@ func (a *App) GetScanProgress() ScanProgress {
 	path := a.scanPath
 	startedAt := a.scanStartedAt
 	scanner := a.scanScanner
-	totalBytes := a.scanTotalBytes
 	a.scanMu.RUnlock()
 
 	var processed, discovered int64
-	var processedBytes int64
+	var files, dirs int64
 	if scanner != nil {
 		processed, discovered = scanner.WorkProgress()
-		processedBytes = scanner.BytesProcessed()
+		files, dirs = scanner.LiveCounts()
 	}
 	elapsed := time.Since(startedAt)
 	if !active || startedAt.IsZero() {
 		elapsed = 0
 	}
 	fraction := 0.0
-	remainingMilliseconds := int64(-1)
-	determinate := totalBytes > 0
-	if determinate {
-		rawFraction := float64(processedBytes) / float64(totalBytes)
-		if rawFraction > 1 {
-			rawFraction = 1
-		}
-		// Disk usage underestimates metadata-heavy work. This curve applies the
-		// observed slowdown while preserving a true 100% endpoint.
-		fraction = rawFraction / (scanProgressSlowdown - (scanProgressSlowdown-1)*rawFraction)
-		if elapsed >= 6*time.Second && processedBytes > 0 && processedBytes < totalBytes {
-			remaining := time.Duration(float64(elapsed) * float64(totalBytes-processedBytes) / float64(processedBytes))
-			remainingMilliseconds = time.Duration(float64(remaining) * scanProgressSlowdown).Milliseconds()
-		}
+	if discovered > 0 {
+		fraction = min(1, float64(processed)/float64(discovered))
 	}
 
 	return ScanProgress{
-		Active:                active,
-		Path:                  path,
-		Processed:             processed,
-		Discovered:            discovered,
-		Determinate:           determinate,
-		Fraction:              fraction,
-		ElapsedMilliseconds:   elapsed.Milliseconds(),
-		RemainingMilliseconds: remainingMilliseconds,
+		Active:              active,
+		Path:                path,
+		Processed:           processed,
+		Discovered:          discovered,
+		Fraction:            fraction,
+		FileCount:           files,
+		DirCount:            dirs,
+		ElapsedMilliseconds: elapsed.Milliseconds(),
 	}
 }
 
@@ -130,7 +115,7 @@ func (a *App) CancelScan() {
 	}
 }
 
-func (a *App) beginScan(path string, totalBytes int64) (context.Context, uint64) {
+func (a *App) beginScan(path string) (context.Context, uint64) {
 	base := a.ctx
 	if base == nil {
 		base = context.Background()
@@ -148,7 +133,6 @@ func (a *App) beginScan(path string, totalBytes int64) (context.Context, uint64)
 	a.scanCancel = cancel
 	a.scanStartedAt = time.Now()
 	a.scanScanner = nil
-	a.scanTotalBytes = totalBytes
 	a.scanMu.Unlock()
 	return ctx, generation
 }
@@ -176,7 +160,6 @@ func (a *App) finishScan(generation uint64) {
 		a.scanActive = false
 		a.scanCancel = nil
 		a.scanScanner = nil
-		a.scanTotalBytes = 0
 	}
 	a.scanMu.Unlock()
 }
@@ -214,15 +197,13 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	a.logger.Infof("scan started: %s", path)
 
 	var volumeUsage *disk.UsageStat
-	var totalBytes int64
 	if a.filesystem.IsMountRoot(path) {
 		if fs, usageErr := disk.Usage(path); usageErr == nil {
 			volumeUsage = fs
-			totalBytes = int64(fs.Used)
 		}
 	}
 
-	ctx, generation := a.beginScan(path, totalBytes)
+	ctx, generation := a.beginScan(path)
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()

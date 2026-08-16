@@ -1,6 +1,6 @@
 import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
-import { formatDuration } from "./format.js";
+import { formatCount, formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logDebug, logError } from "./logging.js";
@@ -14,6 +14,11 @@ let scanCancelledByUser = false;
 let scanDotsTimer = null;
 let analyzeInFlight = false;
 let scanReportPath = "";
+let displayedScanProgress = 0;
+
+const SCAN_PROGRESS_CAP = 0.96;
+const SCAN_PROGRESS_SMOOTHING = 0.08;
+const SCAN_COMPLETION_DELAY_MS = 180;
 
 function setUIBusy(state) {
   queryAll(".controls button").forEach(button => { button.disabled = state; });
@@ -84,10 +89,13 @@ function startScanProgress(path) {
   byId("scanQueryPath").title = path;
   byId("scanCurrentPath").textContent = path;
   progressBar.style.width = "0%";
-  progressElement.classList.add("is-indeterminate");
-  progressElement.removeAttribute("aria-valuenow");
+  progressElement.setAttribute("aria-valuemin", "0");
+  progressElement.setAttribute("aria-valuemax", "100");
+  progressElement.setAttribute("aria-valuenow", "0");
+  displayedScanProgress = 0;
   byId("scanElapsedTime").textContent = "0:00";
-  byId("scanEstimate").textContent = "Estimating remaining time…";
+  byId("scanFileCount").textContent = "0";
+  byId("scanFolderCount").textContent = "0";
   cancelButton.disabled = false;
   cancelButton.textContent = "Cancel";
   scanCancelledByUser = false;
@@ -106,23 +114,16 @@ function startScanProgress(path) {
     try {
       const progress = await GetScanProgress();
       if (progress?.path) byId("scanCurrentPath").textContent = progress.path;
-      if (progress?.determinate) {
-        const fraction = Math.max(0, Math.min(1, Number(progress.fraction || 0)));
-        progressElement.classList.remove("is-indeterminate");
-        progressBar.style.width = `${fraction * 100}%`;
-        progressElement.setAttribute("aria-valuemin", "0");
-        progressElement.setAttribute("aria-valuemax", "100");
-        progressElement.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-      } else {
-        progressElement.classList.add("is-indeterminate");
-        progressElement.removeAttribute("aria-valuenow");
+      const workFraction = Math.max(0, Math.min(1, Number(progress?.fraction || 0)));
+      const target = workFraction * SCAN_PROGRESS_CAP;
+      if (target > displayedScanProgress) {
+        displayedScanProgress += (target - displayedScanProgress) * SCAN_PROGRESS_SMOOTHING;
       }
+      progressBar.style.width = `${displayedScanProgress * 100}%`;
+      progressElement.setAttribute("aria-valuenow", String(Math.round(displayedScanProgress * 100)));
       byId("scanElapsedTime").textContent = formatDuration(progress?.elapsedMilliseconds || 0);
-      byId("scanEstimate").textContent = !progress?.determinate
-        ? "Remaining time unavailable for folders"
-        : progress.remainingMilliseconds >= 0
-          ? `Remaining ~${formatDuration(progress.remainingMilliseconds, true)}`
-          : "";
+      byId("scanFileCount").textContent = formatCount(progress?.fileCount);
+      byId("scanFolderCount").textContent = formatCount(progress?.dirCount);
     } catch (error) {
       logDebug("scan progress unavailable:", error);
     } finally {
@@ -130,6 +131,22 @@ function startScanProgress(path) {
     }
   };
   scanProgressTimer = setTimeout(poll, 120);
+}
+
+async function completeScanProgress(fileCount, dirCount) {
+  scanProgressToken++;
+  clearTimeout(scanProgressTimer);
+  scanProgressTimer = null;
+  clearInterval(scanDotsTimer);
+  scanDotsTimer = null;
+  byId("scanFileCount").textContent = formatCount(fileCount);
+  byId("scanFolderCount").textContent = formatCount(dirCount);
+  const progressElement = query(".scan-progress");
+  query(".scan-progress-bar").style.width = "100%";
+  progressElement.setAttribute("aria-valuenow", "100");
+  await new Promise(resolve => setTimeout(resolve, SCAN_COMPLETION_DELAY_MS));
+  const dialog = byId("scanDialog");
+  if (dialog.open) dialog.close();
 }
 
 function stopScanProgress() {
@@ -147,7 +164,7 @@ async function cancelActiveScan() {
   scanCancelledByUser = true;
   const button = byId("cancelScanButton");
   button.disabled = true;
-  button.textContent = "Cancelling…";
+  button.textContent = "Cancelling...";
   try {
     await CancelScan();
   } catch (error) {
@@ -175,7 +192,7 @@ export async function analyze() {
     scanStarted = true;
 
     const { rootId, fileCount, dirCount, scanReport } = await GetFullTree(canonicalPath);
-    stopScanProgress();
+    await completeScanProgress(fileCount, dirCount);
     scanStarted = false;
 
     AppState.node_id = rootId;

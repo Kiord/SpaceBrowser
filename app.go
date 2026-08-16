@@ -32,7 +32,6 @@ type App struct {
 	scanCancel     context.CancelFunc
 	scanStartedAt  time.Time
 	scanScanner    *Scanner
-	scanTotalBytes int64
 }
 
 func NewApp() *App {

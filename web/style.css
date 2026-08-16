@@ -1072,17 +1072,6 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   transition: width .18s ease-out;
 }
 
-.scan-progress.is-indeterminate .scan-progress-bar {
-  width: 32%;
-  animation: scan-progress-indeterminate 1.35s ease-in-out infinite;
-  transition: none;
-}
-
-@keyframes scan-progress-indeterminate {
-  from { transform: translateX(-110%); }
-  to { transform: translateX(320%); }
-}
-
 .scan-time {
   display: flex;
   justify-content: space-between;
