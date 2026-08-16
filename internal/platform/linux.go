@@ -39,7 +39,7 @@ func (Linux) UsageFor(_ string, fi os.FileInfo) FileUsage {
 }
 func (Linux) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {
-		uri := "file://" + filepath.ToSlash(p)
+		uri := linuxFileURI(p)
 		if err := exec.Command("dbus-send", "--session",
 			"--dest=org.freedesktop.FileManager1", "--type=method_call", "--print-reply",
 			"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems",
@@ -160,7 +160,7 @@ func (Linux) ShowProperties(p string) error {
 	if _, err := exec.LookPath("dbus-send"); err != nil {
 		return fmt.Errorf("the desktop file manager properties service is unavailable")
 	}
-	uri := (&url.URL{Scheme: "file", Path: p}).String()
+	uri := linuxFileURI(p)
 	if err := exec.Command("dbus-send", "--session",
 		"--dest=org.freedesktop.FileManager1", "--type=method_call", "--print-reply",
 		"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItemProperties",
@@ -168,6 +168,10 @@ func (Linux) ShowProperties(p string) error {
 		return fmt.Errorf("show filesystem properties: %w", err)
 	}
 	return nil
+}
+
+func linuxFileURI(path string) string {
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
 }
 
 func (Linux) MoveToTrash(p string) error {
