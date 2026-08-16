@@ -727,6 +727,9 @@ func TestScannerDeduplicatesConfirmedUntrustedHardLinkIdentity(t *testing.T) {
 	if fileCount != 2 || len(root.Children) != 1 {
 		t.Fatalf("confirmed hard-link identity produced %d file entries and %d nodes, want 2 and 1", fileCount, len(root.Children))
 	}
+	if root.EntryFiles != int(fileCount) || root.EntryDirs != int(dirCount) {
+		t.Fatalf("subtree entry counts = (%d, %d), want (%d, %d)", root.EntryFiles, root.EntryDirs, fileCount, dirCount)
+	}
 	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 1 {
 		t.Fatalf("reported %d duplicate identities, want 1", got)
 	}

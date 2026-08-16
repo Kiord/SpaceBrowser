@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,12 @@ type DeleteResult struct {
 	FileCount      int  `json:"fileCount"`
 	DirCount       int  `json:"dirCount"`
 	RescanRequired bool `json:"rescanRequired"`
+	trashRefreshes []trashRefreshTarget
+}
+
+type trashRefreshTarget struct {
+	NodeID int
+	Path   string
 }
 
 func (s *TreeStore) NodePath(nodeID int) (string, error) {
@@ -138,7 +145,7 @@ func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 	if err := moveToTrash(node.FullPath); err != nil {
 		return DeleteResult{}, err
 	}
-	trash := displayedTrashNode(s.root, node)
+	trashRefreshes := displayedTrashNodes(s.root, node, isTrashRoot)
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {
@@ -151,19 +158,104 @@ func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 	deletedSize := node.Size
 	s.adjustAncestorSizes(parent, -deletedSize)
 	rescanRequired := subtreeHasSharedAllocation(node)
-	if trash != nil {
-		node.ParentID = trash.ID
-		prepareMovedSubtree(node, trash.Depth+1)
-		trash.Children = append(trash.Children, node)
-		s.adjustAncestorSizes(trash, deletedSize)
-		return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
-	}
-
 	deletedFiles, deletedDirs := s.detachSubtree(node)
+	s.adjustAncestorEntryCounts(parent, -deletedFiles, -deletedDirs)
 
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
-	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
+	return DeleteResult{
+		FileCount:      s.fileCount,
+		DirCount:       s.dirCount,
+		RescanRequired: rescanRequired,
+		trashRefreshes: trashRefreshes,
+	}, nil
+}
+
+func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scannedDirs int) (DeleteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if scanned == nil || nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
+		return DeleteResult{}, fmt.Errorf("the subtree to refresh is no longer available")
+	}
+	target := s.nodes[nodeID]
+	if !target.IsFolder || target.FullPath == "" {
+		return DeleteResult{}, fmt.Errorf("the subtree to refresh is not a filesystem folder")
+	}
+	if sPath, tPath := filepath.Clean(scanned.FullPath), filepath.Clean(target.FullPath); sPath != tPath {
+		return DeleteResult{}, fmt.Errorf("refreshed subtree path changed from %s to %s", tPath, sPath)
+	}
+
+	oldSize := target.Size
+	oldFiles, oldDirsIncludingRoot := subtreeEntryCounts(target)
+	oldDirs := max(0, oldDirsIncludingRoot-1)
+	for _, child := range target.Children {
+		s.detachSubtreeIDs(child)
+	}
+
+	target.Name = scanned.Name
+	target.Size = scanned.Size
+	target.IsFolder = true
+	target.IsFreeSpace = false
+	target.IsSmallFiles = false
+	target.SmallFileCount = 0
+	target.SmallFileLimit = 0
+	target.FullPath = scanned.FullPath
+	target.ModTime = scanned.ModTime
+	target.LinkCount = scanned.LinkCount
+	target.EntryFiles = scannedFiles
+	target.EntryDirs = scannedDirs
+	target.Children = nil
+
+	nextFreeID := 0
+	allocateID := func(node *Node) int {
+		for nextFreeID < len(s.nodes) && s.nodes[nextFreeID] != nil {
+			nextFreeID++
+		}
+		if nextFreeID == len(s.nodes) {
+			s.nodes = append(s.nodes, node)
+			nextFreeID++
+			return len(s.nodes) - 1
+		}
+		id := nextFreeID
+		s.nodes[id] = node
+		nextFreeID++
+		return id
+	}
+	var adopt func(*Node, int, int) *Node
+	adopt = func(source *Node, parentID, depth int) *Node {
+		node := *source
+		node.ParentID = parentID
+		node.Depth = depth
+		node.Children = make([]*Node, 0, len(source.Children))
+		if source.IsFreeSpace || source.IsSmallFiles {
+			node.ID = -1
+		} else {
+			node.ID = allocateID(&node)
+		}
+		for _, child := range source.Children {
+			node.Children = append(node.Children, adopt(child, node.ID, depth+1))
+		}
+		return &node
+	}
+	for _, child := range scanned.Children {
+		target.Children = append(target.Children, adopt(child, target.ID, target.Depth+1))
+	}
+
+	if target.ParentID >= 0 && target.ParentID < len(s.nodes) {
+		s.adjustAncestorSizes(s.nodes[target.ParentID], target.Size-oldSize)
+	}
+	newDescendantDirs := max(0, scannedDirs-1)
+	if target.ParentID >= 0 && target.ParentID < len(s.nodes) {
+		s.adjustAncestorEntryCounts(s.nodes[target.ParentID], scannedFiles-oldFiles, newDescendantDirs-oldDirs)
+	}
+	s.fileCount = max(0, s.fileCount-oldFiles+scannedFiles)
+	s.dirCount = max(0, s.dirCount-oldDirs+newDescendantDirs)
+	return DeleteResult{
+		FileCount:      s.fileCount,
+		DirCount:       s.dirCount,
+		RescanRequired: subtreeHasSharedAllocation(scanned),
+	}, nil
 }
 
 func (s *TreeStore) NodePathMatches(nodeID int, predicate func(string) bool) bool {
@@ -198,16 +290,18 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 
 	emptiedSize := node.Size
 	rescanRequired := subtreeHasSharedAllocation(node)
-	var deletedFiles, deletedDirs int
+	deletedFiles, deletedDirsIncludingRoot := subtreeEntryCounts(node)
+	deletedDirs := max(0, deletedDirsIncludingRoot-1)
 	for _, child := range node.Children {
-		files, dirs := s.detachSubtree(child)
-		deletedFiles += files
-		deletedDirs += dirs
+		s.detachSubtreeIDs(child)
 	}
 	node.Children = nil
 	node.Size = 0
+	node.EntryFiles = 0
+	node.EntryDirs = 1
 	if node.ParentID >= 0 && node.ParentID < len(s.nodes) {
 		s.adjustAncestorSizes(s.nodes[node.ParentID], -emptiedSize)
+		s.adjustAncestorEntryCounts(s.nodes[node.ParentID], -deletedFiles, -deletedDirs)
 	}
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
@@ -217,6 +311,18 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 func (s *TreeStore) detachSubtree(current *Node) (files, dirs int) {
 	if current == nil {
 		return 0, 0
+	}
+	files, dirs = subtreeEntryCounts(current)
+	s.detachSubtreeIDs(current)
+	return files, dirs
+}
+
+func subtreeEntryCounts(current *Node) (files, dirs int) {
+	if current == nil {
+		return 0, 0
+	}
+	if current.EntryFiles > 0 || current.EntryDirs > 0 {
+		return current.EntryFiles, current.EntryDirs
 	}
 	if current.IsSmallFiles {
 		files += int(current.SmallFileCount)
@@ -228,14 +334,23 @@ func (s *TreeStore) detachSubtree(current *Node) (files, dirs int) {
 		}
 	}
 	for _, child := range current.Children {
-		childFiles, childDirs := s.detachSubtree(child)
+		childFiles, childDirs := subtreeEntryCounts(child)
 		files += childFiles
 		dirs += childDirs
+	}
+	return files, dirs
+}
+
+func (s *TreeStore) detachSubtreeIDs(current *Node) {
+	if current == nil {
+		return
+	}
+	for _, child := range current.Children {
+		s.detachSubtreeIDs(child)
 	}
 	if current.ID >= 0 && current.ID < len(s.nodes) {
 		s.nodes[current.ID] = nil
 	}
-	return files, dirs
 }
 
 func (s *TreeStore) adjustAncestorSizes(node *Node, delta int64) {
@@ -251,33 +366,46 @@ func (s *TreeStore) adjustAncestorSizes(node *Node, delta int64) {
 	}
 }
 
-func displayedTrashNode(root, moving *Node) *Node {
+func (s *TreeStore) adjustAncestorEntryCounts(node *Node, fileDelta, dirDelta int) {
+	for current := node; current != nil; {
+		if current.EntryFiles > 0 || current.EntryDirs > 0 {
+			current.EntryFiles = max(0, current.EntryFiles+fileDelta)
+			current.EntryDirs = max(1, current.EntryDirs+dirDelta)
+		}
+		if current.ParentID < 0 || current.ParentID >= len(s.nodes) {
+			break
+		}
+		current = s.nodes[current.ParentID]
+	}
+}
+
+func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []trashRefreshTarget {
 	if root == nil {
 		return nil
 	}
-	var visit func(*Node) *Node
-	visit = func(current *Node) *Node {
+	var found []trashRefreshTarget
+	var visit func(*Node)
+	visit = func(current *Node) {
 		if current == nil || current == moving {
-			return nil
+			return
 		}
-		if current != root && current.IsFolder && current.Size > 0 && isSystemTrashName(current.Name) {
+		if current != root && current.IsFolder && current.FullPath != "" && isSystemTrashName(current.Name) && isTrashRoot != nil && isTrashRoot(current.FullPath) {
 			if !subtreeContains(current, moving) && !subtreeContains(moving, current) {
-				return current
+				found = append(found, trashRefreshTarget{NodeID: current.ID, Path: current.FullPath})
+				return
 			}
 		}
 		for _, child := range current.Children {
-			if found := visit(child); found != nil {
-				return found
-			}
+			visit(child)
 		}
-		return nil
 	}
-	return visit(root)
+	visit(root)
+	return found
 }
 
 func isSystemTrashName(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
-	return lower == "$recycle.bin" || lower == ".trash" || lower == ".trashes" || strings.HasPrefix(lower, ".trash-")
+	return lower == "$recycle.bin" || lower == "trash" || lower == ".trash" || lower == ".trashes" || strings.HasPrefix(lower, ".trash-")
 }
 
 func subtreeContains(root, target *Node) bool {
@@ -308,16 +436,4 @@ func subtreeHasSharedAllocation(root *Node) bool {
 		}
 	}
 	return false
-}
-
-func prepareMovedSubtree(root *Node, depth int) {
-	if root == nil {
-		return
-	}
-	root.Depth = depth
-	root.FullPath = ""
-	for _, child := range root.Children {
-		child.ParentID = root.ID
-		prepareMovedSubtree(child, depth+1)
-	}
 }

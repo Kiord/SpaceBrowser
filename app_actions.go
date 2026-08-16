@@ -47,8 +47,51 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	if err != nil {
 		return DeleteResult{}, err
 	}
+	if len(result.trashRefreshes) > 0 {
+		result = a.refreshDisplayedTrash(result)
+	}
 	a.refreshDiskUsageAfterFilesystemChange(&result)
 	return result, nil
+}
+
+func (a *App) refreshDisplayedTrash(result DeleteResult) DeleteResult {
+	requiresFullRescan := result.RescanRequired
+	profile := a.GetProfile()
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for _, target := range result.trashRefreshes {
+		var files, dirs int64
+		scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+		scanner.SetContext(ctx, nil)
+		root, err := scanner.buildTree(target.Path, 0, -1, &files, &dirs)
+		if err != nil {
+			if a.logger != nil {
+				a.logger.Warningf("targeted Trash refresh failed for %s: %v", target.Path, err)
+			}
+			requiresFullRescan = true
+			continue
+		}
+		refreshed, err := a.store.ReplaceSubtree(target.NodeID, root, int(files), int(dirs))
+		if err != nil {
+			if a.logger != nil {
+				a.logger.Warningf("could not publish targeted Trash refresh for %s: %v", target.Path, err)
+			}
+			requiresFullRescan = true
+			continue
+		}
+		result.FileCount = refreshed.FileCount
+		result.DirCount = refreshed.DirCount
+		requiresFullRescan = requiresFullRescan || refreshed.RescanRequired
+		report := scanner.Report()
+		if report.TotalErrors() > 0 && a.logger != nil {
+			a.logger.Warningf("targeted Trash refresh for %s completed with %d filesystem or metadata errors", target.Path, report.TotalErrors())
+		}
+	}
+	result.RescanRequired = requiresFullRescan
+	result.trashRefreshes = nil
+	return result
 }
 
 type TrashRestoreDetails struct {

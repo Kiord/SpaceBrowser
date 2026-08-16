@@ -36,8 +36,10 @@ type Node struct {
 	DiskTotal int64 `json:"disk_total,omitempty"`
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
-	ModTime   int64  `json:"-"`
-	LinkCount uint64 `json:"-"`
+	ModTime    int64  `json:"-"`
+	LinkCount  uint64 `json:"-"`
+	EntryFiles int    `json:"-"`
+	EntryDirs  int    `json:"-"`
 }
 
 // ==============================
@@ -346,14 +348,15 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 
 	// directory node
 	root := &Node{
-		ParentID: parentID,
-		Name:     s.filesystem.BaseName(abs),
-		Size:     0,
-		IsFolder: true,
-		Depth:    depth,
-		FullPath: abs,
-		Children: make([]*Node, 0, 128),
-		ModTime:  modTime,
+		ParentID:  parentID,
+		Name:      s.filesystem.BaseName(abs),
+		Size:      0,
+		IsFolder:  true,
+		Depth:     depth,
+		FullPath:  abs,
+		Children:  make([]*Node, 0, 128),
+		ModTime:   modTime,
+		EntryDirs: 1,
 	}
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
@@ -499,6 +502,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			// nodes remain deduplicated for hard links.
 			atomic.AddInt64(fileCount, 1)
 			atomic.AddInt64(&s.fileCount, 1)
+			root.EntryFiles++
 
 			if isSmall {
 				smallFileCount++
@@ -588,6 +592,8 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		for _, n := range results {
 			root.Children = append(root.Children, n)
 			root.Size += n.Size
+			root.EntryFiles += n.EntryFiles
+			root.EntryDirs += n.EntryDirs
 		}
 	}
 	if err := s.ctx.Err(); err != nil {

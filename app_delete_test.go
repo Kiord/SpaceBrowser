@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,6 +17,17 @@ type trashActionDesktop struct {
 	permanentlyDeleted *string
 	restored           *string
 	originalPath       string
+	moveDestination    string
+}
+
+func (desktop trashActionDesktop) MoveToTrash(path string) error {
+	if desktop.moveDestination == "" {
+		return errors.New("move to Trash was not expected")
+	}
+	if err := os.MkdirAll(filepath.Dir(desktop.moveDestination), 0o700); err != nil {
+		return err
+	}
+	return os.Rename(path, desktop.moveDestination)
 }
 
 func (desktop trashActionDesktop) IsInTrash(path string) bool {
@@ -147,7 +159,7 @@ func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
 	}
 }
 
-func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
+func TestTreeStoreRefreshesDisplayedRecycleBinAfterMove(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "folder")
 	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
@@ -167,24 +179,40 @@ func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
 		fileCount: 3, dirCount: 3,
 	}
 
-	result, err := store.DeleteNode(folder.ID, nil, nil, func(string) error { return nil })
+	isTrashRoot := func(path string) bool { return path == recycleBin.FullPath }
+	result, err := store.DeleteNode(folder.ID, isTrashRoot, nil, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.FileCount != 3 || result.DirCount != 3 {
-		t.Fatalf("counts after virtual move = (%d, %d), want unchanged (3, 3)", result.FileCount, result.DirCount)
+	if result.FileCount != 2 || result.DirCount != 2 || len(result.trashRefreshes) != 1 {
+		t.Fatalf("result before Trash refresh = %+v", result)
 	}
-	if root.Size != 100 || recycleBin.Size != 70 {
-		t.Fatalf("sizes after virtual move = root %d, Recycle Bin %d; want 100 and 70", root.Size, recycleBin.Size)
+	if root.Size != 40 || recycleBin.Size != 10 {
+		t.Fatalf("sizes before Trash refresh = root %d, Recycle Bin %d; want 40 and 10", root.Size, recycleBin.Size)
 	}
-	if folder.ParentID != recycleBin.ID || len(recycleBin.Children) != 2 || recycleBin.Children[0] != folder {
-		t.Fatalf("Recycle Bin children after virtual move = %+v", recycleBin.Children)
+	if store.nodes[folder.ID] != nil || store.nodes[nested.ID] != nil {
+		t.Fatal("moved subtree remained addressable at its old location")
 	}
-	if folder.FullPath != "" || nested.FullPath != "" || folder.Depth != 2 || nested.Depth != 3 {
-		t.Fatalf("moved subtree metadata = folder %+v, nested %+v", folder, nested)
+
+	trashedFolderPath := filepath.Join(recycleBin.FullPath, "owner", "$Rfolder")
+	scannedTrash := &Node{Name: "$Recycle.Bin", FullPath: recycleBin.FullPath, Size: 70, IsFolder: true}
+	scannedExisting := &Node{Name: "existing.bin", FullPath: filepath.Join(recycleBin.FullPath, "existing.bin"), Size: 10}
+	scannedFolder := &Node{Name: "$Rfolder", FullPath: trashedFolderPath, Size: 60, IsFolder: true}
+	scannedNested := &Node{Name: "nested.bin", FullPath: filepath.Join(trashedFolderPath, "nested.bin"), Size: 60}
+	scannedFolder.Children = []*Node{scannedNested}
+	scannedTrash.Children = []*Node{scannedFolder, scannedExisting}
+	result, err = store.ReplaceSubtree(recycleBin.ID, scannedTrash, 2, 2)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if store.nodes[folder.ID] != folder || store.nodes[nested.ID] != nested {
-		t.Fatal("virtually moved subtree is no longer visitable")
+	if result.FileCount != 3 || result.DirCount != 3 || root.Size != 100 || recycleBin.Size != 70 {
+		t.Fatalf("result after Trash refresh = %+v, root size %d, Trash size %d", result, root.Size, recycleBin.Size)
+	}
+	if len(recycleBin.Children) != 2 || recycleBin.Children[0].FullPath != trashedFolderPath {
+		t.Fatalf("refreshed Recycle Bin children = %+v", recycleBin.Children)
+	}
+	if recycleBin.Children[0].ID < 0 || store.nodes[recycleBin.Children[0].ID] != recycleBin.Children[0] {
+		t.Fatal("refreshed Trash item is not addressable by its new node ID")
 	}
 }
 
@@ -276,6 +304,49 @@ func TestAppDeleteCommandRoutesTrashRootToEmptyTrash(t *testing.T) {
 	}
 	if result.FileCount != 0 || result.DirCount != 2 || trash.Size != 0 {
 		t.Fatalf("result after routed EmptyTrash = %+v, Trash size %d", result, trash.Size)
+	}
+}
+
+func TestAppTargetedTrashRefreshMakesMovedItemActionable(t *testing.T) {
+	rootPath := t.TempDir()
+	trashPath := filepath.Join(rootPath, "$Recycle.Bin")
+	if err := os.Mkdir(trashPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	targetPath := filepath.Join(rootPath, "deleted.bin")
+	if err := os.WriteFile(targetPath, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trashDestination := filepath.Join(trashPath, "$Rdeleted.bin")
+	root := &Node{ID: 0, ParentID: -1, Name: "root", FullPath: rootPath, Size: 4, IsFolder: true, EntryFiles: 1, EntryDirs: 2}
+	target := &Node{ID: 1, ParentID: 0, Name: "deleted.bin", FullPath: targetPath, Size: 4, Depth: 1}
+	trash := &Node{ID: 2, ParentID: 0, Name: "$Recycle.Bin", FullPath: trashPath, IsFolder: true, Depth: 1, EntryDirs: 1}
+	root.Children = []*Node{target, trash}
+	desktop := trashActionDesktop{path: trashPath, moveDestination: trashDestination}
+	app := &App{
+		ctx:        context.Background(),
+		profile:    Profile{AllowDelete: true},
+		desktop:    desktop,
+		filesystem: platform.Impl,
+		store:      TreeStore{root: root, nodes: []*Node{root, target, trash}, fileCount: 1, dirCount: 2},
+	}
+
+	result, err := app.DeleteNode(target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RescanRequired || result.FileCount != 1 || result.DirCount != 2 {
+		t.Fatalf("targeted refresh result = %+v", result)
+	}
+	if len(trash.Children) != 1 || trash.Children[0].FullPath != trashDestination {
+		t.Fatalf("refreshed Trash children = %+v", trash.Children)
+	}
+	if root.EntryFiles != 1 || root.EntryDirs != 2 || trash.EntryFiles != 1 || trash.EntryDirs != 1 {
+		t.Fatalf("entry counts after targeted refresh = root(%d, %d), Trash(%d, %d)", root.EntryFiles, root.EntryDirs, trash.EntryFiles, trash.EntryDirs)
+	}
+	moved := trash.Children[0]
+	if !app.store.NodePathMatches(moved.ID, desktop.IsInTrash) {
+		t.Fatal("refreshed Trash item is not actionable as Trash content")
 	}
 }
 

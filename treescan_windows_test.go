@@ -115,6 +115,9 @@ func TestScannerCountsHardLinkEntriesAndAllocationOnce(t *testing.T) {
 	if fileCount != 2 || len(root.Children) != 1 {
 		t.Fatalf("hard-linked data produced %d file entries and %d allocation nodes, want 2 and 1", fileCount, len(root.Children))
 	}
+	if root.EntryFiles != int(fileCount) || root.EntryDirs != int(dirCount) {
+		t.Fatalf("subtree entry counts = (%d, %d), want (%d, %d)", root.EntryFiles, root.EntryDirs, fileCount, dirCount)
+	}
 	usage := platform.Impl.UsageFor(original, mustStat(t, original))
 	if root.Size != usage.AllocatedSize {
 		t.Fatalf("root size = %d, want one allocation of %d", root.Size, usage.AllocatedSize)
