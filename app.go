@@ -23,6 +23,8 @@ type App struct {
 	ctx                 context.Context
 	initialScanPath     string
 	logger              *SeverityLogger
+	filesystem          platform.ScannerFilesystem
+	desktop             platform.DesktopActions
 	showFreeSpace       bool
 	profile             Profile
 	settingsPath        string
@@ -62,9 +64,19 @@ func newAppWithPaths(settingsPath, defaultPath string) *App {
 }
 
 func newAppWithPathsAndLogger(settingsPath, defaultPath string, logger *SeverityLogger) *App {
+	return newAppWithDependencies(settingsPath, defaultPath, logger, platform.Impl, platform.Impl)
+}
+
+func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLogger, filesystem platform.ScannerFilesystem, desktop platform.DesktopActions) *App {
+	if filesystem == nil {
+		filesystem = platform.Impl
+	}
+	if desktop == nil {
+		desktop = platform.Impl
+	}
 	profile := *defaultProfile()
 	if settingsPath != "" {
-		if savedProfile, err := loadSettings(settingsPath); err == nil {
+		if savedProfile, err := loadSettingsWithFilesystem(settingsPath, filesystem); err == nil {
 			profile = savedProfile
 		} else if !os.IsNotExist(err) {
 			logger.Warningf("could not load settings from %s: %v; using defaults", settingsPath, err)
@@ -76,6 +88,8 @@ func newAppWithPathsAndLogger(settingsPath, defaultPath string, logger *Severity
 		settingsPath:        settingsPath,
 		defaultSettingsPath: defaultPath,
 		logger:              logger,
+		filesystem:          filesystem,
+		desktop:             desktop,
 	}
 }
 
@@ -107,7 +121,7 @@ func (a *App) GetProfile() Profile {
 }
 
 func (a *App) SetProfile(profile Profile) error {
-	profile, err := normalizeProfile(profile)
+	profile, err := normalizeProfileWithFilesystem(profile, a.filesystem)
 	if err != nil {
 		return err
 	}
@@ -195,6 +209,10 @@ func (a *App) PickSettingsPath() (string, error) {
 }
 
 func normalizeProfile(profile Profile) (Profile, error) {
+	return normalizeProfileWithFilesystem(profile, platform.Impl)
+}
+
+func normalizeProfileWithFilesystem(profile Profile, filesystem platform.ScannerFilesystem) (Profile, error) {
 	if profile.MinFileSize < 0 {
 		return Profile{}, fmt.Errorf("minimum file size cannot be negative")
 	}
@@ -207,7 +225,7 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		if path == "" {
 			continue
 		}
-		path = platform.Impl.Canonicalize(path)
+		path = filesystem.Canonicalize(path)
 		if _, exists := seen[path]; exists {
 			continue
 		}
@@ -283,12 +301,12 @@ type ScanProgress struct {
 
 const scanProgressSlowdown = 10.0
 
-func validateScanPath(path string) (string, error) {
+func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFilesystem) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("missing path")
 	}
 
-	path = platform.Impl.Canonicalize(path)
+	path = filesystem.Canonicalize(path)
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("this path does not exist")
@@ -303,7 +321,7 @@ func validateScanPath(path string) (string, error) {
 }
 
 func (a *App) ValidateScanPath(path string) (string, error) {
-	return validateScanPath(path)
+	return validateScanPathWithFilesystem(path, a.filesystem)
 }
 
 func (a *App) GetScanProgress() ScanProgress {
@@ -416,7 +434,7 @@ func (a *App) finishScan(generation uint64) {
 }
 
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {
-	path, err := validateScanPath(path)
+	path, err := validateScanPathWithFilesystem(path, a.filesystem)
 	if err != nil {
 		a.logger.Errorf("cannot start scan: %v", err)
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
@@ -426,7 +444,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 
 	var volumeUsage *disk.UsageStat
 	var totalBytes int64
-	if platform.Impl.IsMountRoot(path) {
+	if a.filesystem.IsMountRoot(path) {
 		if fs, usageErr := disk.Usage(path); usageErr == nil {
 			volumeUsage = fs
 			totalBytes = int64(fs.Used)
@@ -439,7 +457,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	profile := a.GetProfile()
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
 	var files, dirs int64
-	scanner := NewScanner(&profile, 0)
+	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
 	// Persisted scan reports need the complete error list independently of the
 	// terminal verbosity selected by the user.
 	scanner.ReportAllErrors(true)
@@ -529,7 +547,7 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		return DeleteResult{}, fmt.Errorf("items cannot be deleted while a scan is running")
 	}
 
-	return store.DeleteNode(nodeID, platform.Impl.MoveToTrash)
+	return store.DeleteNode(nodeID, a.desktop.MoveToTrash)
 }
 
 func (a *App) GetDefaultProfile() Profile {
@@ -540,21 +558,21 @@ func (a *App) OpenInFileBrowser(path string) error {
 	if path == "" {
 		return fmt.Errorf("missing path")
 	}
-	return platform.Impl.OpenInFileBrowser(path)
+	return a.desktop.OpenInFileBrowser(path)
 }
 
 func (a *App) OpenPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("missing path")
 	}
-	return platform.Impl.OpenPath(path)
+	return a.desktop.OpenPath(path)
 }
 
 func (a *App) GetDefaultApplicationName(path string) (string, error) {
 	if err := validateExistingPath(path); err != nil {
 		return "", err
 	}
-	return platform.Impl.DefaultApplicationName(path)
+	return a.desktop.DefaultApplicationName(path)
 }
 
 func (a *App) OpenWith(path string) error {
@@ -565,14 +583,14 @@ func (a *App) OpenWith(path string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return platform.Impl.OpenWith(ctx, path)
+	return a.desktop.OpenWith(ctx, path)
 }
 
 func (a *App) ShowProperties(path string) error {
 	if err := validateExistingPath(path); err != nil {
 		return err
 	}
-	return platform.Impl.ShowProperties(path)
+	return a.desktop.ShowProperties(path)
 }
 
 func validateExistingPath(path string) error {
@@ -593,7 +611,7 @@ func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
 }
 
 func (a *App) DefaultPath() string {
-	return platform.Impl.DefaultStartPath()
+	return a.desktop.DefaultStartPath()
 }
 
 func (a *App) PickFolder() (string, error) {
@@ -601,7 +619,7 @@ func (a *App) PickFolder() (string, error) {
 		return "", fmt.Errorf("app not initialized")
 	}
 	const title = "Choose a folder to analyze"
-	path, err := platform.Impl.PickFolder(a.ctx, title)
+	path, err := a.desktop.PickFolder(a.ctx, title)
 	if errors.Is(err, platform.ErrOperationCancelled) {
 		return "", nil
 	}
@@ -609,7 +627,7 @@ func (a *App) PickFolder() (string, error) {
 		if path == "" {
 			return "", nil
 		}
-		return validateScanPath(path)
+		return validateScanPathWithFilesystem(path, a.filesystem)
 	}
 	if !errors.Is(err, platform.ErrFolderPickerUnavailable) {
 		return "", err
@@ -622,5 +640,5 @@ func (a *App) PickFolder() (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	return validateScanPath(path)
+	return validateScanPathWithFilesystem(path, a.filesystem)
 }

@@ -195,21 +195,19 @@ func TestScannerCancelsActiveScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalPlatform := platform.Impl
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	platform.Impl = &blockingReadDirPlatform{
-		API:     originalPlatform,
+	filesystem := &blockingReadDirPlatform{
+		API:     platform.Impl,
 		path:    rootPath,
 		entered: entered,
 		release: release,
 	}
-	defer func() { platform.Impl = originalPlatform }()
 
 	profile := defaultProfile()
 	profile.MinFileSize = 0
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	scanner.SetContext(ctx, nil)
@@ -362,14 +360,12 @@ func TestScannerReportsFileMetadataFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalPlatform := platform.Impl
-	platform.Impl = metadataFailurePlatform{API: originalPlatform, root: rootPath, fileName: fileName}
-	defer func() { platform.Impl = originalPlatform }()
+	filesystem := metadataFailurePlatform{API: platform.Impl, root: rootPath, fileName: fileName}
 
 	profile := defaultProfile()
 	profile.MinFileSize = 0
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	var fileCount, dirCount int64
 	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
 	if err != nil {
@@ -515,13 +511,11 @@ func TestScannerReportsUnreadableDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalPlatform := platform.Impl
-	platform.Impl = readDirFailurePlatform{API: originalPlatform, failingPath: unreadablePath}
-	defer func() { platform.Impl = originalPlatform }()
+	filesystem := readDirFailurePlatform{API: platform.Impl, failingPath: unreadablePath}
 
 	profile := defaultProfile()
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	var fileCount, dirCount int64
 	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
 	if err != nil {
@@ -548,20 +542,18 @@ func TestScannerDoesNotDeduplicateUnconfirmedIdentityCollision(t *testing.T) {
 		}
 	}
 
-	originalPlatform := platform.Impl
 	usageCalls := 0
-	platform.Impl = collidingIdentityPlatform{
-		API:                       originalPlatform,
+	filesystem := collidingIdentityPlatform{
+		API:                       platform.Impl,
 		root:                      rootPath,
 		identityNeedsConfirmation: true,
 		usageCalls:                &usageCalls,
 	}
-	defer func() { platform.Impl = originalPlatform }()
 
 	profile := defaultProfile()
 	profile.MinFileSize = 0
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	var fileCount, dirCount int64
 	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
 	if err != nil {
@@ -584,14 +576,12 @@ func TestScannerReportsPortableDirectoryEnumerationFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalPlatform := platform.Impl
-	platform.Impl = fallbackDiagnosticPlatform{API: originalPlatform, root: rootPath}
-	defer func() { platform.Impl = originalPlatform }()
+	filesystem := fallbackDiagnosticPlatform{API: platform.Impl, root: rootPath}
 
 	profile := defaultProfile()
 	profile.MinFileSize = 0
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	var fileCount, dirCount int64
 	if _, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount); err != nil {
 		t.Fatal(err)
@@ -614,15 +604,13 @@ func TestScannerTrustsStrongBatchedIdentityWithoutMetadataLookup(t *testing.T) {
 		}
 	}
 
-	originalPlatform := platform.Impl
 	usageCalls := 0
-	platform.Impl = collidingIdentityPlatform{API: originalPlatform, root: rootPath, usageCalls: &usageCalls}
-	defer func() { platform.Impl = originalPlatform }()
+	filesystem := collidingIdentityPlatform{API: platform.Impl, root: rootPath, usageCalls: &usageCalls}
 
 	profile := defaultProfile()
 	profile.MinFileSize = 0
 	profile.SkipNetworkFS = false
-	scanner := NewScanner(profile, 1)
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
 	var fileCount, dirCount int64
 	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
 	if err != nil {

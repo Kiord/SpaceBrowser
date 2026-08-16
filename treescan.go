@@ -45,6 +45,7 @@ type Node struct {
 
 type Scanner struct {
 	profile    *Profile
+	filesystem platform.ScannerFilesystem
 	sem        chan struct{} // worker tokens
 	maxWorkers int
 
@@ -71,11 +72,19 @@ type Scanner struct {
 
 // NewScanner(maxWorkers<=0 => sensible default)
 func NewScanner(p *Profile, maxWorkers int) *Scanner {
+	return NewScannerWithFilesystem(p, maxWorkers, platform.Impl)
+}
+
+func NewScannerWithFilesystem(p *Profile, maxWorkers int, filesystem platform.ScannerFilesystem) *Scanner {
+	if filesystem == nil {
+		filesystem = platform.Impl
+	}
 	if maxWorkers <= 0 {
 		maxWorkers = runtime.NumCPU() * 4 // good starting point for NVMe; tune for HDDs
 	}
 	return &Scanner{
 		profile:    p,
+		filesystem: filesystem,
 		sem:        make(chan struct{}, maxWorkers),
 		maxWorkers: maxWorkers,
 		seen:       make(map[platform.FileIdentity]*Node),
@@ -134,7 +143,7 @@ func (s *Scanner) seenDirectory(path string) bool {
 	} else {
 		s.report.RecordError(scanErrorResolveSymlink, path, err)
 	}
-	path = platform.Impl.Canonicalize(path)
+	path = s.filesystem.Canonicalize(path)
 	if runtime.GOOS == "windows" {
 		path = strings.ToLower(path)
 	}
@@ -184,7 +193,7 @@ func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage plat
 	// Legacy 64-bit Windows directory IDs are not guaranteed collision-free.
 	// Open only apparent duplicates from that format to confirm identity and
 	// link count. Native 128-bit IDs take the fast path above.
-	usage = platform.Impl.UsageFor(path, info)
+	usage = s.filesystem.UsageFor(path, info)
 	if !usage.HasIdentity {
 		return usage, false
 	}
@@ -239,11 +248,11 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	if depth > 0 {
 		defer atomic.AddInt64(&s.workProcessed, 1)
 	}
-	abs := platform.Impl.Canonicalize(path)
+	abs := s.filesystem.Canonicalize(path)
 	if depth == 0 && s.profile.SkipNetworkFS {
 		// An explicitly selected network root is intentional. Skip network
 		// crossings only when the scan itself started on a local filesystem.
-		s.rootIsNetwork = platform.Impl.IsLikelyNetworkFS(abs)
+		s.rootIsNetwork = s.filesystem.IsLikelyNetworkFS(abs)
 	}
 	if s.profile.FollowSymlinks && s.seenDirectory(abs) {
 		s.report.RecordSkip(scanSkipRepeatedDirectory)
@@ -254,7 +263,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	// directory node
 	root := &Node{
 		ParentID: parentID,
-		Name:     platform.Impl.BaseName(abs),
+		Name:     s.filesystem.BaseName(abs),
 		Size:     0,
 		IsFolder: true,
 		Depth:    depth,
@@ -265,7 +274,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	s.assignID(root)
 	atomic.AddInt64(dirCount, 1)
 
-	entries, diagnostic, err := platform.ReadDirWithDiagnostics(platform.Impl, abs)
+	entries, diagnostic, err := platform.ReadDirWithDiagnostics(s.filesystem, abs)
 	if err != nil {
 		s.report.RecordError(scanErrorReadDirectory, abs, err)
 		// Preserve the partial tree while making the omission visible in the report.
@@ -325,7 +334,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			if s.profile.SkipHidden {
 				hidden := entry.Hidden
 				if !entry.HasHidden {
-					hidden = platform.Impl.IsHidden(full)
+					hidden = s.filesystem.IsHidden(full)
 				}
 				if hidden {
 					s.report.RecordSkip(scanSkipHidden)
@@ -343,7 +352,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 							s.report.RecordError(scanErrorResolveSymlink, full, err)
 						}
 					}
-					if platform.Impl.IsLikelyNetworkFS(networkPath) {
+					if s.filesystem.IsLikelyNetworkFS(networkPath) {
 						s.report.RecordSkip(scanSkipNetwork)
 						return true
 					}
@@ -379,7 +388,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			usage := entry.Usage
 			batchedUsage := entry.HasUsage && !isSymlink
 			if !batchedUsage {
-				usage = platform.Impl.UsageFor(full, info)
+				usage = s.filesystem.UsageFor(full, info)
 			}
 			isSmall := s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize
 			var child *Node

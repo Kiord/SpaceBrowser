@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"spacebrowser/internal/platform"
 )
 
 const settingsFileVersion = 5
@@ -62,6 +64,10 @@ func saveSettingsLocation(defaultPath, activePath string) error {
 }
 
 func loadSettings(path string) (Profile, error) {
+	return loadSettingsWithFilesystem(path, platform.Impl)
+}
+
+func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesystem) (Profile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Profile{}, err
@@ -94,7 +100,7 @@ func loadSettings(path string) (Profile, error) {
 		keyBindings.Delete = defaults.Delete
 	}
 
-	return normalizeProfile(Profile{
+	return normalizeProfileWithFilesystem(Profile{
 		ExcludedPaths:  saved.ExcludedPaths,
 		SkipHidden:     saved.SkipHidden,
 		MinFileSize:    saved.MinFileSize,
@@ -104,7 +110,7 @@ func loadSettings(path string) (Profile, error) {
 		RescanOnDelete: rescanOnDelete,
 		Appearance:     appearance,
 		KeyBindings:    keyBindings,
-	})
+	}, filesystem)
 }
 
 func saveSettings(path string, profile Profile) error {
