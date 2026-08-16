@@ -493,16 +493,18 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				s.report.RecordError(scanErrorUsageMetadata, full, usage.MetadataError)
 			}
 			sz := usage.AllocatedSize
+			// FileCount describes directory entries, while allocation and treemap
+			// nodes remain deduplicated for hard links.
+			atomic.AddInt64(fileCount, 1)
 
 			if isSmall {
+				smallFileCount++
 				if duplicate {
 					s.report.RecordSkip(scanSkipDuplicateIdentity)
 					return true
 				}
 				atomic.AddInt64(&s.bytesProcessed, sz)
 				smallFilesSize += sz
-				smallFileCount++
-				atomic.AddInt64(fileCount, 1)
 				return true
 			}
 
@@ -514,7 +516,6 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			s.assignID(child)
 			root.Children = append(root.Children, child)
 			root.Size += sz
-			atomic.AddInt64(fileCount, 1)
 			return true
 		}()
 		if completeNow {

@@ -715,8 +715,8 @@ func TestScannerDeduplicatesConfirmedUntrustedHardLinkIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fileCount != 1 || len(root.Children) != 1 {
-		t.Fatalf("confirmed hard-link identity produced %d files and %d nodes, want 1 and 1", fileCount, len(root.Children))
+	if fileCount != 2 || len(root.Children) != 1 {
+		t.Fatalf("confirmed hard-link identity produced %d file entries and %d nodes, want 2 and 1", fileCount, len(root.Children))
 	}
 	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 1 {
 		t.Fatalf("reported %d duplicate identities, want 1", got)
@@ -772,11 +772,41 @@ func TestScannerTrustsStrongBatchedIdentityWithoutMetadataLookup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fileCount != 1 || len(root.Children) != 1 {
-		t.Fatalf("strong duplicate identity produced %d files and %d nodes, want 1 and 1", fileCount, len(root.Children))
+	if fileCount != 2 || len(root.Children) != 1 {
+		t.Fatalf("strong duplicate identity produced %d file entries and %d nodes, want 2 and 1", fileCount, len(root.Children))
 	}
 	if usageCalls != 0 {
 		t.Fatalf("strong duplicate identity triggered %d metadata lookups, want 0", usageCalls)
+	}
+}
+
+func TestScannerCountsHardLinkEntriesInSmallFileAggregate(t *testing.T) {
+	rootPath := t.TempDir()
+	for _, name := range []string{"first.bin", "second.bin"} {
+		if err := os.WriteFile(filepath.Join(rootPath, name), make([]byte, 10), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	filesystem := collidingIdentityPlatform{API: platform.Impl, root: rootPath}
+	profile := defaultProfile()
+	profile.MinFileSize = 1024
+	profile.SkipNetworkFS = false
+	scanner := NewScannerWithFilesystem(profile, 1, filesystem)
+	var fileCount, dirCount int64
+	root, err := scanner.buildTree(rootPath, 0, -1, &fileCount, &dirCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileCount != 2 || len(root.Children) != 1 {
+		t.Fatalf("small hard links produced %d file entries and %d nodes, want 2 and 1", fileCount, len(root.Children))
+	}
+	aggregate := root.Children[0]
+	if !aggregate.IsSmallFiles || aggregate.SmallFileCount != 2 || aggregate.Size != 10 {
+		t.Fatalf("small-file aggregate = %+v, want 2 entries and 10 bytes of deduplicated allocation", aggregate)
+	}
+	if got := scanner.Report().Skipped[scanSkipDuplicateIdentity]; got != 1 {
+		t.Fatalf("reported %d duplicate identities, want 1", got)
 	}
 }
 

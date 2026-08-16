@@ -91,7 +91,7 @@ func TestScannerSkipsWindowsHiddenAttribute(t *testing.T) {
 	}
 }
 
-func TestScannerCountsHardLinkedFileOnce(t *testing.T) {
+func TestScannerCountsHardLinkEntriesAndAllocationOnce(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, "original.bin")
 	link := filepath.Join(dir, "link.bin")
@@ -112,8 +112,8 @@ func TestScannerCountsHardLinkedFileOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fileCount != 1 || len(root.Children) != 1 {
-		t.Fatalf("hard-linked data counted %d times with %d nodes, want once", fileCount, len(root.Children))
+	if fileCount != 2 || len(root.Children) != 1 {
+		t.Fatalf("hard-linked data produced %d file entries and %d allocation nodes, want 2 and 1", fileCount, len(root.Children))
 	}
 	usage := platform.Impl.UsageFor(original, mustStat(t, original))
 	if root.Size != usage.AllocatedSize {
