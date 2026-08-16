@@ -91,13 +91,22 @@
             </div>
             <button id="refreshLocationsButton" class="location-refresh-button" type="button" aria-label="Refresh locations" data-tooltip="Refresh locations">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M20 7v5h-5"></path>
-                <path d="M18.2 17a8 8 0 1 1 .8-9l1 4"></path>
+                <path d="M20 12a8 8 0 1 0-2.34 5.66"></path>
+                <path d="M20 6v6h-6"></path>
               </svg>
             </button>
           </header>
           <div id="locationList" class="location-list"></div>
           <p id="locationStatus" class="location-status" role="status">Finding available locations...</p>
+          <div class="location-selector-actions">
+            <button id="chooseLocationFolderButton" class="location-folder-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 8V5h7l2 3h9v11H3z"></path>
+                <path d="M3 9h18"></path>
+              </svg>
+              <span>Choose a folder...</span>
+            </button>
+          </div>
         </div>
       </section>
     </div>

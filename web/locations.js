@@ -1,5 +1,6 @@
 import { GetScanLocations } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
+import { chooseFolder } from "./folder-picker.js";
 import { logError } from "./logging.js";
 
 let analyzeLocation = async () => {};
@@ -89,5 +90,11 @@ export function showLocationSelector({ refresh = false } = {}) {
 export function initLocationSelector(options) {
   analyzeLocation = options.analyze;
   byId("refreshLocationsButton").addEventListener("click", loadLocations);
+  byId("chooseLocationFolderButton").addEventListener("click", async () => {
+    const path = await chooseFolder({ focusInput: false });
+    if (!path) return;
+    hideLocationSelector();
+    await analyzeLocation();
+  });
   showLocationSelector({ refresh: true });
 }
