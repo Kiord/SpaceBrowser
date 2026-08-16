@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"spacebrowser/internal/fileicon"
@@ -24,7 +25,22 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		return DeleteResult{}, fmt.Errorf("items cannot be deleted while a scan is running")
 	}
 
-	return a.store.DeleteNode(nodeID, a.desktop.MoveToTrash)
+	result, err := a.store.DeleteNode(nodeID, a.desktop.MoveToTrash)
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	if rootPath, hasFreeSpace := a.store.DiskUsageRootPath(); hasFreeSpace {
+		usage, usageErr := disk.Usage(rootPath)
+		if usageErr != nil {
+			result.RescanRequired = true
+			if a.logger != nil {
+				a.logger.Warningf("could not refresh disk usage after deletion: %v", usageErr)
+			}
+		} else {
+			a.store.UpdateDiskUsage(int64(usage.Total), int64(usage.Free))
+		}
+	}
+	return result, nil
 }
 
 func (a *App) OpenInFileBrowser(path string) error {

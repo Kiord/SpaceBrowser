@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -28,6 +29,42 @@ func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) 
 	s.root, s.nodes = root, nodes
 	s.fileCount, s.dirCount = fileCount, dirCount
 	s.mu.Unlock()
+}
+
+func (s *TreeStore) DiskUsageRootPath() (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.root == nil || s.root.FullPath == "" {
+		return "", false
+	}
+	for _, child := range s.root.Children {
+		if child.IsFreeSpace {
+			return s.root.FullPath, true
+		}
+	}
+	return "", false
+}
+
+func (s *TreeStore) UpdateDiskUsage(total, free int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.root == nil {
+		return false
+	}
+	for _, child := range s.root.Children {
+		if !child.IsFreeSpace {
+			continue
+		}
+		s.root.DiskTotal = total
+		s.root.DiskFree = free
+		child.Size = free
+		child.DiskTotal = total
+		sort.Slice(s.root.Children, func(i, j int) bool {
+			return s.root.Children[i].Size > s.root.Children[j].Size
+		})
+		return true
+	}
+	return false
 }
 
 func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpace bool) ([]Rect, error) {
@@ -80,6 +117,7 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 	if err := moveToTrash(node.FullPath); err != nil {
 		return DeleteResult{}, err
 	}
+	trash := displayedTrashNode(s.root, node)
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {
@@ -90,19 +128,17 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 	}
 
 	deletedSize := node.Size
-	for current := parent; current != nil; {
-		current.Size = max(0, current.Size-deletedSize)
-		sort.Slice(current.Children, func(i, j int) bool {
-			return current.Children[i].Size > current.Children[j].Size
-		})
-		if current.ParentID < 0 || current.ParentID >= len(s.nodes) {
-			break
-		}
-		current = s.nodes[current.ParentID]
+	s.adjustAncestorSizes(parent, -deletedSize)
+	rescanRequired := subtreeHasSharedAllocation(node)
+	if trash != nil {
+		node.ParentID = trash.ID
+		prepareMovedSubtree(node, trash.Depth+1)
+		trash.Children = append(trash.Children, node)
+		s.adjustAncestorSizes(trash, deletedSize)
+		return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
 	}
 
 	var deletedFiles, deletedDirs int
-	rescanRequired := false
 	var detach func(*Node)
 	detach = func(current *Node) {
 		if current == nil {
@@ -115,8 +151,6 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 				deletedDirs++
 			} else {
 				deletedFiles++
-				// Removing one hard link may not release its shared allocation.
-				rescanRequired = rescanRequired || current.LinkCount > 1
 			}
 		}
 		for _, child := range current.Children {
@@ -131,4 +165,88 @@ func (s *TreeStore) DeleteNode(nodeID int, moveToTrash func(string) error) (Dele
 	s.fileCount = max(0, s.fileCount-deletedFiles)
 	s.dirCount = max(0, s.dirCount-deletedDirs)
 	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: rescanRequired}, nil
+}
+
+func (s *TreeStore) adjustAncestorSizes(node *Node, delta int64) {
+	for current := node; current != nil; {
+		current.Size = max(0, current.Size+delta)
+		sort.Slice(current.Children, func(i, j int) bool {
+			return current.Children[i].Size > current.Children[j].Size
+		})
+		if current.ParentID < 0 || current.ParentID >= len(s.nodes) {
+			break
+		}
+		current = s.nodes[current.ParentID]
+	}
+}
+
+func displayedTrashNode(root, moving *Node) *Node {
+	if root == nil {
+		return nil
+	}
+	var visit func(*Node) *Node
+	visit = func(current *Node) *Node {
+		if current == nil || current == moving {
+			return nil
+		}
+		if current != root && current.IsFolder && current.Size > 0 && isSystemTrashName(current.Name) {
+			if !subtreeContains(current, moving) && !subtreeContains(moving, current) {
+				return current
+			}
+		}
+		for _, child := range current.Children {
+			if found := visit(child); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	return visit(root)
+}
+
+func isSystemTrashName(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	return lower == "$recycle.bin" || lower == ".trash" || lower == ".trashes" || strings.HasPrefix(lower, ".trash-")
+}
+
+func subtreeContains(root, target *Node) bool {
+	if root == nil || target == nil {
+		return false
+	}
+	if root == target {
+		return true
+	}
+	for _, child := range root.Children {
+		if subtreeContains(child, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func subtreeHasSharedAllocation(root *Node) bool {
+	if root == nil {
+		return false
+	}
+	if !root.IsFolder && !root.IsFreeSpace && !root.IsSmallFiles && root.LinkCount > 1 {
+		return true
+	}
+	for _, child := range root.Children {
+		if subtreeHasSharedAllocation(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareMovedSubtree(root *Node, depth int) {
+	if root == nil {
+		return
+	}
+	root.Depth = depth
+	root.FullPath = ""
+	for _, child := range root.Children {
+		child.ParentID = root.ID
+		prepareMovedSubtree(child, depth+1)
+	}
 }

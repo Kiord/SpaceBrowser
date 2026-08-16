@@ -97,6 +97,69 @@ func TestTreeStoreDeleteNodeRequiresRescanForSharedAllocation(t *testing.T) {
 	}
 }
 
+func TestTreeStoreMovesDeletedSubtreeIntoDisplayedRecycleBin(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "folder")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	root := &Node{ID: 0, ParentID: -1, Name: "root", Size: 100, IsFolder: true}
+	folder := &Node{ID: 1, ParentID: 0, Name: "folder", FullPath: target, Size: 60, IsFolder: true, Depth: 1}
+	nested := &Node{ID: 2, ParentID: 1, Name: "nested.bin", FullPath: filepath.Join(target, "nested.bin"), Size: 60, Depth: 2}
+	recycleBin := &Node{ID: 3, ParentID: 0, Name: "$Recycle.Bin", FullPath: filepath.Join(filepath.Dir(target), "$Recycle.Bin"), Size: 10, IsFolder: true, Depth: 1}
+	existingTrash := &Node{ID: 4, ParentID: 3, Name: "existing.bin", Size: 10, Depth: 2}
+	kept := &Node{ID: 5, ParentID: 0, Name: "kept.bin", Size: 30, Depth: 1}
+	root.Children = []*Node{folder, kept, recycleBin}
+	folder.Children = []*Node{nested}
+	recycleBin.Children = []*Node{existingTrash}
+	store := &TreeStore{
+		root: root, nodes: []*Node{root, folder, nested, recycleBin, existingTrash, kept},
+		fileCount: 3, dirCount: 3,
+	}
+
+	result, err := store.DeleteNode(folder.ID, func(string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FileCount != 3 || result.DirCount != 3 {
+		t.Fatalf("counts after virtual move = (%d, %d), want unchanged (3, 3)", result.FileCount, result.DirCount)
+	}
+	if root.Size != 100 || recycleBin.Size != 70 {
+		t.Fatalf("sizes after virtual move = root %d, Recycle Bin %d; want 100 and 70", root.Size, recycleBin.Size)
+	}
+	if folder.ParentID != recycleBin.ID || len(recycleBin.Children) != 2 || recycleBin.Children[0] != folder {
+		t.Fatalf("Recycle Bin children after virtual move = %+v", recycleBin.Children)
+	}
+	if folder.FullPath != "" || nested.FullPath != "" || folder.Depth != 2 || nested.Depth != 3 {
+		t.Fatalf("moved subtree metadata = folder %+v, nested %+v", folder, nested)
+	}
+	if store.nodes[folder.ID] != folder || store.nodes[nested.ID] != nested {
+		t.Fatal("virtually moved subtree is no longer visitable")
+	}
+}
+
+func TestTreeStoreUpdatesFreeSpaceAccounting(t *testing.T) {
+	root := &Node{ID: 0, ParentID: -1, FullPath: t.TempDir(), Size: 600, IsFolder: true, DiskTotal: 1000, DiskFree: 400}
+	used := &Node{ID: 1, ParentID: 0, Name: "used", Size: 600}
+	free := &Node{ID: -1, ParentID: 0, Name: "free", Size: 400, IsFreeSpace: true, DiskTotal: 1000}
+	root.Children = []*Node{used, free}
+	store := &TreeStore{root: root, nodes: []*Node{root, used}}
+
+	path, ok := store.DiskUsageRootPath()
+	if !ok || path != root.FullPath {
+		t.Fatalf("DiskUsageRootPath() = %q, %t; want %q, true", path, ok, root.FullPath)
+	}
+	if !store.UpdateDiskUsage(1400, 800) {
+		t.Fatal("UpdateDiskUsage() did not find the free-space node")
+	}
+	if root.DiskTotal != 1400 || root.DiskFree != 800 || free.DiskTotal != 1400 || free.Size != 800 {
+		t.Fatalf("updated disk accounting = root(%d total, %d free), node(%d total, %d free)", root.DiskTotal, root.DiskFree, free.DiskTotal, free.Size)
+	}
+	if root.Children[0] != free || root.Children[1] != used {
+		t.Fatal("disk usage update did not retain size ordering")
+	}
+}
+
 func TestAppsOwnIndependentTreeStores(t *testing.T) {
 	root := &Node{ID: 0, ParentID: -1, Name: "first", IsFolder: true}
 	first := &App{}
