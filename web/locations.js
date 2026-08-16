@@ -17,7 +17,7 @@ function locationButton(location) {
   button.type = "button";
   button.className = "location-card";
   button.dataset.path = location.path;
-  button.title = `Scan ${location.path}`;
+  button.dataset.tooltip = `Scan ${location.path}`;
 
   const icon = document.createElement("span");
   icon.className = "location-card-icon";
