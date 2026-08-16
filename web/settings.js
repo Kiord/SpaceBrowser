@@ -175,7 +175,6 @@ function populateGeneralForm(profile) {
   const threshold = splitSizeIntoUnit(profile.minFileSize ?? 0);
   byId("settingsMinFileSize").value = String(threshold.value);
   byId("settingsMinFileSizeUnit").value = threshold.unit;
-  byId("settingsMinFileSizeUnit").dataset.previousUnit = threshold.unit;
   byId("settingsSkipHidden").checked = !!profile.skipHidden;
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
@@ -352,15 +351,6 @@ function useDefaultConfigPath() {
   byId("settingsError").textContent = "";
 }
 
-function convertSettingsSizeUnit(event) {
-  const select = event.currentTarget;
-  const input = byId("settingsMinFileSize");
-  const oldUnit = select.dataset.previousUnit || "B";
-  const bytes = input.valueAsNumber * SIZE_UNITS[oldUnit];
-  if (Number.isFinite(bytes)) input.value = String(bytes / SIZE_UNITS[select.value]);
-  select.dataset.previousUnit = select.value;
-}
-
 export function initSettings(options) {
   redraw = options.redraw;
   byId("settingsButton").addEventListener("click", openSettings);
@@ -374,7 +364,6 @@ export function initSettings(options) {
     event.preventDefault();
     closeRestoreDefaultsConfirmation();
   });
-  byId("settingsMinFileSizeUnit").addEventListener("change", convertSettingsSizeUnit);
   byId("browseConfigPathButton").addEventListener("click", browseConfigPath);
   queryAll("[data-restore-settings]").forEach(button => {
     button.addEventListener("click", () => openRestoreDefaultsConfirmation(button.dataset.restoreSettings));
