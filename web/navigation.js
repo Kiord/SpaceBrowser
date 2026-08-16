@@ -1,6 +1,6 @@
 import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
-import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
+import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
 import { AppState } from "./state.js";
 
@@ -109,6 +109,17 @@ function handlePopState(event) {
   redraw();
 }
 
+function handleNavigationShortcut(event) {
+  if (!shortcutCanRun(event)) return;
+  const bindings = AppState.profile?.controls;
+  if (eventMatchesShortcut(event, bindings?.back)) goBackward();
+  else if (eventMatchesShortcut(event, bindings?.forward)) goForward();
+  else if (eventMatchesShortcut(event, bindings?.parent)) goToParent();
+  else if (eventMatchesShortcut(event, bindings?.root)) goToRoot();
+  else return;
+  event.preventDefault();
+}
+
 export function initNavigation(options) {
   redraw = options.redraw;
   getSelectedRect = options.getSelectedRect;
@@ -120,14 +131,6 @@ export function initNavigation(options) {
   byId("forwardButton").addEventListener("click", goForward);
   byId("toggleFreeSpaceButton").addEventListener("click", toggleFreeSpace);
   window.addEventListener("popstate", handlePopState);
-  window.addEventListener("keydown", event => {
-    if (!shortcutCanRun(event)) return;
-    const bindings = AppState.profile?.keyBindings;
-    if (eventMatchesShortcut(event, bindings?.back)) goBackward();
-    else if (eventMatchesShortcut(event, bindings?.forward)) goForward();
-    else if (eventMatchesShortcut(event, bindings?.parent)) goToParent();
-    else if (eventMatchesShortcut(event, bindings?.root)) goToRoot();
-    else return;
-    event.preventDefault();
-  });
+  window.addEventListener("keydown", handleNavigationShortcut);
+  window.addEventListener("mousedown", handleNavigationShortcut);
 }

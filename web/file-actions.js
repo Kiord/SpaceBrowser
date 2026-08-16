@@ -10,7 +10,7 @@ import {
 } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
-import { eventMatchesShortcut, shortcutCanRun } from "./key-bindings.js";
+import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
 import { hideRectToast, mousePosition, showErrorToast, showToastAt } from "./notifications.js";
 import { analyze } from "./scan.js";
@@ -321,9 +321,9 @@ export function initFileActions(options) {
   });
   byId("contextMenu").addEventListener("click", handleContextMenuAction);
   window.addEventListener("click", hideContextMenu);
-  window.addEventListener("keydown", event => {
+  const handleOpenShortcut = event => {
     if (!shortcutCanRun(event)) return;
-    const bindings = AppState.profile?.keyBindings;
+    const bindings = AppState.profile?.controls;
     const openWith = eventMatchesShortcut(event, bindings?.openWith);
     const open = eventMatchesShortcut(event, bindings?.open);
     if (!openWith && !open) return;
@@ -332,17 +332,21 @@ export function initFileActions(options) {
     event.preventDefault();
     if (openWith) openRectWithChooser(rect);
     else openRectWithDefault(rect);
-  });
+  };
+  window.addEventListener("keydown", handleOpenShortcut);
+  window.addEventListener("mousedown", handleOpenShortcut);
   window.addEventListener("keydown", event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && getSelectedRect()?.full_path) {
       event.preventDefault();
       copySelectedPathAt();
     }
   });
-  window.addEventListener("keydown", event => {
-    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.keyBindings?.delete)) return;
+  const handleDeleteShortcut = event => {
+    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.delete)) return;
     if (!getSelectedRect()) return;
     event.preventDefault();
     requestSelectedDeletion();
-  });
+  };
+  window.addEventListener("keydown", handleDeleteShortcut);
+  window.addEventListener("mousedown", handleDeleteShortcut);
 }

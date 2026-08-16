@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 6
+const settingsFileVersion = 7
 
 type persistedSettings struct {
 	Version              int                `json:"version"`
@@ -22,7 +22,7 @@ type persistedSettings struct {
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
 	Appearance           AppearanceSettings `json:"appearance"`
-	KeyBindings          KeyBindings        `json:"keyBindings"`
+	Controls             ControlSettings    `json:"controls"`
 }
 
 type persistedSettingsLocation struct {
@@ -96,13 +96,9 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 	if saved.Version < 6 {
 		allowPermanentDelete = defaultProfile().AllowPermanentDelete
 	}
-	keyBindings := saved.KeyBindings
-	if saved.Version < 4 {
-		keyBindings = defaultKeyBindings()
-	} else if saved.Version < 5 {
-		defaults := defaultKeyBindings()
-		keyBindings.VisitSelected = defaults.VisitSelected
-		keyBindings.Delete = defaults.Delete
+	controls := saved.Controls
+	if saved.Version < 7 {
+		controls = defaultControlSettings()
 	}
 
 	return normalizeProfileWithFilesystem(Profile{
@@ -115,7 +111,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		AllowPermanentDelete: allowPermanentDelete,
 		RescanOnDelete:       rescanOnDelete,
 		Appearance:           appearance,
-		KeyBindings:          keyBindings,
+		Controls:             controls,
 	}, filesystem)
 }
 
@@ -131,7 +127,7 @@ func saveSettings(path string, profile Profile) error {
 		AllowPermanentDelete: profile.AllowPermanentDelete,
 		RescanOnDelete:       profile.RescanOnDelete,
 		Appearance:           profile.Appearance,
-		KeyBindings:          profile.KeyBindings,
+		Controls:             profile.Controls,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {

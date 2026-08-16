@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,7 +29,7 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 			CornerRadius:   6,
 			ReliefStrength: 0.18,
 		},
-		KeyBindings: KeyBindings{
+		Controls: ControlSettings{
 			Back:          "Alt+Left",
 			Forward:       "Alt+Right",
 			Parent:        "P",
@@ -41,6 +42,20 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	}
 	if err := first.SetProfile(want); err != nil {
 		t.Fatalf("SetProfile() error = %v", err)
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted map[string]json.RawMessage
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := persisted["controls"]; !ok {
+		t.Fatal("saved settings do not contain the controls section")
+	}
+	if _, ok := persisted["input"]; ok {
+		t.Fatal("saved settings still contain the old input section")
 	}
 	want.MinFileSize = 2 * 1024 * 1024
 	if err := first.SetProfile(want); err != nil {
@@ -59,10 +74,10 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	}
 }
 
-func TestVersionFourSettingsGainNewCommandBindings(t *testing.T) {
+func TestVersionSixSettingsGainDefaultInput(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	legacy := []byte(`{
-  "version": 4,
+  "version": 6,
   "excludedPaths": [],
   "skipHidden": false,
   "minFileSize": 1024,
@@ -89,18 +104,13 @@ func TestVersionFourSettingsGainNewCommandBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := newApp(settingsPath).GetProfile().KeyBindings
-	if got.Back != "B" || got.Forward != "F" || got.Parent != "P" || got.Root != "R" {
-		t.Fatalf("existing key bindings were not preserved: %#v", got)
-	}
-	defaults := defaultKeyBindings()
-	if got.VisitSelected != defaults.VisitSelected || got.Delete != defaults.Delete {
-		t.Fatalf("new key bindings = (%q, %q), want defaults (%q, %q)",
-			got.VisitSelected, got.Delete, defaults.VisitSelected, defaults.Delete)
+	got := newApp(settingsPath).GetProfile().Controls
+	if got != defaultControlSettings() {
+		t.Fatalf("controls = %#v, want defaults %#v", got, defaultControlSettings())
 	}
 }
 
-func TestVersionThreeSettingsGainDefaultKeyBindings(t *testing.T) {
+func TestVersionThreeSettingsGainDefaultInput(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	legacy := []byte(`{
   "version": 3,
@@ -123,22 +133,22 @@ func TestVersionThreeSettingsGainDefaultKeyBindings(t *testing.T) {
 	}
 
 	got := newApp(settingsPath).GetProfile()
-	if got.KeyBindings != defaultKeyBindings() {
-		t.Fatalf("key bindings = %#v, want defaults %#v", got.KeyBindings, defaultKeyBindings())
+	if got.Controls != defaultControlSettings() {
+		t.Fatalf("controls = %#v, want defaults %#v", got.Controls, defaultControlSettings())
 	}
 }
 
-func TestEmptyKeyBindingsRemainUnassigned(t *testing.T) {
+func TestEmptyControlBindingsRemainUnassigned(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	app := newApp(settingsPath)
 	profile := app.GetProfile()
-	profile.KeyBindings = KeyBindings{}
+	profile.Controls = ControlSettings{}
 	if err := app.SetProfile(profile); err != nil {
 		t.Fatalf("SetProfile() error = %v", err)
 	}
 
-	if got := newApp(settingsPath).GetProfile().KeyBindings; got != (KeyBindings{}) {
-		t.Fatalf("key bindings = %#v, want all bindings unassigned", got)
+	if got := newApp(settingsPath).GetProfile().Controls; got != (ControlSettings{}) {
+		t.Fatalf("controls = %#v, want all bindings unassigned", got)
 	}
 }
 

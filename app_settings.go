@@ -149,20 +149,20 @@ func normalizeProfileWithFilesystem(profile Profile, filesystem platform.Scanner
 		return Profile{}, err
 	}
 	profile.Appearance = appearance
-	profile.KeyBindings = normalizeKeyBindings(profile.KeyBindings)
+	profile.Controls = normalizeControlSettings(profile.Controls)
 	return profile, nil
 }
 
-func normalizeKeyBindings(bindings KeyBindings) KeyBindings {
-	bindings.Back = strings.TrimSpace(bindings.Back)
-	bindings.Forward = strings.TrimSpace(bindings.Forward)
-	bindings.Parent = strings.TrimSpace(bindings.Parent)
-	bindings.Root = strings.TrimSpace(bindings.Root)
-	bindings.Open = strings.TrimSpace(bindings.Open)
-	bindings.OpenWith = strings.TrimSpace(bindings.OpenWith)
-	bindings.VisitSelected = strings.TrimSpace(bindings.VisitSelected)
-	bindings.Delete = strings.TrimSpace(bindings.Delete)
-	return bindings
+func normalizeControlSettings(controls ControlSettings) ControlSettings {
+	controls.Back = strings.TrimSpace(controls.Back)
+	controls.Forward = strings.TrimSpace(controls.Forward)
+	controls.Parent = strings.TrimSpace(controls.Parent)
+	controls.Root = strings.TrimSpace(controls.Root)
+	controls.Open = strings.TrimSpace(controls.Open)
+	controls.OpenWith = strings.TrimSpace(controls.OpenWith)
+	controls.VisitSelected = strings.TrimSpace(controls.VisitSelected)
+	controls.Delete = strings.TrimSpace(controls.Delete)
+	return controls
 }
 
 func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, error) {

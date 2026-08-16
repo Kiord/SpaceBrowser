@@ -8,8 +8,15 @@ const KEY_NAMES = Object.freeze({
 });
 
 export function shortcutFromEvent(event) {
-  if (!event || event.isComposing || MODIFIER_KEYS.has(event.key)) return "";
-  let key = KEY_NAMES[event.key] || event.key;
+  if (!event || event.isComposing) return "";
+  let key = "";
+  if (Number.isInteger(event.button)) {
+    if (event.button <= 2) return "";
+    key = `Mouse ${event.button + 1}`;
+  } else {
+    if (MODIFIER_KEYS.has(event.key)) return "";
+    key = KEY_NAMES[event.key] || event.key;
+  }
   if (!key) return "";
   if (key.length === 1) key = key.toUpperCase();
 

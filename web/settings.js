@@ -9,7 +9,7 @@ import {
 } from "./wailsjs/go/main/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
-import { shortcutFromEvent } from "./key-bindings.js";
+import { shortcutFromEvent } from "./controls.js";
 import { logError } from "./logging.js";
 import {
   AppState,
@@ -22,7 +22,7 @@ import {
 } from "./state.js";
 
 let redraw = async () => {};
-let draftKeyBindings = {};
+let draftControlBindings = {};
 let capturingBindingButton = null;
 let activeSettingsPath = "";
 let defaultSettingsPath = "";
@@ -31,11 +31,11 @@ let pendingRestoreTab = "";
 const SETTINGS_TAB_LABELS = Object.freeze({
   general: "General",
   appearance: "Appearance",
-  "key-bindings": "Key bindings",
+  controls: "Controls",
   misc: "Misc",
 });
 
-const KEY_BINDING_LABELS = Object.freeze({
+const CONTROL_BINDING_LABELS = Object.freeze({
   back: "Back",
   forward: "Forward",
   parent: "Parent folder",
@@ -72,7 +72,7 @@ export async function applyAppearance(appearance, redrawNow = true) {
 }
 
 function showSettingsTab(name) {
-  stopKeyBindingCapture();
+  stopControlBindingCapture();
   queryAll("[data-settings-tab]").forEach(tab => {
     const active = tab.dataset.settingsTab === name;
     tab.classList.toggle("is-active", active);
@@ -83,61 +83,61 @@ function showSettingsTab(name) {
   });
 }
 
-function normalizedKeyBindings(bindings) {
+function normalizedControlBindings(bindings) {
   const source = bindings || {};
-  return Object.fromEntries(Object.keys(KEY_BINDING_LABELS).map(name => [name, String(source[name] || "").trim()]));
+  return Object.fromEntries(Object.keys(CONTROL_BINDING_LABELS).map(name => [name, String(source[name] || "").trim()]));
 }
 
-function renderKeyBindingButton(button) {
-  const binding = draftKeyBindings[button.dataset.keyBinding] || "";
+function renderControlBindingButton(button) {
+  const binding = draftControlBindings[button.dataset.controlBinding] || "";
   button.querySelector("span").textContent = binding || "Unassigned";
-  button.setAttribute("aria-label", `${KEY_BINDING_LABELS[button.dataset.keyBinding]}: ${binding || "Unassigned"}`);
+  button.setAttribute("aria-label", `${CONTROL_BINDING_LABELS[button.dataset.controlBinding]}: ${binding || "Unassigned"}`);
 }
 
-function populateKeyBindingsForm(bindings) {
-  stopKeyBindingCapture();
-  draftKeyBindings = normalizedKeyBindings(bindings);
-  queryAll("[data-key-binding]").forEach(renderKeyBindingButton);
+function populateControlBindingsForm(bindings) {
+  stopControlBindingCapture();
+  draftControlBindings = normalizedControlBindings(bindings);
+  queryAll("[data-control-binding]").forEach(renderControlBindingButton);
 }
 
-function stopKeyBindingCapture() {
+function stopControlBindingCapture() {
   if (!capturingBindingButton) return;
   capturingBindingButton.classList.remove("is-capturing");
-  renderKeyBindingButton(capturingBindingButton);
+  renderControlBindingButton(capturingBindingButton);
   capturingBindingButton = null;
 }
 
-function beginKeyBindingCapture(button) {
-  stopKeyBindingCapture();
+function beginControlBindingCapture(button) {
+  stopControlBindingCapture();
   capturingBindingButton = button;
   button.classList.add("is-capturing");
-  button.querySelector("span").textContent = "Press a key...";
+  button.querySelector("span").textContent = "Press a key or button...";
   byId("settingsError").textContent = "";
 }
 
-function captureKeyBinding(event) {
+function captureControlBinding(event) {
   if (!capturingBindingButton) return;
+  const shortcut = shortcutFromEvent(event);
+  if (!shortcut) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   if (event.repeat) return;
-  const name = capturingBindingButton.dataset.keyBinding;
-  const shortcut = shortcutFromEvent(event);
-  if (!shortcut) return;
-  const conflict = Object.entries(draftKeyBindings).find(([otherName, binding]) => otherName !== name && binding === shortcut);
+  const name = capturingBindingButton.dataset.controlBinding;
+  const conflict = Object.entries(draftControlBindings).find(([otherName, binding]) => otherName !== name && binding === shortcut);
   if (conflict) {
-    byId("settingsError").textContent = `${shortcut} is already assigned to ${KEY_BINDING_LABELS[conflict[0]]}.`;
-    stopKeyBindingCapture();
+    byId("settingsError").textContent = `${shortcut} is already assigned to ${CONTROL_BINDING_LABELS[conflict[0]]}.`;
+    stopControlBindingCapture();
     return;
   }
-  draftKeyBindings[name] = shortcut;
-  stopKeyBindingCapture();
+  draftControlBindings[name] = shortcut;
+  stopControlBindingCapture();
 }
 
-function clearKeyBinding(button) {
-  stopKeyBindingCapture();
-  const name = button.dataset.clearKeyBinding;
-  draftKeyBindings[name] = "";
-  renderKeyBindingButton(byId(`keyBinding${name[0].toUpperCase()}${name.slice(1)}`));
+function clearControlBinding(button) {
+  stopControlBindingCapture();
+  const name = button.dataset.clearControlBinding;
+  draftControlBindings[name] = "";
+  renderControlBindingButton(byId(`controlBinding${name[0].toUpperCase()}${name.slice(1)}`));
   byId("settingsError").textContent = "";
 }
 
@@ -186,7 +186,7 @@ function populateGeneralForm(profile) {
 function populateProfileForm(profile, useCurrentZoom = true) {
   populateGeneralForm(profile);
   populateAppearanceForm(profile.appearance, useCurrentZoom);
-  populateKeyBindingsForm(profile.keyBindings);
+  populateControlBindingsForm(profile.controls);
 }
 
 function populateMiscForm(settingsPath, defaultPath) {
@@ -237,7 +237,7 @@ function closeRestoreDefaultsConfirmation() {
 }
 
 function closeSettings() {
-  stopKeyBindingCapture();
+  stopControlBindingCapture();
   closeRestoreDefaultsConfirmation();
   const dialog = byId("settingsDialog");
   if (dialog.open) dialog.close();
@@ -270,7 +270,7 @@ async function restoreDefaultSettings() {
     useDefaultConfigPath();
   } else if (tabName === "general") populateGeneralForm(defaults);
   else if (tabName === "appearance") populateAppearanceForm(defaults.appearance, false);
-  else if (tabName === "key-bindings") populateKeyBindingsForm(defaults.keyBindings);
+  else if (tabName === "controls") populateControlBindingsForm(defaults.controls);
   else if (tabName === "misc") useDefaultConfigPath();
   byId("settingsError").textContent = "";
   closeRestoreDefaultsConfirmation();
@@ -278,7 +278,7 @@ async function restoreDefaultSettings() {
 
 async function saveSettings(event) {
   event.preventDefault();
-  stopKeyBindingCapture();
+  stopControlBindingCapture();
   const dialog = byId("settingsDialog");
   const error = byId("settingsError");
   const sizeValue = byId("settingsMinFileSize").valueAsNumber;
@@ -306,7 +306,7 @@ async function saveSettings(event) {
       cornerRadius: Number(byId("settingsCornerRadius").value),
       reliefStrength: Number(byId("settingsReliefStrength").value),
     },
-    keyBindings: normalizedKeyBindings(draftKeyBindings),
+    controls: normalizedControlBindings(draftControlBindings),
   };
 
   const saveButton = event.submitter;
@@ -371,13 +371,14 @@ export function initSettings(options) {
   queryAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
   });
-  queryAll("[data-key-binding]").forEach(button => {
-    button.addEventListener("click", () => beginKeyBindingCapture(button));
+  queryAll("[data-control-binding]").forEach(button => {
+    button.addEventListener("click", () => beginControlBindingCapture(button));
   });
-  queryAll("[data-clear-key-binding]").forEach(button => {
-    button.addEventListener("click", () => clearKeyBinding(button));
+  queryAll("[data-clear-control-binding]").forEach(button => {
+    button.addEventListener("click", () => clearControlBinding(button));
   });
-  window.addEventListener("keydown", captureKeyBinding, true);
+  window.addEventListener("keydown", captureControlBinding, true);
+  window.addEventListener("mousedown", captureControlBinding, true);
   byId("settingsPalette").addEventListener("change", updateAppearanceFormOutputs);
   byId("settingsZoomFactor").addEventListener("input", updateAppearanceFormOutputs);
   byId("settingsCornerRadius").addEventListener("input", updateAppearanceFormOutputs);

@@ -18,7 +18,7 @@ type Profile struct {
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
 	Appearance           AppearanceSettings `json:"appearance"`
-	KeyBindings          KeyBindings        `json:"keyBindings"`
+	Controls             ControlSettings    `json:"controls"`
 }
 
 type AppearanceSettings struct {
@@ -28,7 +28,7 @@ type AppearanceSettings struct {
 	ReliefStrength float64 `json:"reliefStrength"`
 }
 
-type KeyBindings struct {
+type ControlSettings struct {
 	Back          string `json:"back"`
 	Forward       string `json:"forward"`
 	Parent        string `json:"parent"`
@@ -39,8 +39,8 @@ type KeyBindings struct {
 	Delete        string `json:"delete"`
 }
 
-func defaultKeyBindings() KeyBindings {
-	return KeyBindings{
+func defaultControlSettings() ControlSettings {
+	return ControlSettings{
 		Open:          "Ctrl+O",
 		OpenWith:      "Ctrl+Shift+O",
 		VisitSelected: "Enter",
@@ -101,7 +101,7 @@ func defaultProfile() *Profile {
 		AllowPermanentDelete: false,
 		RescanOnDelete:       true,
 		Appearance:           defaultAppearanceSettings(),
-		KeyBindings:          defaultKeyBindings(),
+		Controls:             defaultControlSettings(),
 	}
 	return p
 }

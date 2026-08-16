@@ -733,26 +733,26 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   color: #777;
 }
 
-.key-bindings-help {
+.controls-help {
   margin: 0 0 3px;
   color: #666;
   line-height: 1.4;
 }
 
-.key-binding-field {
+.control-binding-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   gap: 4px;
 }
 
-.settings-dialog .key-binding-button {
+.settings-dialog .control-binding-button {
   width: 100%;
   justify-self: stretch;
   text-align: left;
   font-family: Consolas, "Courier New", monospace;
 }
 
-.settings-dialog .key-binding-clear {
+.settings-dialog .control-binding-clear {
   display: grid;
   place-items: center;
   width: 28px;
@@ -760,7 +760,7 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   padding: 0;
 }
 
-.key-binding-clear svg {
+.control-binding-clear svg {
   width: 11px;
   height: 11px;
   fill: none;
@@ -769,14 +769,14 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   stroke-linecap: square;
 }
 
-.settings-dialog .key-binding-button.is-capturing {
+.settings-dialog .control-binding-button.is-capturing {
   color: #111;
   background: #fff;
   border-color: #555;
   box-shadow: inset 0 0 0 1px #aaa;
 }
 
-.key-binding-row-danger {
+.control-binding-row-danger {
   margin: 2px -7px -3px;
   padding: 8px 7px;
   color: #6f211e;
@@ -785,8 +785,8 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   border-radius: 2px;
 }
 
-.settings-dialog .key-binding-row-danger .key-binding-button,
-.settings-dialog .key-binding-row-danger .key-binding-clear {
+.settings-dialog .control-binding-row-danger .control-binding-button,
+.settings-dialog .control-binding-row-danger .control-binding-clear {
   color: #6f211e;
   background: #fffafa;
   border-color: #d7aaa6;
