@@ -186,5 +186,8 @@ func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, err
 	if math.IsNaN(appearance.ReliefStrength) || math.IsInf(appearance.ReliefStrength, 0) || appearance.ReliefStrength < 0 || appearance.ReliefStrength > 0.5 {
 		return AppearanceSettings{}, fmt.Errorf("relief strength must be between 0 and 0.5")
 	}
+	if math.IsNaN(appearance.HoverBrightness) || math.IsInf(appearance.HoverBrightness, 0) || appearance.HoverBrightness < 0 || appearance.HoverBrightness > 0.3 {
+		return AppearanceSettings{}, fmt.Errorf("hover brightness must be between 0 and 0.3")
+	}
 	return appearance, nil
 }

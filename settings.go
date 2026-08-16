@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 7
+const settingsFileVersion = 8
 
 type persistedSettings struct {
 	Version              int                `json:"version"`
@@ -84,6 +84,8 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 	appearance := saved.Appearance
 	if saved.Version == 1 {
 		appearance = defaultAppearanceSettings()
+	} else if saved.Version < 8 {
+		appearance.HoverBrightness = defaultAppearanceSettings().HoverBrightness
 	}
 	allowDelete := saved.AllowDelete
 	allowPermanentDelete := saved.AllowPermanentDelete

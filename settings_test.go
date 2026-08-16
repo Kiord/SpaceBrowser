@@ -24,10 +24,11 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		AllowPermanentDelete: true,
 		RescanOnDelete:       false,
 		Appearance: AppearanceSettings{
-			Palette:        "ocean",
-			ZoomFactor:     1.4,
-			CornerRadius:   6,
-			ReliefStrength: 0.18,
+			Palette:         "ocean",
+			ZoomFactor:      1.4,
+			CornerRadius:    6,
+			ReliefStrength:  0.18,
+			HoverBrightness: 0.12,
 		},
 		Controls: ControlSettings{
 			Back:          "Alt+Left",
@@ -104,9 +105,13 @@ func TestVersionSixSettingsGainDefaultInput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := newApp(settingsPath).GetProfile().Controls
+	profile := newApp(settingsPath).GetProfile()
+	got := profile.Controls
 	if got != defaultControlSettings() {
 		t.Fatalf("controls = %#v, want defaults %#v", got, defaultControlSettings())
+	}
+	if profile.Appearance.HoverBrightness != defaultAppearanceSettings().HoverBrightness {
+		t.Fatalf("hover brightness = %v, want default %v", profile.Appearance.HoverBrightness, defaultAppearanceSettings().HoverBrightness)
 	}
 }
 
@@ -149,6 +154,15 @@ func TestEmptyControlBindingsRemainUnassigned(t *testing.T) {
 
 	if got := newApp(settingsPath).GetProfile().Controls; got != (ControlSettings{}) {
 		t.Fatalf("controls = %#v, want all bindings unassigned", got)
+	}
+}
+
+func TestHoverBrightnessOutsideSliderRangeIsRejected(t *testing.T) {
+	app := newApp(filepath.Join(t.TempDir(), "settings.json"))
+	profile := app.GetProfile()
+	profile.Appearance.HoverBrightness = 0.31
+	if err := app.SetProfile(profile); err == nil {
+		t.Fatal("SetProfile() accepted hover brightness above 0.3")
 	}
 }
 

@@ -56,11 +56,13 @@ export function normalizedAppearance(appearance) {
   const palette = PALETTES[source.palette] ? source.palette : defaults.palette;
   const zoom = Number(source.zoomFactor);
   const relief = Number(source.reliefStrength);
+  const hoverBrightness = Number(source.hoverBrightness);
   return {
     palette,
     zoomFactor: Math.max(SCALE_MIN, Math.min(SCALE_MAX, Number.isFinite(zoom) ? zoom : defaults.zoomFactor)),
     cornerRadius: Math.max(0, Math.min(10, Math.round(Number(source.cornerRadius) || 0))),
     reliefStrength: Math.max(0, Math.min(0.5, Number.isFinite(relief) ? relief : defaults.reliefStrength)),
+    hoverBrightness: Math.max(0, Math.min(0.3, Number.isFinite(hoverBrightness) ? hoverBrightness : defaults.hoverBrightness)),
   };
 }
 
@@ -154,10 +156,12 @@ function updateAppearanceFormOutputs() {
   const zoom = Number(byId("settingsZoomFactor").value);
   const radius = Number(byId("settingsCornerRadius").value);
   const relief = Number(byId("settingsReliefStrength").value);
+  const hoverBrightness = Number(byId("settingsHoverBrightness").value);
   updatePalettePreview(palette);
   byId("settingsZoomFactorValue").textContent = `${zoom.toFixed(1)}×`;
   byId("settingsCornerRadiusValue").textContent = `${radius.toFixed(0)} px`;
   byId("settingsReliefStrengthValue").textContent = `${(1 + relief).toFixed(2)}×`;
+  byId("settingsHoverBrightnessValue").textContent = `${(1 + hoverBrightness).toFixed(2)}×`;
 }
 
 function populateAppearanceForm(appearance, useCurrentZoom = true) {
@@ -166,6 +170,7 @@ function populateAppearanceForm(appearance, useCurrentZoom = true) {
   byId("settingsZoomFactor").value = String(useCurrentZoom ? (AppState.zoomFactor || values.zoomFactor) : values.zoomFactor);
   byId("settingsCornerRadius").value = String(values.cornerRadius);
   byId("settingsReliefStrength").value = String(values.reliefStrength);
+  byId("settingsHoverBrightness").value = String(values.hoverBrightness);
   updateAppearanceFormOutputs();
 }
 
@@ -305,6 +310,7 @@ async function saveSettings(event) {
       zoomFactor: Number(byId("settingsZoomFactor").value),
       cornerRadius: Number(byId("settingsCornerRadius").value),
       reliefStrength: Number(byId("settingsReliefStrength").value),
+      hoverBrightness: Number(byId("settingsHoverBrightness").value),
     },
     controls: normalizedControlBindings(draftControlBindings),
   };
@@ -383,4 +389,5 @@ export function initSettings(options) {
   byId("settingsZoomFactor").addEventListener("input", updateAppearanceFormOutputs);
   byId("settingsCornerRadius").addEventListener("input", updateAppearanceFormOutputs);
   byId("settingsReliefStrength").addEventListener("input", updateAppearanceFormOutputs);
+  byId("settingsHoverBrightness").addEventListener("input", updateAppearanceFormOutputs);
 }

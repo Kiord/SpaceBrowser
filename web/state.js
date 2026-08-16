@@ -12,6 +12,8 @@ export const AppState = {
 
   colorCanvas: null,
   colorCtx: null,
+  hoverCanvas: null,
+  hoverCtx: null,
   idCanvas: null,
   idCtx: null,
   tmpCanvas: null,
@@ -50,6 +52,7 @@ export const AppearanceState = {
   zoomFactor: 1,
   cornerRadius: 0,
   reliefStrength: 0,
+  hoverBrightness: 0,
 };
 
 export const FONT_SIZE = 10;

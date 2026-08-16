@@ -7,6 +7,9 @@ import { logDebug, logWarning } from "./logging.js";
 import { AppState, AppearanceState, FONT_SIZE, activePalette, getScale } from "./state.js";
 
 let redrawGeneration = 0;
+let requestedHoverRectIndex = -1;
+let renderedHoverRectIndex = -1;
+let hoverAnimationFrame = null;
 
 async function apiLayoutById(nodeId, w, h, scale) {
   const rects = await Layout(nodeId, w, h, scale);
@@ -54,10 +57,59 @@ function drawTreemap(rects) {
   const idc = AppState.idCtx;
   ctx.clearRect(0, 0, AppState.colorCanvas.width, AppState.colorCanvas.height);
   idc.clearRect(0, 0, AppState.idCanvas.width, AppState.idCanvas.height);
+  clearHoverOverlay();
 
   for (let i = 0; i < rects.length; i++) {
     drawRect(rects[i], /*writeId*/true, ctx, i);
   }
+}
+
+function clearRenderedHoverRect() {
+  const rect = AppState.rects?.[renderedHoverRectIndex];
+  if (rect) AppState.hoverCtx.clearRect(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2);
+  else AppState.hoverCtx.clearRect(0, 0, AppState.hoverCanvas.width, AppState.hoverCanvas.height);
+  renderedHoverRectIndex = -1;
+}
+
+function renderHoverOverlay() {
+  hoverAnimationFrame = null;
+  clearRenderedHoverRect();
+  const strength = AppearanceState.hoverBrightness;
+  const rect = AppState.rects?.[requestedHoverRectIndex];
+  if (!(strength > 0) || !rect || rect.w <= 0 || rect.h <= 0) return;
+
+  const ctx = AppState.hoverCtx;
+  ctx.save();
+  ctx.beginPath();
+  addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
+  for (const childIndex of Array.isArray(rect.children) ? rect.children : []) {
+    const child = AppState.rects?.[childIndex];
+    if (child) addRectPath(ctx, child.x, child.y, child.w, child.h);
+  }
+  ctx.clip("evenodd");
+  ctx.fillStyle = `rgba(255,255,255,${strength})`;
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.restore();
+  renderedHoverRectIndex = requestedHoverRectIndex;
+}
+
+function scheduleHoverRender() {
+  if (hoverAnimationFrame == null) hoverAnimationFrame = requestAnimationFrame(renderHoverOverlay);
+}
+
+export function setHoveredRectIndex(rectIndex) {
+  const nextIndex = Number.isInteger(rectIndex) ? rectIndex : -1;
+  if (nextIndex === requestedHoverRectIndex) return;
+  requestedHoverRectIndex = nextIndex;
+  scheduleHoverRender();
+}
+
+function clearHoverOverlay() {
+  if (hoverAnimationFrame != null) cancelAnimationFrame(hoverAnimationFrame);
+  hoverAnimationFrame = null;
+  requestedHoverRectIndex = -1;
+  renderedHoverRectIndex = -1;
+  AppState.hoverCtx?.clearRect(0, 0, AppState.hoverCanvas.width, AppState.hoverCanvas.height);
 }
 
 function textFits(ctx, text, maxw){
@@ -363,6 +415,7 @@ function reDrawRectByIndex(idx) {
   AppState.tmpCtx.globalCompositeOperation = 'source-over';
 
   AppState.colorCtx.drawImage(AppState.tmpCanvas, 0, 0);
+  scheduleHoverRender();
 }
 
 export function getCanvasCoords(event) {
@@ -372,12 +425,11 @@ export function getCanvasCoords(event) {
 
 export function resizeCanvas() {
   const containerRect = AppState.colorCanvas.parentElement.getBoundingClientRect();
-  const controlsRect  = document.querySelector(".controls").getBoundingClientRect();
   const width  = containerRect.width;
-  const height = window.innerHeight - controlsRect.height;
+  const height = containerRect.height;
   const dpr = window.devicePixelRatio || 1;
 
-  for (const c of [AppState.colorCanvas, AppState.idCanvas, AppState.tmpCanvas, AppState.maskCanvas]) {
+  for (const c of [AppState.colorCanvas, AppState.hoverCanvas, AppState.idCanvas, AppState.tmpCanvas, AppState.maskCanvas]) {
     c.width  = Math.max(1, Math.floor(width  * dpr));
     c.height = Math.max(1, Math.floor(height * dpr));
     c.style.width  = `${width}px`;
@@ -428,11 +480,13 @@ function strokeRoundedRect(ctx, x, y, w, h) {
 
 export function initTreemapView() {
   AppState.colorCanvas = document.getElementById("colorCanvas");
+  AppState.hoverCanvas = document.getElementById("hoverCanvas");
   AppState.idCanvas = document.getElementById("idCanvas");
   AppState.tmpCanvas = document.getElementById("tmpCanvas");
   AppState.maskCanvas = document.getElementById("maskCanvas");
 
   AppState.colorCtx = AppState.colorCanvas.getContext("2d");
+  AppState.hoverCtx = AppState.hoverCanvas.getContext("2d", { alpha: true });
   AppState.idCtx = AppState.idCanvas.getContext("2d", { willReadFrequently: true });
   AppState.idCtx.imageSmoothingEnabled = false;
   AppState.tmpCtx = AppState.tmpCanvas.getContext("2d", { alpha: true });
@@ -463,7 +517,7 @@ export function initTreemapView() {
     hideContextMenu();
   });
 
-  initNotifications({ getCanvasCoords, rectIndexAtPoint });
+  initNotifications({ getCanvasCoords, rectIndexAtPoint, setHoveredRectIndex });
   window.addEventListener("resize", debounce(async () => {
     resizeCanvas();
     await redraw();

@@ -22,10 +22,11 @@ type Profile struct {
 }
 
 type AppearanceSettings struct {
-	Palette        string  `json:"palette"`
-	ZoomFactor     float64 `json:"zoomFactor"`
-	CornerRadius   int     `json:"cornerRadius"`
-	ReliefStrength float64 `json:"reliefStrength"`
+	Palette         string  `json:"palette"`
+	ZoomFactor      float64 `json:"zoomFactor"`
+	CornerRadius    int     `json:"cornerRadius"`
+	ReliefStrength  float64 `json:"reliefStrength"`
+	HoverBrightness float64 `json:"hoverBrightness"`
 }
 
 type ControlSettings struct {
@@ -50,10 +51,11 @@ func defaultControlSettings() ControlSettings {
 
 func defaultAppearanceSettings() AppearanceSettings {
 	return AppearanceSettings{
-		Palette:        "default",
-		ZoomFactor:     1,
-		CornerRadius:   0,
-		ReliefStrength: 0.30,
+		Palette:         "default",
+		ZoomFactor:      1,
+		CornerRadius:    0,
+		ReliefStrength:  0.30,
+		HoverBrightness: 0.07,
 	}
 }
 

@@ -76,10 +76,13 @@
       </div>
     </div>
     
-    <canvas id="colorCanvas"></canvas>
-    <canvas id="idCanvas" style="display: none"></canvas>
-    <canvas id="tmpCanvas" style="display: none"></canvas>
-    <canvas id="maskCanvas" style="display: none"></canvas>
+    <div class="treemap-canvas-stack">
+      <canvas id="colorCanvas"></canvas>
+      <canvas id="hoverCanvas" aria-hidden="true"></canvas>
+      <canvas id="idCanvas" style="display: none"></canvas>
+      <canvas id="tmpCanvas" style="display: none"></canvas>
+      <canvas id="maskCanvas" style="display: none"></canvas>
+    </div>
     
   </div>
   <ul id="contextMenu" class="context-menu">
@@ -272,6 +275,16 @@
                 <output id="settingsReliefStrengthValue" for="settingsReliefStrength"></output>
               </div>
               <small>1.00× disables the relief effect.</small>
+            </div>
+          </div>
+          <div class="settings-row range-settings-row">
+            <label for="settingsHoverBrightness">Hover brightness</label>
+            <div>
+              <div class="range-field">
+                <input id="settingsHoverBrightness" type="range" min="0" max="0.3" step="0.01">
+                <output id="settingsHoverBrightnessValue" for="settingsHoverBrightness"></output>
+              </div>
+              <small>1.00× disables the hover effect.</small>
             </div>
           </div>
           <div class="settings-panel-actions">

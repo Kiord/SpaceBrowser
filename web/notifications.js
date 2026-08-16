@@ -5,6 +5,7 @@ import { AppState } from "./state.js";
 
 let canvasCoords = null;
 let rectAtPoint = null;
+let setHoveredRectIndex = () => {};
 let hoveredRect = null;
 let hoveredRectIndex = -1;
 const associatedIconCache = new Map();
@@ -99,6 +100,7 @@ export function updateRectToast(event) {
   if (!canvasCoords || !rectAtPoint) return;
   const { x, y } = canvasCoords(event);
   const rectIndex = rectAtPoint(x, y);
+  setHoveredRectIndex(rectIndex);
   const rect = AppState.rects?.[rectIndex];
   if (!rectSupportsDetailsToast(rect)) {
     hideRectToast();
@@ -164,10 +166,14 @@ export function showErrorToast(error) {
 export function initNotifications(options) {
   canvasCoords = options.getCanvasCoords;
   rectAtPoint = options.rectIndexAtPoint;
+  setHoveredRectIndex = options.setHoveredRectIndex || (() => {});
   window.addEventListener("mousemove", event => {
     mousePosition.x = event.clientX;
     mousePosition.y = event.clientY;
   });
   AppState.colorCanvas.addEventListener("pointermove", updateRectToast);
-  AppState.colorCanvas.addEventListener("pointerleave", hideRectToast);
+  AppState.colorCanvas.addEventListener("pointerleave", () => {
+    setHoveredRectIndex(-1);
+    hideRectToast();
+  });
 }
