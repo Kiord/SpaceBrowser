@@ -36,6 +36,8 @@ const scanProgressSlowdown = 10.0
 
 const networkFilesystemScanDisabledMessage = "network filesystem scanning is disabled; go to Settings and untick Skip network filesystems"
 
+var errScanSuperseded = errors.New("scan was superseded by a newer scan")
+
 func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFilesystem) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("missing path")
@@ -179,6 +181,28 @@ func (a *App) finishScan(generation uint64) {
 	a.scanMu.Unlock()
 }
 
+func (a *App) publishScanResult(
+	ctx context.Context,
+	generation uint64,
+	root *Node,
+	nodes []*Node,
+	files, dirs int,
+	persistReport func() *ScanReportInfo,
+) (*ScanReportInfo, error) {
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+
+	if a.scanGeneration != generation || !a.scanActive {
+		return nil, errScanSuperseded
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	a.store.Replace(root, nodes, files, dirs)
+	return persistReport(), nil
+}
+
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	path, err := a.validateScanPath(path)
 	if err != nil {
@@ -245,12 +269,21 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return root.Children[i].Size > root.Children[j].Size
 	})
 
-	a.store.Replace(root, scanner.Nodes(), int(files), int(dirs))
 	report := scanner.Report()
-	a.logScanReport(report)
 	duration := time.Since(startedAt)
+	reportInfo, err := a.publishScanResult(ctx, generation, root, scanner.Nodes(), int(files), int(dirs), func() *ScanReportInfo {
+		return a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
+	})
+	if err != nil {
+		if errors.Is(err, errScanSuperseded) {
+			a.logger.Warningf("discarding superseded scan result: %s", path)
+			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
+		}
+		a.logger.Warningf("discarding cancelled scan result: %s", path)
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
+	}
+	a.logScanReport(report)
 	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
-	reportInfo := a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
 }
 

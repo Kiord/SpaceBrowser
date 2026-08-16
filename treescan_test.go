@@ -433,6 +433,85 @@ func TestScanProgressLifecycleAndCancellation(t *testing.T) {
 	}
 }
 
+func TestPublishScanResultRejectsSupersededGeneration(t *testing.T) {
+	app := NewApp()
+	original := &Node{ID: 0, ParentID: -1, Name: "original", IsFolder: true}
+	app.store.Replace(original, []*Node{original}, 0, 1)
+
+	oldContext, oldGeneration := app.beginScan("old", 0)
+	_, currentGeneration := app.beginScan("current", 0)
+	defer app.finishScan(currentGeneration)
+
+	replacement := &Node{ID: 0, ParentID: -1, Name: "replacement", IsFolder: true}
+	persisted := false
+	if _, err := app.publishScanResult(oldContext, oldGeneration, replacement, []*Node{replacement}, 0, 1, func() *ScanReportInfo {
+		persisted = true
+		return &ScanReportInfo{}
+	}); !errors.Is(err, errScanSuperseded) {
+		t.Fatalf("publishScanResult() error = %v, want %v", err, errScanSuperseded)
+	}
+	if persisted {
+		t.Fatal("superseded scan report was persisted")
+	}
+	app.store.mu.RLock()
+	storedRoot := app.store.root
+	app.store.mu.RUnlock()
+	if storedRoot != original {
+		t.Fatal("superseded scan replaced the application tree")
+	}
+}
+
+func TestPublishScanResultCommitsCurrentGeneration(t *testing.T) {
+	app := NewApp()
+	ctx, generation := app.beginScan("current", 0)
+	defer app.finishScan(generation)
+
+	root := &Node{ID: 0, ParentID: -1, Name: "current", IsFolder: true}
+	wantReport := &ScanReportInfo{ErrorCount: 1}
+	persisted := false
+	report, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, func() *ScanReportInfo {
+		persisted = true
+		return wantReport
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !persisted || report != wantReport {
+		t.Fatalf("report publication = (%t, %p), want (true, %p)", persisted, report, wantReport)
+	}
+	app.store.mu.RLock()
+	storedRoot := app.store.root
+	app.store.mu.RUnlock()
+	if storedRoot != root {
+		t.Fatal("current scan did not replace the application tree")
+	}
+}
+
+func TestPublishScanResultRejectsCancelledContext(t *testing.T) {
+	app := NewApp()
+	ctx, generation := app.beginScan("cancelled", 0)
+	defer app.finishScan(generation)
+	app.CancelScan()
+
+	root := &Node{ID: 0, ParentID: -1, Name: "cancelled", IsFolder: true}
+	persisted := false
+	if _, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, func() *ScanReportInfo {
+		persisted = true
+		return &ScanReportInfo{}
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("publishScanResult() error = %v, want context.Canceled", err)
+	}
+	if persisted {
+		t.Fatal("cancelled scan report was persisted")
+	}
+	app.store.mu.RLock()
+	storedRoot := app.store.root
+	app.store.mu.RUnlock()
+	if storedRoot != nil {
+		t.Fatal("cancelled scan replaced the application tree")
+	}
+}
+
 func TestScannerAggregatesSmallFiles(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string][]byte{
