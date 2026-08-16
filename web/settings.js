@@ -180,6 +180,7 @@ function populateGeneralForm(profile) {
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
+  byId("settingsAllowPermanentDelete").checked = !!profile.allowPermanentDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
 }
 
@@ -298,6 +299,7 @@ async function saveSettings(event) {
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     allowDelete: byId("settingsAllowDelete").checked,
+    allowPermanentDelete: byId("settingsAllowPermanentDelete").checked,
     rescanOnDelete: byId("settingsRescanOnDelete").checked,
     appearance: {
       palette: byId("settingsPalette").value,

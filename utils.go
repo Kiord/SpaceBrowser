@@ -8,16 +8,17 @@ import (
 )
 
 type Profile struct {
-	PlatformSystem string             `json:"platformSystem"`
-	ExcludedPaths  []string           `json:"excludedPaths"`
-	SkipHidden     bool               `json:"skipHidden"`
-	MinFileSize    int64              `json:"minFileSize"`
-	FollowSymlinks bool               `json:"followSymlinks"`
-	SkipNetworkFS  bool               `json:"skipNetworkFS"`
-	AllowDelete    bool               `json:"allowDelete"`
-	RescanOnDelete bool               `json:"rescanOnDelete"`
-	Appearance     AppearanceSettings `json:"appearance"`
-	KeyBindings    KeyBindings        `json:"keyBindings"`
+	PlatformSystem       string             `json:"platformSystem"`
+	ExcludedPaths        []string           `json:"excludedPaths"`
+	SkipHidden           bool               `json:"skipHidden"`
+	MinFileSize          int64              `json:"minFileSize"`
+	FollowSymlinks       bool               `json:"followSymlinks"`
+	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	AllowDelete          bool               `json:"allowDelete"`
+	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
+	RescanOnDelete       bool               `json:"rescanOnDelete"`
+	Appearance           AppearanceSettings `json:"appearance"`
+	KeyBindings          KeyBindings        `json:"keyBindings"`
 }
 
 type AppearanceSettings struct {
@@ -91,15 +92,16 @@ func pathHasPrefix(path, prefix string, caseInsensitive bool) bool {
 
 func defaultProfile() *Profile {
 	p := &Profile{
-		PlatformSystem: runtime.GOOS, // "windows" | "darwin" | "linux"
-		SkipHidden:     false,
-		MinFileSize:    1024,
-		FollowSymlinks: false,
-		SkipNetworkFS:  true,
-		AllowDelete:    false,
-		RescanOnDelete: true,
-		Appearance:     defaultAppearanceSettings(),
-		KeyBindings:    defaultKeyBindings(),
+		PlatformSystem:       runtime.GOOS, // "windows" | "darwin" | "linux"
+		SkipHidden:           false,
+		MinFileSize:          1024,
+		FollowSymlinks:       false,
+		SkipNetworkFS:        true,
+		AllowDelete:          false,
+		AllowPermanentDelete: false,
+		RescanOnDelete:       true,
+		Appearance:           defaultAppearanceSettings(),
+		KeyBindings:          defaultKeyBindings(),
 	}
 	return p
 }

@@ -9,19 +9,20 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 5
+const settingsFileVersion = 6
 
 type persistedSettings struct {
-	Version        int                `json:"version"`
-	ExcludedPaths  []string           `json:"excludedPaths"`
-	SkipHidden     bool               `json:"skipHidden"`
-	MinFileSize    int64              `json:"minFileSize"`
-	FollowSymlinks bool               `json:"followSymlinks"`
-	SkipNetworkFS  bool               `json:"skipNetworkFS"`
-	AllowDelete    bool               `json:"allowDelete"`
-	RescanOnDelete bool               `json:"rescanOnDelete"`
-	Appearance     AppearanceSettings `json:"appearance"`
-	KeyBindings    KeyBindings        `json:"keyBindings"`
+	Version              int                `json:"version"`
+	ExcludedPaths        []string           `json:"excludedPaths"`
+	SkipHidden           bool               `json:"skipHidden"`
+	MinFileSize          int64              `json:"minFileSize"`
+	FollowSymlinks       bool               `json:"followSymlinks"`
+	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	AllowDelete          bool               `json:"allowDelete"`
+	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
+	RescanOnDelete       bool               `json:"rescanOnDelete"`
+	Appearance           AppearanceSettings `json:"appearance"`
+	KeyBindings          KeyBindings        `json:"keyBindings"`
 }
 
 type persistedSettingsLocation struct {
@@ -85,11 +86,15 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		appearance = defaultAppearanceSettings()
 	}
 	allowDelete := saved.AllowDelete
+	allowPermanentDelete := saved.AllowPermanentDelete
 	rescanOnDelete := saved.RescanOnDelete
 	if saved.Version < 3 {
 		defaults := defaultProfile()
 		allowDelete = defaults.AllowDelete
 		rescanOnDelete = defaults.RescanOnDelete
+	}
+	if saved.Version < 6 {
+		allowPermanentDelete = defaultProfile().AllowPermanentDelete
 	}
 	keyBindings := saved.KeyBindings
 	if saved.Version < 4 {
@@ -101,30 +106,32 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 	}
 
 	return normalizeProfileWithFilesystem(Profile{
-		ExcludedPaths:  saved.ExcludedPaths,
-		SkipHidden:     saved.SkipHidden,
-		MinFileSize:    saved.MinFileSize,
-		FollowSymlinks: saved.FollowSymlinks,
-		SkipNetworkFS:  saved.SkipNetworkFS,
-		AllowDelete:    allowDelete,
-		RescanOnDelete: rescanOnDelete,
-		Appearance:     appearance,
-		KeyBindings:    keyBindings,
+		ExcludedPaths:        saved.ExcludedPaths,
+		SkipHidden:           saved.SkipHidden,
+		MinFileSize:          saved.MinFileSize,
+		FollowSymlinks:       saved.FollowSymlinks,
+		SkipNetworkFS:        saved.SkipNetworkFS,
+		AllowDelete:          allowDelete,
+		AllowPermanentDelete: allowPermanentDelete,
+		RescanOnDelete:       rescanOnDelete,
+		Appearance:           appearance,
+		KeyBindings:          keyBindings,
 	}, filesystem)
 }
 
 func saveSettings(path string, profile Profile) error {
 	saved := persistedSettings{
-		Version:        settingsFileVersion,
-		ExcludedPaths:  profile.ExcludedPaths,
-		SkipHidden:     profile.SkipHidden,
-		MinFileSize:    profile.MinFileSize,
-		FollowSymlinks: profile.FollowSymlinks,
-		SkipNetworkFS:  profile.SkipNetworkFS,
-		AllowDelete:    profile.AllowDelete,
-		RescanOnDelete: profile.RescanOnDelete,
-		Appearance:     profile.Appearance,
-		KeyBindings:    profile.KeyBindings,
+		Version:              settingsFileVersion,
+		ExcludedPaths:        profile.ExcludedPaths,
+		SkipHidden:           profile.SkipHidden,
+		MinFileSize:          profile.MinFileSize,
+		FollowSymlinks:       profile.FollowSymlinks,
+		SkipNetworkFS:        profile.SkipNetworkFS,
+		AllowDelete:          profile.AllowDelete,
+		AllowPermanentDelete: profile.AllowPermanentDelete,
+		RescanOnDelete:       profile.RescanOnDelete,
+		Appearance:           profile.Appearance,
+		KeyBindings:          profile.KeyBindings,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {

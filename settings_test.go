@@ -14,13 +14,14 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 
 	first := newApp(settingsPath)
 	want := Profile{
-		ExcludedPaths:  []string{"  " + excludedPath + "  ", excludedPath},
-		SkipHidden:     true,
-		MinFileSize:    1024 * 1024,
-		FollowSymlinks: true,
-		SkipNetworkFS:  false,
-		AllowDelete:    true,
-		RescanOnDelete: false,
+		ExcludedPaths:        []string{"  " + excludedPath + "  ", excludedPath},
+		SkipHidden:           true,
+		MinFileSize:          1024 * 1024,
+		FollowSymlinks:       true,
+		SkipNetworkFS:        false,
+		AllowDelete:          true,
+		AllowPermanentDelete: true,
+		RescanOnDelete:       false,
 		Appearance: AppearanceSettings{
 			Palette:        "ocean",
 			ZoomFactor:     1.4,

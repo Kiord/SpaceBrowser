@@ -11,8 +11,15 @@ import (
 
 type trashActionDesktop struct {
 	platform.DesktopActions
-	path    string
-	emptied *bool
+	path               string
+	emptied            *bool
+	permanentlyDeleted *string
+	restored           *string
+	originalPath       string
+}
+
+func (desktop trashActionDesktop) IsInTrash(path string) bool {
+	return path == desktop.path || strings.HasPrefix(path, desktop.path+string(os.PathSeparator))
 }
 
 func (desktop trashActionDesktop) IsTrashRoot(path string) bool {
@@ -24,6 +31,29 @@ func (desktop trashActionDesktop) EmptyTrash(path string) error {
 		return errors.New("unexpected Trash path")
 	}
 	*desktop.emptied = true
+	return nil
+}
+
+func (desktop trashActionDesktop) TrashRestoreInfo(path string) (platform.TrashRestoreInfo, error) {
+	if !desktop.IsInTrash(path) || desktop.IsTrashRoot(path) {
+		return platform.TrashRestoreInfo{}, errors.New("unexpected Trash item")
+	}
+	return platform.TrashRestoreInfo{TargetPath: path, OriginalPath: desktop.originalPath}, nil
+}
+
+func (desktop trashActionDesktop) RestoreTrashItem(path string) error {
+	if desktop.restored == nil {
+		return errors.New("restore was not expected")
+	}
+	*desktop.restored = path
+	return nil
+}
+
+func (desktop trashActionDesktop) DeleteTrashItemPermanently(path string) error {
+	if desktop.permanentlyDeleted == nil {
+		return errors.New("permanent deletion was not expected")
+	}
+	*desktop.permanentlyDeleted = path
 	return nil
 }
 
@@ -246,6 +276,69 @@ func TestAppDeleteCommandRoutesTrashRootToEmptyTrash(t *testing.T) {
 	}
 	if result.FileCount != 0 || result.DirCount != 2 || trash.Size != 0 {
 		t.Fatalf("result after routed EmptyTrash = %+v, Trash size %d", result, trash.Size)
+	}
+}
+
+func TestAppPermanentDeletionRequiresSeparatePermission(t *testing.T) {
+	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
+	itemPath := filepath.Join(trashPath, "deleted.bin")
+	root := &Node{ID: 0, ParentID: -1, IsFolder: true}
+	trash := &Node{ID: 1, ParentID: 0, FullPath: trashPath, IsFolder: true}
+	item := &Node{ID: 2, ParentID: 1, FullPath: itemPath, Size: 12}
+	root.Children = []*Node{trash}
+	trash.Children = []*Node{item}
+	deleted := ""
+	app := &App{
+		profile: Profile{AllowDelete: true},
+		desktop: trashActionDesktop{path: trashPath, permanentlyDeleted: &deleted},
+		store:   TreeStore{root: root, nodes: []*Node{root, trash, item}, fileCount: 1, dirCount: 2},
+	}
+
+	if _, err := app.DeleteNode(item.ID); err == nil {
+		t.Fatal("DeleteNode() allowed permanent deletion without its permission")
+	}
+	if deleted != "" {
+		t.Fatal("platform permanent deletion ran while disabled")
+	}
+
+	app.profile.AllowPermanentDelete = true
+	result, err := app.DeleteNode(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != itemPath || !result.RescanRequired {
+		t.Fatalf("permanent deletion path = %q, result = %+v", deleted, result)
+	}
+}
+
+func TestAppRestoresTrashItemToReportedOriginalLocation(t *testing.T) {
+	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
+	itemPath := filepath.Join(trashPath, "deleted.bin")
+	originalPath := filepath.Join(t.TempDir(), "original.bin")
+	root := &Node{ID: 0, ParentID: -1, IsFolder: true}
+	trash := &Node{ID: 1, ParentID: 0, FullPath: trashPath, IsFolder: true}
+	item := &Node{ID: 2, ParentID: 1, FullPath: itemPath, Size: 12}
+	root.Children = []*Node{trash}
+	trash.Children = []*Node{item}
+	restored := ""
+	app := &App{
+		desktop: trashActionDesktop{path: trashPath, restored: &restored, originalPath: originalPath},
+		store:   TreeStore{root: root, nodes: []*Node{root, trash, item}, fileCount: 1, dirCount: 2},
+	}
+
+	details, err := app.GetTrashRestoreInfo(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.OriginalPath != originalPath {
+		t.Fatalf("original path = %q, want %q", details.OriginalPath, originalPath)
+	}
+	result, err := app.RestoreNode(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored != itemPath || !result.RescanRequired {
+		t.Fatalf("restored path = %q, result = %+v", restored, result)
 	}
 }
 

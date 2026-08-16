@@ -118,6 +118,13 @@
       </svg>
       <span>Copy path</span>
     </li>
+    <li data-action="restore" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 7H5v4"></path>
+        <path d="m5 11 4-4a7 7 0 1 1-1.2 9.6"></path>
+      </svg>
+      <span>Restore</span>
+    </li>
     <li class="context-menu-delete" data-action="delete">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"></path>
@@ -209,6 +216,10 @@
             <label class="settings-check">
               <input id="settingsAllowDelete" type="checkbox">
               <span>Allow delete command</span>
+            </label>
+            <label class="settings-check">
+              <input id="settingsAllowPermanentDelete" type="checkbox">
+              <span>Allow permanent deletion</span>
             </label>
             <label class="settings-check">
               <input id="settingsRescanOnDelete" type="checkbox">

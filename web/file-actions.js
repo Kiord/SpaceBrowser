@@ -1,9 +1,11 @@
 import {
   DeleteNode,
   GetDefaultApplicationName,
+  GetTrashRestoreInfo,
   OpenInFileBrowser,
   OpenPath,
   OpenWith,
+  RestoreNode,
   ShowProperties,
 } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
@@ -36,16 +38,16 @@ function requestSelectedDeletion() {
     return;
   }
   const emptyTrash = !!rect.is_trash_root;
-  const protectedTrashItem = !!rect.is_in_trash && !emptyTrash;
+  const permanent = !!rect.is_in_trash && !emptyTrash;
   const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
-  if (protectedTrashItem) {
-    showErrorToast(`Items inside ${trashDestinationName()} are protected. Restore them using the system ${trashDestinationName()}`);
-    return;
-  }
   if (!AppState.profile?.allowDelete) {
     showErrorToast(emptyTrash
       ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
       : "Delete commands are disabled. Enable Allow delete command in Settings");
+    return;
+  }
+  if (permanent && !AppState.profile?.allowPermanentDelete) {
+    showErrorToast("Permanent deletion is disabled. Enable Allow permanent deletion in Settings");
     return;
   }
   if (isPassiveRect(rect) || !rect.full_path) {
@@ -57,10 +59,11 @@ function requestSelectedDeletion() {
     return;
   }
 
-  pendingDeletion = { nodeId: rect.node_id, path: rect.full_path, size: rect.size, emptyTrash };
+  const action = emptyTrash ? "empty" : permanent ? "permanent" : "trash";
+  pendingDeletion = { action, nodeId: rect.node_id, path: rect.full_path, size: rect.size };
   byId("deleteConfirmTitle").textContent = emptyTrash
     ? `Empty ${trashDestinationName()}?`
-    : `Move this item to ${trashDestinationName()}?`;
+    : permanent ? "Permanently delete this item?" : `Move this item to ${trashDestinationName()}?`;
   byId("deleteConfirmPath").textContent = emptiesAllTrashLocations
     ? "All Trash locations for the current user will be emptied."
     : rect.full_path;
@@ -68,9 +71,37 @@ function requestSelectedDeletion() {
     ? "Displayed size:"
     : emptyTrash ? "Contents size:" : "Size:";
   byId("deleteConfirmSize").textContent = detailedByteSize(rect.size);
-  byId("confirmDeleteButton").textContent = emptyTrash ? "Empty" : "Delete";
+  const confirmButton = byId("confirmDeleteButton");
+  confirmButton.textContent = emptyTrash ? "Empty" : permanent ? "Delete permanently" : "Delete";
+  confirmButton.classList.add("danger-button");
   const dialog = byId("deleteConfirmDialog");
   if (!dialog.open) dialog.showModal();
+}
+
+async function requestSelectedRestore() {
+  hideContextMenu();
+  hideRectToast();
+  const rect = getSelectedRect();
+  if (!rect?.is_in_trash || rect.is_trash_root || !rect.full_path) return;
+  if (deletionInProgress) {
+    showErrorToast("Another filesystem operation is already in progress");
+    return;
+  }
+  try {
+    const details = await GetTrashRestoreInfo(rect.node_id);
+    pendingDeletion = { action: "restore", nodeId: rect.node_id, path: rect.full_path, size: rect.size };
+    byId("deleteConfirmTitle").textContent = "Restore this item?";
+    byId("deleteConfirmPath").textContent = `Original location: ${details.originalPath}`;
+    byId("deleteConfirmSizeLabel").textContent = "Size:";
+    byId("deleteConfirmSize").textContent = detailedByteSize(rect.size);
+    const confirmButton = byId("confirmDeleteButton");
+    confirmButton.textContent = "Restore";
+    confirmButton.classList.remove("danger-button");
+    const dialog = byId("deleteConfirmDialog");
+    if (!dialog.open) dialog.showModal();
+  } catch (error) {
+    showErrorToast(error);
+  }
 }
 
 function closeDeleteConfirmation() {
@@ -94,12 +125,15 @@ async function confirmSelectedDeletion() {
   cancelButton.disabled = true;
   byId("deleteConfirmDialog").close();
   pendingDeletion = null;
-  const actionText = target.emptyTrash ? `Emptying ${trashDestinationName()}...` : `Moving to ${trashDestinationName()}...`;
+  const actionText = target.action === "empty"
+    ? `Emptying ${trashDestinationName()}...`
+    : target.action === "permanent" ? "Deleting permanently..."
+      : target.action === "restore" ? "Restoring..." : `Moving to ${trashDestinationName()}...`;
   const dismissMovingToast = showToastAt(mousePosition.x, mousePosition.y, actionText, 30000);
 
   try {
     await waitForNextPaint();
-    const result = await DeleteNode(target.nodeId);
+    const result = target.action === "restore" ? await RestoreNode(target.nodeId) : await DeleteNode(target.nodeId);
     dismissMovingToast();
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
@@ -112,7 +146,10 @@ async function confirmSelectedDeletion() {
       trimInvalidForwardNavigation();
       await redraw();
       updateNavButtons();
-      const completedText = target.emptyTrash ? `${trashDestinationName()} emptied` : `Moved to ${trashDestinationName()}`;
+      const completedText = target.action === "empty"
+        ? `${trashDestinationName()} emptied`
+        : target.action === "permanent" ? "Permanently deleted"
+          : target.action === "restore" ? "Restored" : `Moved to ${trashDestinationName()}`;
       showToastAt(mousePosition.x, mousePosition.y, completedText, 1600);
     }
   } catch (error) {
@@ -160,15 +197,17 @@ export function showContextMenu(x, y) {
   if (properties) properties.classList.toggle("disabled", !rect?.full_path || isPassiveRect(rect));
   const deleteAction = menu.querySelector('[data-action="delete"]');
   const deleteLabel = deleteAction?.querySelector("span");
-  const protectedTrashItem = !!rect?.is_in_trash && !rect?.is_trash_root;
+  const trashItem = !!rect?.is_in_trash && !rect?.is_trash_root;
+  const restoreAction = menu.querySelector('[data-action="restore"]');
+  if (restoreAction) restoreAction.hidden = !trashItem;
   if (deleteAction) {
-    deleteAction.classList.toggle("disabled", protectedTrashItem);
-    deleteAction.classList.toggle("context-menu-delete", !protectedTrashItem);
+    deleteAction.classList.remove("disabled");
+    deleteAction.classList.add("context-menu-delete");
   }
   if (deleteLabel) {
     deleteLabel.textContent = rect?.is_trash_root
       ? `Empty ${trashDestinationName()}`
-      : protectedTrashItem ? `Restore using system ${trashDestinationName()}` : "Delete";
+      : trashItem ? "Delete permanently" : "Delete";
   }
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");
@@ -251,6 +290,8 @@ async function handleContextMenuAction(event) {
     await copySelectedPathAt({ x: event.clientX, y: event.clientY });
   } else if (item.dataset.action === "delete") {
     requestSelectedDeletion();
+  } else if (item.dataset.action === "restore") {
+    await requestSelectedRestore();
   } else if (item.dataset.action === "open" && rect.full_path) {
     await OpenInFileBrowser(rect.full_path);
   } else if (item.dataset.action === "open-default" && !rect.is_folder) {

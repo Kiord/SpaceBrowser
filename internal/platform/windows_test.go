@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"unicode/utf16"
 	"unsafe"
 
 	winapi "golang.org/x/sys/windows"
@@ -499,5 +500,27 @@ func TestWindowsCanonicalizeExtendedUNCPath(t *testing.T) {
 	const want = `\\server\share\folder`
 	if got := (Windows{}).Canonicalize(input); got != want {
 		t.Fatalf("Canonicalize(%q) = %q, want %q", input, got, want)
+	}
+}
+
+func TestReadWindowsRecycleInfoVersionTwo(t *testing.T) {
+	originalPath := `C:\Users\Glenn\Documents\restored file.txt`
+	units := append(utf16.Encode([]rune(originalPath)), 0)
+	data := make([]byte, 28+len(units)*2)
+	binary.LittleEndian.PutUint64(data[:8], 2)
+	binary.LittleEndian.PutUint32(data[24:28], uint32(len(units)))
+	for index, unit := range units {
+		binary.LittleEndian.PutUint16(data[28+index*2:], unit)
+	}
+	infoPath := filepath.Join(t.TempDir(), "$I123")
+	if err := os.WriteFile(infoPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readWindowsRecycleInfo(infoPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != originalPath {
+		t.Fatalf("original path = %q, want %q", got, originalPath)
 	}
 }

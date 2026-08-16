@@ -154,6 +154,28 @@ func (d Darwin) EmptyTrash(p string) error {
 	return nil
 }
 
+func (d Darwin) TrashRestoreInfo(p string) (TrashRestoreInfo, error) {
+	if !d.IsInTrash(p) || d.IsTrashRoot(p) {
+		return TrashRestoreInfo{}, fmt.Errorf("the selected item is not inside a supported Trash folder")
+	}
+	return TrashRestoreInfo{}, fmt.Errorf("restoring Trash items is not available on macOS because Finder does not expose the original location")
+}
+
+func (d Darwin) RestoreTrashItem(p string) error {
+	_, err := d.TrashRestoreInfo(p)
+	return err
+}
+
+func (d Darwin) DeleteTrashItemPermanently(p string) error {
+	if !d.IsInTrash(p) || d.IsTrashRoot(p) {
+		return fmt.Errorf("the selected item is not inside a supported Trash folder")
+	}
+	if err := os.RemoveAll(p); err != nil {
+		return fmt.Errorf("permanently delete Trash item: %w", err)
+	}
+	return nil
+}
+
 func (Darwin) DefaultStartPath() string {
 	if fi, err := os.Stat("/Users"); err == nil && fi.IsDir() {
 		return "/Users"

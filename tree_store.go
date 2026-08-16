@@ -24,6 +24,21 @@ type DeleteResult struct {
 	RescanRequired bool `json:"rescanRequired"`
 }
 
+func (s *TreeStore) NodePath(nodeID int) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil || s.nodes[nodeID].FullPath == "" {
+		return "", fmt.Errorf("selected item is no longer available")
+	}
+	return s.nodes[nodeID].FullPath, nil
+}
+
+func (s *TreeStore) Counts() (files, dirs int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fileCount, s.dirCount
+}
+
 func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) {
 	s.mu.Lock()
 	s.root, s.nodes = root, nodes

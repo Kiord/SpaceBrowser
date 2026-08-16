@@ -49,6 +49,11 @@ type DirectoryReadDiagnostic struct {
 	Cause            error
 }
 
+type TrashRestoreInfo struct {
+	TargetPath   string
+	OriginalPath string
+}
+
 type diagnosticDirectoryReader interface {
 	ReadDirWithDiagnostics(string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error)
 }
@@ -88,6 +93,9 @@ type DesktopActions interface {
 	IsTrashRoot(string) bool
 	IsInTrash(string) bool
 	EmptyTrash(string) error
+	TrashRestoreInfo(string) (TrashRestoreInfo, error)
+	RestoreTrashItem(string) error
+	DeleteTrashItemPermanently(string) error
 	DefaultStartPath() string
 }
 
@@ -182,6 +190,18 @@ func (Default) IsInTrash(string) bool {
 
 func (Default) EmptyTrash(string) error {
 	return fmt.Errorf("emptying Trash is not supported on this platform")
+}
+
+func (Default) TrashRestoreInfo(string) (TrashRestoreInfo, error) {
+	return TrashRestoreInfo{}, fmt.Errorf("restoring Trash items is not supported on this platform")
+}
+
+func (Default) RestoreTrashItem(string) error {
+	return fmt.Errorf("restoring Trash items is not supported on this platform")
+}
+
+func (Default) DeleteTrashItemPermanently(string) error {
+	return fmt.Errorf("permanent deletion from Trash is not supported on this platform")
 }
 
 func (Default) Canonicalize(p string) string {

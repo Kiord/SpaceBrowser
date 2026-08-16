@@ -30,13 +30,69 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	if a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot) {
 		result, err = a.store.EmptyTrashNode(nodeID, a.desktop.IsTrashRoot, a.desktop.EmptyTrash)
 	} else if a.store.NodePathMatches(nodeID, a.desktop.IsInTrash) {
-		return DeleteResult{}, fmt.Errorf("items inside Trash cannot be deleted from SpaceBrowser; restore them using the system Trash")
+		if !profile.AllowPermanentDelete {
+			return DeleteResult{}, fmt.Errorf("permanent deletion is disabled; enable Allow permanent deletion in Settings")
+		}
+		path, pathErr := a.store.NodePath(nodeID)
+		if pathErr != nil {
+			return DeleteResult{}, pathErr
+		}
+		if err = a.desktop.DeleteTrashItemPermanently(path); err == nil {
+			files, dirs := a.store.Counts()
+			result = DeleteResult{FileCount: files, DirCount: dirs, RescanRequired: true}
+		}
 	} else {
 		result, err = a.store.DeleteNode(nodeID, a.desktop.IsTrashRoot, a.desktop.IsInTrash, a.desktop.MoveToTrash)
 	}
 	if err != nil {
 		return DeleteResult{}, err
 	}
+	a.refreshDiskUsageAfterFilesystemChange(&result)
+	return result, nil
+}
+
+type TrashRestoreDetails struct {
+	OriginalPath string `json:"originalPath"`
+}
+
+func (a *App) GetTrashRestoreInfo(nodeID int) (TrashRestoreDetails, error) {
+	path, err := a.store.NodePath(nodeID)
+	if err != nil {
+		return TrashRestoreDetails{}, err
+	}
+	if !a.desktop.IsInTrash(path) || a.desktop.IsTrashRoot(path) {
+		return TrashRestoreDetails{}, fmt.Errorf("the selected item is not restorable Trash content")
+	}
+	info, err := a.desktop.TrashRestoreInfo(path)
+	if err != nil {
+		return TrashRestoreDetails{}, err
+	}
+	return TrashRestoreDetails{OriginalPath: info.OriginalPath}, nil
+}
+
+func (a *App) RestoreNode(nodeID int) (DeleteResult, error) {
+	a.scanMu.RLock()
+	defer a.scanMu.RUnlock()
+	if a.scanActive {
+		return DeleteResult{}, fmt.Errorf("items cannot be restored while a scan is running")
+	}
+	path, err := a.store.NodePath(nodeID)
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	if !a.desktop.IsInTrash(path) || a.desktop.IsTrashRoot(path) {
+		return DeleteResult{}, fmt.Errorf("the selected item is not restorable Trash content")
+	}
+	if err := a.desktop.RestoreTrashItem(path); err != nil {
+		return DeleteResult{}, err
+	}
+	files, dirs := a.store.Counts()
+	result := DeleteResult{FileCount: files, DirCount: dirs, RescanRequired: true}
+	a.refreshDiskUsageAfterFilesystemChange(&result)
+	return result, nil
+}
+
+func (a *App) refreshDiskUsageAfterFilesystemChange(result *DeleteResult) {
 	if rootPath, hasFreeSpace := a.store.DiskUsageRootPath(); hasFreeSpace {
 		usage, usageErr := disk.Usage(rootPath)
 		if usageErr != nil {
@@ -48,7 +104,6 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 			a.store.UpdateDiskUsage(int64(usage.Total), int64(usage.Free))
 		}
 	}
-	return result, nil
 }
 
 func (a *App) OpenInFileBrowser(path string) error {
