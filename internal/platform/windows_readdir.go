@@ -77,6 +77,13 @@ type windowsFileIDBothDirectoryHeader struct {
 
 var windowsDirectoryLayoutByVolume sync.Map
 
+const windowsPortableDirectoryLayout = -1
+
+type windowsDirectoryStrategy struct {
+	layout int
+	cause  error
+}
+
 var windowsDirectoryLayouts = [...]windowsDirectoryRecordLayout{
 	{
 		name:             "128-bit file ID layout",
@@ -343,7 +350,10 @@ func windowsDirectoryVolumeKey(path string) string {
 func windowsLayoutOrder(volumeKey string) []int {
 	order := make([]int, 0, len(windowsDirectoryLayouts))
 	if cached, ok := windowsDirectoryLayoutByVolume.Load(volumeKey); ok {
-		index := cached.(int)
+		index := cached.(windowsDirectoryStrategy).layout
+		if index == windowsPortableDirectoryLayout {
+			return order
+		}
 		if index >= 0 && index < len(windowsDirectoryLayouts) {
 			order = append(order, index)
 		}
@@ -377,12 +387,30 @@ func (w Windows) ReadDir(path string) ([]DirectoryEntry, error) {
 }
 
 func (w Windows) ReadDirWithDiagnostics(path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
+	return readWindowsDirectoryWithFallback(path, readWindowsDirectory, w.Default.ReadDir)
+}
+
+func readWindowsDirectoryWithFallback(
+	path string,
+	nativeRead func(string, windowsDirectoryRecordLayout) ([]DirectoryEntry, error),
+	portableRead func(string) ([]DirectoryEntry, error),
+) ([]DirectoryEntry, *DirectoryReadDiagnostic, error) {
 	volumeKey := windowsDirectoryVolumeKey(path)
+	if cached, ok := windowsDirectoryLayoutByVolume.Load(volumeKey); ok {
+		strategy := cached.(windowsDirectoryStrategy)
+		if strategy.layout == windowsPortableDirectoryLayout {
+			entries, err := portableRead(path)
+			if err != nil {
+				return nil, nil, err
+			}
+			return entries, &DirectoryReadDiagnostic{PortableFallback: true, Cause: strategy.cause}, nil
+		}
+	}
 	var usableEntries []DirectoryEntry
 	var nativeErrors []error
 	for _, index := range windowsLayoutOrder(volumeKey) {
 		layout := windowsDirectoryLayouts[index]
-		entries, readErr := readWindowsDirectory(path, layout)
+		entries, readErr := nativeRead(path, layout)
 		if readErr != nil {
 			nativeErrors = append(nativeErrors, fmt.Errorf("%s: %w", layout.name, readErr))
 			continue
@@ -394,13 +422,13 @@ func (w Windows) ReadDirWithDiagnostics(path string) ([]DirectoryEntry, *Directo
 		if layout.idSize == 16 && allWindowsDirectoryIdentitiesMissing(entries) {
 			continue
 		}
-		windowsDirectoryLayoutByVolume.Store(volumeKey, index)
+		windowsDirectoryLayoutByVolume.Store(volumeKey, windowsDirectoryStrategy{layout: index})
 		return entries, nil, nil
 	}
 	if usableEntries != nil {
 		return usableEntries, nil, nil
 	}
-	entries, err := w.Default.ReadDir(path)
+	entries, err := portableRead(path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -408,6 +436,10 @@ func (w Windows) ReadDirWithDiagnostics(path string) ([]DirectoryEntry, *Directo
 	if nativeCause != nil {
 		nativeCause = fmt.Errorf("native enumeration failed: %s", strings.ReplaceAll(nativeCause.Error(), "\n", "; "))
 	}
+	windowsDirectoryLayoutByVolume.Store(volumeKey, windowsDirectoryStrategy{
+		layout: windowsPortableDirectoryLayout,
+		cause:  nativeCause,
+	})
 	return entries, &DirectoryReadDiagnostic{
 		PortableFallback: true,
 		Cause:            nativeCause,

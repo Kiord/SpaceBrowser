@@ -268,10 +268,43 @@ func TestWindowsDirectoryLayoutCacheOrdersPreferredFormatFirst(t *testing.T) {
 	key := `x:`
 	windowsDirectoryLayoutByVolume.Delete(key)
 	defer windowsDirectoryLayoutByVolume.Delete(key)
-	windowsDirectoryLayoutByVolume.Store(key, 1)
+	windowsDirectoryLayoutByVolume.Store(key, windowsDirectoryStrategy{layout: 1})
 	order := windowsLayoutOrder(key)
 	if len(order) != 2 || order[0] != 1 || order[1] != 0 {
 		t.Fatalf("layout order = %v, want [1 0]", order)
+	}
+}
+
+func TestWindowsPortableDirectoryFallbackIsCachedByVolume(t *testing.T) {
+	key := `q:`
+	windowsDirectoryLayoutByVolume.Delete(key)
+	defer windowsDirectoryLayoutByVolume.Delete(key)
+
+	nativeCalls := 0
+	portableCalls := 0
+	nativeRead := func(string, windowsDirectoryRecordLayout) ([]DirectoryEntry, error) {
+		nativeCalls++
+		return nil, winapi.ERROR_NOT_SUPPORTED
+	}
+	portableRead := func(string) ([]DirectoryEntry, error) {
+		portableCalls++
+		return []DirectoryEntry{}, nil
+	}
+
+	for _, path := range []string{`Q:\first`, `Q:\second`} {
+		_, diagnostic, err := readWindowsDirectoryWithFallback(path, nativeRead, portableRead)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diagnostic == nil || !diagnostic.PortableFallback || diagnostic.Cause == nil {
+			t.Fatalf("portable fallback diagnostic = %+v", diagnostic)
+		}
+	}
+	if nativeCalls != len(windowsDirectoryLayouts) {
+		t.Fatalf("native enumeration calls = %d, want one attempt per layout (%d)", nativeCalls, len(windowsDirectoryLayouts))
+	}
+	if portableCalls != 2 {
+		t.Fatalf("portable enumeration calls = %d, want 2", portableCalls)
 	}
 }
 
