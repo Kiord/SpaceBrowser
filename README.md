@@ -25,9 +25,10 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 ### Visualization and scanning
 
 - Size-proportional treemap for files and folders
+- Startup selector for drives, volumes, and folders
 - Optional free-space node for scanned volumes
 - Configurable small-file aggregation threshold
-- Live scan progress, time estimate, and cancellation
+- Live elapsed time and file/folder counts with scan cancellation
 - Terminal report for skipped paths and filesystem or metadata errors
 - Exclusions for paths, hidden files, symlinks, and network filesystems
 
@@ -36,12 +37,12 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 - Treemap navigation with Back, Forward, Parent, and Root commands
 - Hover details with full path, byte size, modification date, and system icon
 - Open, Open with, and filesystem Properties actions
-- Optional move-to-trash command with confirmation and rescan
+- Confirmed move-to-trash, restore, Empty Trash, and optional permanent deletion
 
 ### Customization
 
-- Rectangle color palettes, scale, shape and shading
-- Rebindable keyboard shortcuts
+- Rectangle color palettes, scale, shape, shading, and hover highlighting
+- Rebindable keyboard and mouse controls
 - Persistent settings
 
 ### Platforms
