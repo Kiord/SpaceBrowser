@@ -126,6 +126,9 @@ func normalizeProfileWithFilesystem(profile Profile, filesystem platform.Scanner
 	if profile.MinFileSize < 0 {
 		return Profile{}, fmt.Errorf("minimum file size cannot be negative")
 	}
+	if profile.TooltipDelayMS < 0 || profile.TooltipDelayMS > 1000 {
+		return Profile{}, fmt.Errorf("tooltip delay must be between 0 and 1000 milliseconds")
+	}
 
 	profile.PlatformSystem = defaultProfile().PlatformSystem
 	cleaned := make([]string, 0, len(profile.ExcludedPaths))

@@ -241,6 +241,17 @@
             <input id="settingsSkipNetworkFS" type="checkbox">
             <span>Skip network filesystems</span>
           </label>
+          <div class="settings-row tooltip-settings-row">
+            <label class="settings-check">
+              <input id="settingsShowTooltips" type="checkbox">
+              <span>Tooltip</span>
+            </label>
+            <label class="tooltip-delay-field" for="settingsTooltipDelay">
+              <span>Spawn delay</span>
+              <input id="settingsTooltipDelay" type="number" min="0" max="1000" step="1" required>
+              <span>ms</span>
+            </label>
+          </div>
           <section class="deletion-settings" aria-labelledby="deletionSettingsTitle">
             <h3 id="deletionSettingsTitle">Deletion</h3>
             <label class="settings-check">
@@ -314,6 +325,10 @@
               <small>1.00× disables the hover effect.</small>
             </div>
           </div>
+          <label class="settings-check">
+            <input id="settingsRollOverBoxes" type="checkbox">
+            <span>Roll over boxes</span>
+          </label>
           <div class="settings-panel-actions">
             <button type="button" data-restore-settings="appearance">Restore Appearance defaults</button>
           </div>

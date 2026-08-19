@@ -14,6 +14,8 @@ type Profile struct {
 	MinFileSize          int64              `json:"minFileSize"`
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	ShowTooltips         bool               `json:"showTooltips"`
+	TooltipDelayMS       int                `json:"tooltipDelayMs"`
 	AllowDelete          bool               `json:"allowDelete"`
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
@@ -27,6 +29,7 @@ type AppearanceSettings struct {
 	CornerRadius    int     `json:"cornerRadius"`
 	ReliefStrength  float64 `json:"reliefStrength"`
 	HoverBrightness float64 `json:"hoverBrightness"`
+	RollOverBoxes   bool    `json:"rollOverBoxes"`
 }
 
 type ControlSettings struct {
@@ -56,6 +59,7 @@ func defaultAppearanceSettings() AppearanceSettings {
 		CornerRadius:    0,
 		ReliefStrength:  0.30,
 		HoverBrightness: 0.12,
+		RollOverBoxes:   false,
 	}
 }
 
@@ -99,6 +103,8 @@ func defaultProfile() *Profile {
 		MinFileSize:          1024,
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
+		ShowTooltips:         true,
+		TooltipDelayMS:       0,
 		AllowDelete:          false,
 		AllowPermanentDelete: false,
 		RescanOnDelete:       true,

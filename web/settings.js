@@ -63,6 +63,7 @@ export function normalizedAppearance(appearance) {
     cornerRadius: Math.max(0, Math.min(10, Math.round(Number(source.cornerRadius) || 0))),
     reliefStrength: Math.max(0, Math.min(0.5, Number.isFinite(relief) ? relief : defaults.reliefStrength)),
     hoverBrightness: Math.max(0, Math.min(0.3, Number.isFinite(hoverBrightness) ? hoverBrightness : defaults.hoverBrightness)),
+    rollOverBoxes: !!source.rollOverBoxes,
   };
 }
 
@@ -171,6 +172,7 @@ function populateAppearanceForm(appearance, useCurrentZoom = true) {
   byId("settingsCornerRadius").value = String(values.cornerRadius);
   byId("settingsReliefStrength").value = String(values.reliefStrength);
   byId("settingsHoverBrightness").value = String(values.hoverBrightness);
+  byId("settingsRollOverBoxes").checked = values.rollOverBoxes;
   updateAppearanceFormOutputs();
 }
 
@@ -183,6 +185,8 @@ function populateGeneralForm(profile) {
   byId("settingsSkipHidden").checked = !!profile.skipHidden;
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
+  byId("settingsShowTooltips").checked = profile.showTooltips !== false;
+  byId("settingsTooltipDelay").value = String(profile.tooltipDelayMs ?? 0);
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
   byId("settingsAllowPermanentDelete").checked = !!profile.allowPermanentDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
@@ -289,9 +293,14 @@ async function saveSettings(event) {
   const sizeValue = byId("settingsMinFileSize").valueAsNumber;
   const sizeUnit = byId("settingsMinFileSizeUnit").value;
   const minFileSize = sizeValue * SIZE_UNITS[sizeUnit];
+  const tooltipDelayMs = byId("settingsTooltipDelay").valueAsNumber;
 
   if (!Number.isFinite(sizeValue) || sizeValue < 0 || !Number.isSafeInteger(minFileSize)) {
     error.textContent = "Small-file threshold must resolve to a non-negative whole number of bytes.";
+    return;
+  }
+  if (!Number.isInteger(tooltipDelayMs) || tooltipDelayMs < 0 || tooltipDelayMs > 1000) {
+    error.textContent = "Tooltip spawn delay must be a whole number between 0 and 1000 milliseconds.";
     return;
   }
 
@@ -302,6 +311,8 @@ async function saveSettings(event) {
     minFileSize,
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
+    showTooltips: byId("settingsShowTooltips").checked,
+    tooltipDelayMs,
     allowDelete: byId("settingsAllowDelete").checked,
     allowPermanentDelete: byId("settingsAllowPermanentDelete").checked,
     rescanOnDelete: byId("settingsRescanOnDelete").checked,
@@ -311,6 +322,7 @@ async function saveSettings(event) {
       cornerRadius: Number(byId("settingsCornerRadius").value),
       reliefStrength: Number(byId("settingsReliefStrength").value),
       hoverBrightness: Number(byId("settingsHoverBrightness").value),
+      rollOverBoxes: byId("settingsRollOverBoxes").checked,
     },
     controls: normalizedControlBindings(draftControlBindings),
   };

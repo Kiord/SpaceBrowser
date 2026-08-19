@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 8
+const settingsFileVersion = 10
 
 type persistedSettings struct {
 	Version              int                `json:"version"`
@@ -18,6 +18,8 @@ type persistedSettings struct {
 	MinFileSize          int64              `json:"minFileSize"`
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	ShowTooltips         bool               `json:"showTooltips"`
+	TooltipDelayMS       int                `json:"tooltipDelayMs"`
 	AllowDelete          bool               `json:"allowDelete"`
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
@@ -102,6 +104,12 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 	if saved.Version < 7 {
 		controls = defaultControlSettings()
 	}
+	showTooltips := saved.ShowTooltips
+	tooltipDelayMS := saved.TooltipDelayMS
+	if saved.Version < 10 {
+		showTooltips = defaultProfile().ShowTooltips
+		tooltipDelayMS = defaultProfile().TooltipDelayMS
+	}
 
 	return normalizeProfileWithFilesystem(Profile{
 		ExcludedPaths:        saved.ExcludedPaths,
@@ -109,6 +117,8 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		MinFileSize:          saved.MinFileSize,
 		FollowSymlinks:       saved.FollowSymlinks,
 		SkipNetworkFS:        saved.SkipNetworkFS,
+		ShowTooltips:         showTooltips,
+		TooltipDelayMS:       tooltipDelayMS,
 		AllowDelete:          allowDelete,
 		AllowPermanentDelete: allowPermanentDelete,
 		RescanOnDelete:       rescanOnDelete,
@@ -125,6 +135,8 @@ func saveSettings(path string, profile Profile) error {
 		MinFileSize:          profile.MinFileSize,
 		FollowSymlinks:       profile.FollowSymlinks,
 		SkipNetworkFS:        profile.SkipNetworkFS,
+		ShowTooltips:         profile.ShowTooltips,
+		TooltipDelayMS:       profile.TooltipDelayMS,
 		AllowDelete:          profile.AllowDelete,
 		AllowPermanentDelete: profile.AllowPermanentDelete,
 		RescanOnDelete:       profile.RescanOnDelete,

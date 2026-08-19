@@ -1161,6 +1161,23 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   transform: rotate(45deg);
 }
 
+.tooltip-settings-row .settings-check {
+  margin-left: 0;
+}
+
+.tooltip-delay-field {
+  display: grid;
+  grid-template-columns: auto 72px auto;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+  color: #555;
+}
+
+.settings-row .tooltip-delay-field input[type="number"] {
+  width: 72px;
+}
+
 .deletion-settings {
   display: flex;
   flex-direction: column;

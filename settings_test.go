@@ -20,6 +20,8 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		MinFileSize:          1024 * 1024,
 		FollowSymlinks:       true,
 		SkipNetworkFS:        false,
+		ShowTooltips:         false,
+		TooltipDelayMS:       350,
 		AllowDelete:          true,
 		AllowPermanentDelete: true,
 		RescanOnDelete:       false,
@@ -29,6 +31,7 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 			CornerRadius:    6,
 			ReliefStrength:  0.18,
 			HoverBrightness: 0.12,
+			RollOverBoxes:   true,
 		},
 		Controls: ControlSettings{
 			Back:          "Alt+Left",
@@ -112,6 +115,23 @@ func TestVersionSixSettingsGainDefaultInput(t *testing.T) {
 	}
 	if profile.Appearance.HoverBrightness != defaultAppearanceSettings().HoverBrightness {
 		t.Fatalf("hover brightness = %v, want default %v", profile.Appearance.HoverBrightness, defaultAppearanceSettings().HoverBrightness)
+	}
+	if profile.Appearance.RollOverBoxes != defaultAppearanceSettings().RollOverBoxes {
+		t.Fatalf("roll over boxes = %v, want default %v", profile.Appearance.RollOverBoxes, defaultAppearanceSettings().RollOverBoxes)
+	}
+	if !profile.ShowTooltips || profile.TooltipDelayMS != 0 {
+		t.Fatalf("tooltip settings = (%v, %d), want (true, 0)", profile.ShowTooltips, profile.TooltipDelayMS)
+	}
+}
+
+func TestTooltipDelayOutsideRangeIsRejected(t *testing.T) {
+	for _, delay := range []int{-1, 1001} {
+		app := newApp(filepath.Join(t.TempDir(), "settings.json"))
+		profile := app.GetProfile()
+		profile.TooltipDelayMS = delay
+		if err := app.SetProfile(profile); err == nil {
+			t.Fatalf("SetProfile() accepted tooltip delay %d", delay)
+		}
 	}
 }
 

@@ -22,6 +22,7 @@ export const AppState = {
   maskCtx: null,
 
   rects: [],
+  parentRectIndexes: new Int32Array(),
   selectedRectIndex: null,
   selectedNodeId: null,
   profile: null,
@@ -53,6 +54,7 @@ export const AppearanceState = {
   cornerRadius: 0,
   reliefStrength: 0,
   hoverBrightness: 0,
+  rollOverBoxes: false,
 };
 
 export const FONT_SIZE = 10;

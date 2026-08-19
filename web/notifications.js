@@ -8,6 +8,9 @@ let rectAtPoint = null;
 let setHoveredRectIndex = () => {};
 let hoveredRect = null;
 let hoveredRectIndex = -1;
+let pendingRectIndex = -1;
+let pendingPointerPosition = null;
+let tooltipTimer = null;
 const associatedIconCache = new Map();
 const maximumAssociatedIconCacheSize = 256;
 let toastRevision = 0;
@@ -91,26 +94,16 @@ function placeRectToast(x, y) {
 }
 
 export function hideRectToast() {
+  clearTimeout(tooltipTimer);
+  tooltipTimer = null;
+  pendingRectIndex = -1;
+  pendingPointerPosition = null;
   byId("rectToast").hidden = true;
   hoveredRect = null;
   hoveredRectIndex = -1;
 }
 
-export function updateRectToast(event) {
-  if (!canvasCoords || !rectAtPoint) return;
-  const { x, y } = canvasCoords(event);
-  const rectIndex = rectAtPoint(x, y);
-  setHoveredRectIndex(rectIndex);
-  const rect = AppState.rects?.[rectIndex];
-  if (!rectSupportsDetailsToast(rect)) {
-    hideRectToast();
-    return;
-  }
-  if (rectIndex === hoveredRectIndex && !byId("rectToast").hidden) {
-    placeRectToast(event.clientX, event.clientY);
-    return;
-  }
-
+function showRectToast(rect, rectIndex, clientX, clientY) {
   hoveredRect = rect;
   hoveredRectIndex = rectIndex;
   const name = String(rect.name || "");
@@ -123,7 +116,46 @@ export function updateRectToast(event) {
   byId("rectToastCreated").textContent = `Modification date : ${rect.mtime ? formatModTime(rect.mtime) : "unavailable"}`;
   updateAssociatedIcon(rect);
   byId("rectToast").hidden = false;
-  placeRectToast(event.clientX, event.clientY);
+  placeRectToast(clientX, clientY);
+}
+
+export function updateRectToast(event) {
+  if (!canvasCoords || !rectAtPoint) return;
+  const { x, y } = canvasCoords(event);
+  const rectIndex = rectAtPoint(x, y);
+  setHoveredRectIndex(rectIndex);
+  const rect = AppState.rects?.[rectIndex];
+  if (AppState.profile?.showTooltips === false || !rectSupportsDetailsToast(rect)) {
+    hideRectToast();
+    return;
+  }
+  if (rectIndex === hoveredRectIndex && !byId("rectToast").hidden) {
+    placeRectToast(event.clientX, event.clientY);
+    return;
+  }
+
+  pendingPointerPosition = { x: event.clientX, y: event.clientY };
+  if (pendingRectIndex === rectIndex) return;
+  hideRectToast();
+  pendingRectIndex = rectIndex;
+  pendingPointerPosition = { x: event.clientX, y: event.clientY };
+  const delay = Math.max(0, Math.min(1000, Number(AppState.profile?.tooltipDelayMs) || 0));
+  if (delay === 0) {
+    pendingRectIndex = -1;
+    pendingPointerPosition = null;
+    showRectToast(rect, rectIndex, event.clientX, event.clientY);
+    return;
+  }
+  tooltipTimer = setTimeout(() => {
+    tooltipTimer = null;
+    const position = pendingPointerPosition;
+    const stillCurrent = pendingRectIndex === rectIndex && AppState.rects?.[rectIndex] === rect;
+    pendingRectIndex = -1;
+    pendingPointerPosition = null;
+    if (stillCurrent && position && AppState.profile?.showTooltips !== false) {
+      showRectToast(rect, rectIndex, position.x, position.y);
+    }
+  }, delay);
 }
 
 export function showToastAt(x, y, message = "Copied path", duration = 1000, variant = "default") {

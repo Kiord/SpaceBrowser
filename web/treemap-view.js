@@ -59,26 +59,28 @@ function drawTreemap(rects) {
   idc.clearRect(0, 0, AppState.idCanvas.width, AppState.idCanvas.height);
   clearHoverOverlay();
 
+  const parentRectIndexes = new Int32Array(rects.length);
+  parentRectIndexes.fill(-1);
+  for (let parentIndex = 0; parentIndex < rects.length; parentIndex++) {
+    for (const childIndex of Array.isArray(rects[parentIndex].children) ? rects[parentIndex].children : []) {
+      if (Number.isInteger(childIndex) && childIndex >= 0 && childIndex < rects.length) {
+        parentRectIndexes[childIndex] = parentIndex;
+      }
+    }
+  }
+  AppState.parentRectIndexes = parentRectIndexes;
+
   for (let i = 0; i < rects.length; i++) {
     drawRect(rects[i], /*writeId*/true, ctx, i);
   }
 }
 
 function clearRenderedHoverRect() {
-  const rect = AppState.rects?.[renderedHoverRectIndex];
-  if (rect) AppState.hoverCtx.clearRect(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2);
-  else AppState.hoverCtx.clearRect(0, 0, AppState.hoverCanvas.width, AppState.hoverCanvas.height);
+  AppState.hoverCtx.clearRect(0, 0, AppState.hoverCanvas.width, AppState.hoverCanvas.height);
   renderedHoverRectIndex = -1;
 }
 
-function renderHoverOverlay() {
-  hoverAnimationFrame = null;
-  clearRenderedHoverRect();
-  const strength = AppearanceState.hoverBrightness;
-  const rect = AppState.rects?.[requestedHoverRectIndex];
-  if (!(strength > 0) || !rect || rect.is_free_space || rect.node_id === AppState.selectedNodeId || rect.w <= 0 || rect.h <= 0) return;
-
-  const ctx = AppState.hoverCtx;
+function drawHoverRect(ctx, rect, strength) {
   ctx.save();
   ctx.beginPath();
   addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
@@ -90,6 +92,29 @@ function renderHoverOverlay() {
   ctx.fillStyle = `rgba(255,255,255,${strength})`;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   ctx.restore();
+}
+
+function renderHoverOverlay() {
+  hoverAnimationFrame = null;
+  clearRenderedHoverRect();
+  const strength = AppearanceState.hoverBrightness;
+  const rect = AppState.rects?.[requestedHoverRectIndex];
+  if (!(strength > 0) || !rect || rect.is_free_space || rect.w <= 0 || rect.h <= 0) return;
+
+  const ctx = AppState.hoverCtx;
+  const indexes = [requestedHoverRectIndex];
+  if (AppearanceState.rollOverBoxes) {
+    let parentIndex = AppState.parentRectIndexes?.[requestedHoverRectIndex] ?? -1;
+    while (parentIndex >= 0) {
+      indexes.push(parentIndex);
+      parentIndex = AppState.parentRectIndexes[parentIndex] ?? -1;
+    }
+  }
+  for (const rectIndex of indexes) {
+    const current = AppState.rects?.[rectIndex];
+    if (!current || current.is_free_space || current.node_id === AppState.selectedNodeId || current.w <= 0 || current.h <= 0) continue;
+    drawHoverRect(ctx, current, strength);
+  }
   renderedHoverRectIndex = requestedHoverRectIndex;
 }
 
@@ -210,23 +235,28 @@ function blendHexColor(hex, target, amount) {
   return `rgb(${blended[0]}, ${blended[1]}, ${blended[2]})`;
 }
 
-function drawRectRelief(ctx, rect, fillColor) {
+function drawRectRelief(ctx, rect, fillColor, strokeWidth) {
   const brightness = 1 + AppearanceState.reliefStrength;
-  if (brightness === 1.0 || rect.w < 4 || rect.h < 4) return;
+  if (brightness === 1.0) return;
 
   const amount = Math.min(1, Math.abs(brightness - 1));
   const lightColor = blendHexColor(fillColor, 255, amount);
   const darkColor = blendHexColor(fillColor, 0, amount);
-  const left = rect.x + 1.5;
-  const top = rect.y + 1.5;
-  const right = rect.x + rect.w - 1.5;
-  const bottom = rect.y + rect.h - 1.5;
+  const reliefWidth = getScale() * Math.max(1, AppState.zoomFactor || 1);
+  // The border path is inset by half a canvas pixel. Place the relief band
+  // immediately after the border's inner edge instead of overlapping it.
+  const reliefCenterInset = 0.5 + strokeWidth / 2 + reliefWidth / 2;
+  const left = rect.x + reliefCenterInset;
+  const top = rect.y + reliefCenterInset;
+  const right = rect.x + rect.w - reliefCenterInset;
+  const bottom = rect.y + rect.h - reliefCenterInset;
+  if (right <= left || bottom <= top) return;
 
   ctx.save();
   ctx.beginPath();
   addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
   ctx.clip();
-  ctx.lineWidth = 1;
+  ctx.lineWidth = reliefWidth;
   ctx.lineCap = "butt";
   ctx.lineJoin = "miter";
 
@@ -272,7 +302,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   ctx.strokeStyle = "#222";
   ctx.lineWidth = STROKE_PX;
   strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
-  drawRectRelief(ctx, rect, fillColor);
+  drawRectRelief(ctx, rect, fillColor, STROKE_PX);
 
   //  ID buffer 
   if (writeId) {
