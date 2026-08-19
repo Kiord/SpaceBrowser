@@ -1161,21 +1161,35 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   transform: rotate(45deg);
 }
 
+.tooltip-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 24px;
+  margin-left: 154px;
+}
+
 .tooltip-settings-row .settings-check {
   margin-left: 0;
 }
 
 .tooltip-delay-field {
-  display: grid;
-  grid-template-columns: auto 72px auto;
+  display: flex;
   align-items: center;
-  justify-content: end;
-  gap: 6px;
+  gap: 5px;
   color: #555;
 }
 
-.settings-row .tooltip-delay-field input[type="number"] {
-  width: 72px;
+.tooltip-settings-row .tooltip-delay-field input[type="number"] {
+  width: 60px;
+  box-sizing: border-box;
+  padding: 6px 5px;
+  color: #333;
+  background: #fff;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.06);
+  font: 12px "Segoe UI", sans-serif;
 }
 
 .deletion-settings {
@@ -1287,6 +1301,10 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 
   .settings-check,
   .settings-error {
+    margin-left: 0;
+  }
+
+  .tooltip-settings-row {
     margin-left: 0;
   }
 }
