@@ -7,6 +7,16 @@ const KEY_NAMES = Object.freeze({
   "-": "Minus",
 });
 
+const AUXILIARY_MOUSE_EVENTS = Object.freeze([
+  "pointerdown",
+  "mousedown",
+  "pointerup",
+  "mouseup",
+  "auxclick",
+]);
+
+const AUXILIARY_EVENT_DEDUPLICATION_MS = 1000;
+
 export function shortcutFromEvent(event) {
   if (!event || event.isComposing) return "";
   let key = "";
@@ -44,4 +54,34 @@ export function shortcutCanRun(event) {
     && !event.defaultPrevented
     && !document.querySelector("dialog[open]")
     && !shortcutTargetIsEditable(event);
+}
+
+// Webviews do not consistently expose auxiliary mouse buttons through the
+// same DOM event. Listen to all standard variants and dispatch each physical
+// press once, preferring its earliest event.
+export function addControlEventListeners(handler, options = {}) {
+  const capture = !!options.capture;
+  let lastAuxiliaryEvent = null;
+
+  const handleAuxiliaryEvent = event => {
+    if (!Number.isInteger(event.button) || event.button <= 2) return;
+    const now = Number.isFinite(event.timeStamp) ? event.timeStamp : performance.now();
+    const previous = lastAuxiliaryEvent;
+    const samePress = previous
+      && previous.button === event.button
+      && now - previous.time >= 0
+      && now - previous.time < AUXILIARY_EVENT_DEDUPLICATION_MS;
+    const duplicate = samePress && (
+      (event.type === "mousedown" && previous.type === "pointerdown")
+      || (event.type === "pointerup" && (previous.type === "pointerdown" || previous.type === "mousedown"))
+      || (event.type === "mouseup" && previous.type !== "mouseup" && previous.type !== "auxclick")
+      || (event.type === "auxclick" && previous.type !== "auxclick")
+    );
+    if (duplicate) return;
+    lastAuxiliaryEvent = { button: event.button, time: now, type: event.type };
+    handler(event);
+  };
+
+  window.addEventListener("keydown", handler, capture);
+  AUXILIARY_MOUSE_EVENTS.forEach(type => window.addEventListener(type, handleAuxiliaryEvent, capture));
 }

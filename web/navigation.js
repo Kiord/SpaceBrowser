@@ -1,6 +1,6 @@
 import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
-import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
+import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
 import { AppState } from "./state.js";
 
@@ -131,6 +131,5 @@ export function initNavigation(options) {
   byId("forwardButton").addEventListener("click", goForward);
   byId("toggleFreeSpaceButton").addEventListener("click", toggleFreeSpace);
   window.addEventListener("popstate", handlePopState);
-  window.addEventListener("keydown", handleNavigationShortcut);
-  window.addEventListener("mousedown", handleNavigationShortcut);
+  addControlEventListeners(handleNavigationShortcut);
 }

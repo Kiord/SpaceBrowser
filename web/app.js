@@ -2,7 +2,7 @@ import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { hideContextMenu, initFileActions } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";
-import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
+import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
 import { initLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
@@ -52,8 +52,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     event.preventDefault();
     navigateToSelected();
   };
-  window.addEventListener("keydown", handleVisitShortcut);
-  window.addEventListener("mousedown", handleVisitShortcut);
+  addControlEventListeners(handleVisitShortcut);
 
   try {
     await loadSettingsState();

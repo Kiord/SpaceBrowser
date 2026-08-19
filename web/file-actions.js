@@ -10,7 +10,7 @@ import {
 } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
-import { eventMatchesShortcut, shortcutCanRun } from "./controls.js";
+import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
 import { hideRectToast, mousePosition, showErrorToast, showToastAt } from "./notifications.js";
 import { analyze } from "./scan.js";
@@ -333,8 +333,7 @@ export function initFileActions(options) {
     if (openWith) openRectWithChooser(rect);
     else openRectWithDefault(rect);
   };
-  window.addEventListener("keydown", handleOpenShortcut);
-  window.addEventListener("mousedown", handleOpenShortcut);
+  addControlEventListeners(handleOpenShortcut);
   window.addEventListener("keydown", event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && getSelectedRect()?.full_path) {
       event.preventDefault();
@@ -347,6 +346,5 @@ export function initFileActions(options) {
     event.preventDefault();
     requestSelectedDeletion();
   };
-  window.addEventListener("keydown", handleDeleteShortcut);
-  window.addEventListener("mousedown", handleDeleteShortcut);
+  addControlEventListeners(handleDeleteShortcut);
 }

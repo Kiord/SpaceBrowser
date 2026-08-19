@@ -9,7 +9,7 @@ import {
 } from "./wailsjs/go/main/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
-import { shortcutFromEvent } from "./controls.js";
+import { addControlEventListeners, shortcutFromEvent } from "./controls.js";
 import { logError } from "./logging.js";
 import {
   AppState,
@@ -383,8 +383,7 @@ export function initSettings(options) {
   queryAll("[data-clear-control-binding]").forEach(button => {
     button.addEventListener("click", () => clearControlBinding(button));
   });
-  window.addEventListener("keydown", captureControlBinding, true);
-  window.addEventListener("mousedown", captureControlBinding, true);
+  addControlEventListeners(captureControlBinding, { capture: true });
   byId("settingsPalette").addEventListener("change", updateAppearanceFormOutputs);
   byId("settingsZoomFactor").addEventListener("input", updateAppearanceFormOutputs);
   byId("settingsCornerRadius").addEventListener("input", updateAppearanceFormOutputs);
