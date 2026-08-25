@@ -159,3 +159,69 @@ func TestLinuxPermanentlyDeletesTrashItemAndMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestLinuxEmptyTrashContinuesAfterSuccessfulNoOp(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	trashRoot := filepath.Join(dataHome, "Trash")
+	filesDir := filepath.Join(trashRoot, "files")
+	infoDir := filepath.Join(trashRoot, "info")
+	if err := os.MkdirAll(filesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(infoDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "deleted.bin"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(infoDir, "deleted.bin.trashinfo"), []byte("[Trash Info]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls []string
+	commands := [][]string{{"gio", "trash", "--empty"}, {"ktrash6", "--empty"}}
+	err := emptyLinuxTrashLocations([]string{trashRoot}, commands, func(command []string) (bool, error) {
+		calls = append(calls, command[0])
+		if command[0] == "ktrash6" {
+			return true, emptyLinuxTrashRoots([]string{trashRoot})
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0] != "gio" || calls[1] != "ktrash6" {
+		t.Fatalf("Trash helper calls = %v, want [gio ktrash6]", calls)
+	}
+	if containsItems, err := linuxTrashRootsContainItems([]string{trashRoot}); err != nil || containsItems {
+		t.Fatalf("Trash still contains items: contains=%v error=%v", containsItems, err)
+	}
+}
+
+func TestLinuxEmptyTrashFallsBackToVerifiedDirectories(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	trashRoot := filepath.Join(dataHome, "Trash")
+	filesDir := filepath.Join(trashRoot, "files")
+	infoDir := filepath.Join(trashRoot, "info")
+	if err := os.MkdirAll(filesDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(infoDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filesDir, "deleted.bin"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(infoDir, "deleted.bin.trashinfo"), []byte("[Trash Info]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := emptyLinuxTrashLocations([]string{trashRoot}, nil, func([]string) (bool, error) { return false, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if containsItems, err := linuxTrashRootsContainItems([]string{trashRoot}); err != nil || containsItems {
+		t.Fatalf("Trash still contains items after direct fallback: contains=%v error=%v", containsItems, err)
+	}
+}

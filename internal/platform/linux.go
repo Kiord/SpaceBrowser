@@ -290,21 +290,161 @@ func (l Linux) EmptyTrash(p string) error {
 		{"ktrash6", "--empty"},
 		{"ktrash5", "--empty"},
 	}
-	var lastErr error
-	for _, command := range commands {
+	return emptyLinuxTrash(p, commands, func(command []string) (bool, error) {
 		if _, err := exec.LookPath(command[0]); err != nil {
+			return false, nil
+		}
+		return true, exec.Command(command[0], command[1:]...).Run()
+	})
+}
+
+func emptyLinuxTrash(p string, commands [][]string, run func([]string) (bool, error)) error {
+	roots := linuxUserTrashRoots(p)
+	return emptyLinuxTrashLocations(roots, commands, run)
+}
+
+func emptyLinuxTrashLocations(roots []string, commands [][]string, run func([]string) (bool, error)) error {
+	containsItems, err := linuxTrashRootsContainItems(roots)
+	if err != nil {
+		return fmt.Errorf("inspect Trash contents: %w", err)
+	}
+	if !containsItems {
+		return nil
+	}
+
+	var commandErrors []error
+	for _, command := range commands {
+		attempted, commandErr := run(command)
+		if !attempted {
 			continue
 		}
-		if err := exec.Command(command[0], command[1:]...).Run(); err == nil {
+		if commandErr != nil {
+			commandErrors = append(commandErrors, fmt.Errorf("%s: %w", command[0], commandErr))
+		}
+		containsItems, inspectErr := linuxTrashRootsContainItems(roots)
+		if inspectErr != nil {
+			return fmt.Errorf("verify Trash after %s: %w", command[0], inspectErr)
+		}
+		if !containsItems {
 			return nil
-		} else {
-			lastErr = err
 		}
 	}
-	if lastErr != nil {
-		return fmt.Errorf("empty Trash: %w", lastErr)
+
+	// Desktop helpers can return success without affecting another desktop's
+	// Trash backend. The roots below have already passed authoritative
+	// FreeDesktop location and ownership checks, so empty them directly.
+	if err := emptyLinuxTrashRoots(roots); err != nil {
+		commandErrors = append(commandErrors, err)
+		return fmt.Errorf("empty Trash: %w", errors.Join(commandErrors...))
 	}
-	return fmt.Errorf("no desktop Trash service capable of emptying Trash is available")
+	return nil
+}
+
+func linuxUserTrashRoots(selected string) []string {
+	uid := os.Getuid()
+	uidText := strconv.Itoa(uid)
+	seen := make(map[string]struct{})
+	roots := make([]string, 0, 4)
+	add := func(path string) {
+		clean := filepath.Clean(path)
+		if filepath.Base(clean) == ".Trash" {
+			clean = filepath.Join(clean, uidText)
+		}
+		if _, exists := seen[clean]; exists {
+			return
+		}
+		seen[clean] = struct{}{}
+		roots = append(roots, clean)
+	}
+	add(selected)
+
+	dataHome, configured := linuxTrashConfiguration()
+	if configured {
+		homeTrash := filepath.Join(dataHome, "Trash")
+		if linuxOwnedDirectory(homeTrash, uid) {
+			add(homeTrash)
+		}
+	}
+
+	mountInfo, err := os.Open(linuxMountInfoPath)
+	if err != nil {
+		return roots
+	}
+	defer mountInfo.Close()
+	mounts := linuxMountPoints(mountInfo)
+	isMountRoot := func(path string) bool {
+		_, found := mounts[filepath.Clean(path)]
+		return found
+	}
+	for mount := range mounts {
+		for _, candidate := range []string{
+			filepath.Join(mount, ".Trash-"+uidText),
+			filepath.Join(mount, ".Trash", uidText),
+		} {
+			if configured && isLinuxTrashRoot(candidate, dataHome, uid, isMountRoot) {
+				add(candidate)
+			}
+		}
+	}
+	return roots
+}
+
+func linuxTrashRootsContainItems(roots []string) (bool, error) {
+	for _, root := range roots {
+		for _, name := range []string{"files", "info"} {
+			directory := filepath.Join(root, name)
+			info, err := os.Lstat(directory)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return false, fmt.Errorf("inspect %s: %w", directory, err)
+			}
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				return false, fmt.Errorf("unsafe Trash content directory %s", directory)
+			}
+			entries, err := os.ReadDir(directory)
+			if err != nil {
+				return false, fmt.Errorf("read %s: %w", directory, err)
+			}
+			if len(entries) > 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func emptyLinuxTrashRoots(roots []string) error {
+	var failures []error
+	for _, root := range roots {
+		for _, name := range []string{"files", "info"} {
+			directory := filepath.Join(root, name)
+			info, err := os.Lstat(directory)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				failures = append(failures, fmt.Errorf("inspect %s: %w", directory, err))
+				continue
+			}
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				failures = append(failures, fmt.Errorf("refusing unsafe Trash content directory %s", directory))
+				continue
+			}
+			entries, err := os.ReadDir(directory)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("read %s: %w", directory, err))
+				continue
+			}
+			for _, entry := range entries {
+				if err := os.RemoveAll(filepath.Join(directory, entry.Name())); err != nil {
+					failures = append(failures, fmt.Errorf("remove %s: %w", filepath.Join(directory, entry.Name()), err))
+				}
+			}
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func (Linux) DefaultStartPath() string {
