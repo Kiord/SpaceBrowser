@@ -1,26 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
   <defs>
-    <linearGradient id="diagonalGradient"
-                    x1="0" y1="0"
-                    x2="500" y2="500"
-                    gradientUnits="userSpaceOnUse">
-      <stop offset="0%"   stop-color="#ff9b85"/>
-      <stop offset="20%"  stop-color="#ffbe76"/>
-      <stop offset="40%"  stop-color="#ffe066"/>
-      <stop offset="60%"  stop-color="#7bed9f"/>
-      <stop offset="80%"  stop-color="#70d6ff"/>
-      <stop offset="100%" stop-color="#a29bfe"/>
+    <linearGradient id="coral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffad9b"/>
+      <stop offset="1" stop-color="#ee806b"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe98a"/>
+      <stop offset="1" stop-color="#e7b94f"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9ce5ff"/>
+      <stop offset="1" stop-color="#54b9dc"/>
     </linearGradient>
   </defs>
 
-  <rect x="10" y="10" width="275" height="275"
-        rx="20" ry="20"
-        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
-  <rect x="102.5" y="102.5" width="275" height="275"
-        rx="20" ry="20"
-        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
-  <rect x="215" y="215" width="275" height="275"
-        rx="20" ry="20"
-        fill="url(#diagonalGradient)" stroke="black" stroke-width="20"/>
+  <g>
+    <rect x="10" y="10" width="132" height="132" fill="url(#coral)" stroke="#202020" stroke-width="8"/>
+    <path d="M14 14H138V18H18V138H14Z" fill="#fff" opacity=".42"/>
+    <path d="M138 18V138H18V134H134V18Z" fill="#1b1b1b" opacity=".42"/>
+  </g>
+  <g>
+    <rect x="62" y="62" width="132" height="132" fill="url(#gold)" stroke="#202020" stroke-width="8"/>
+    <path d="M66 66H190V70H70V190H66Z" fill="#fff" opacity=".42"/>
+    <path d="M190 70V190H70V186H186V70Z" fill="#1b1b1b" opacity=".42"/>
+  </g>
+  <g>
+    <rect x="114" y="114" width="132" height="132" fill="url(#blue)" stroke="#202020" stroke-width="8"/>
+    <path d="M118 118H242V122H122V242H118Z" fill="#fff" opacity=".42"/>
+    <path d="M242 122V242H122V238H238V122Z" fill="#1b1b1b" opacity=".42"/>
+  </g>
 </svg>
