@@ -61,6 +61,12 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	if _, ok := persisted["input"]; ok {
 		t.Fatal("saved settings still contain the old input section")
 	}
+	if _, ok := persisted["deletePermanently"]; !ok {
+		t.Fatal("saved settings do not contain the deletePermanently option")
+	}
+	if _, ok := persisted["allowPermanentDelete"]; ok {
+		t.Fatal("saved settings still contain the old allowPermanentDelete option")
+	}
 	want.MinFileSize = 2 * 1024 * 1024
 	if err := first.SetProfile(want); err != nil {
 		t.Fatalf("second SetProfile() error = %v", err)
@@ -75,6 +81,43 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	want.ExcludedPaths = first.GetProfile().ExcludedPaths
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("persisted profile = %#v, want %#v", got, want)
+	}
+}
+
+func TestVersionTenPermanentDeletePermissionDoesNotEnableGlobalPermanentDeletion(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	legacy := []byte(`{
+  "version": 10,
+  "excludedPaths": [],
+  "skipHidden": false,
+  "minFileSize": 1024,
+  "followSymlinks": false,
+  "skipNetworkFS": true,
+  "showTooltips": true,
+  "tooltipDelayMs": 0,
+  "allowDelete": true,
+  "allowPermanentDelete": true,
+  "rescanOnDelete": true,
+  "appearance": {
+    "palette": "default",
+    "zoomFactor": 1,
+    "cornerRadius": 0,
+    "reliefStrength": 0.3,
+    "hoverBrightness": 0.12,
+    "rollOverBoxes": false
+  },
+  "controls": {}
+}`)
+	if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	profile := newApp(settingsPath).GetProfile()
+	if profile.AllowPermanentDelete {
+		t.Fatal("legacy permanent-delete permission enabled the new global permanent-deletion mode")
+	}
+	if !profile.AllowDelete {
+		t.Fatal("legacy Allow delete command setting was not preserved")
 	}
 }
 

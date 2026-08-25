@@ -9,22 +9,22 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 10
+const settingsFileVersion = 11
 
 type persistedSettings struct {
-	Version              int                `json:"version"`
-	ExcludedPaths        []string           `json:"excludedPaths"`
-	SkipHidden           bool               `json:"skipHidden"`
-	MinFileSize          int64              `json:"minFileSize"`
-	FollowSymlinks       bool               `json:"followSymlinks"`
-	SkipNetworkFS        bool               `json:"skipNetworkFS"`
-	ShowTooltips         bool               `json:"showTooltips"`
-	TooltipDelayMS       int                `json:"tooltipDelayMs"`
-	AllowDelete          bool               `json:"allowDelete"`
-	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
-	RescanOnDelete       bool               `json:"rescanOnDelete"`
-	Appearance           AppearanceSettings `json:"appearance"`
-	Controls             ControlSettings    `json:"controls"`
+	Version           int                `json:"version"`
+	ExcludedPaths     []string           `json:"excludedPaths"`
+	SkipHidden        bool               `json:"skipHidden"`
+	MinFileSize       int64              `json:"minFileSize"`
+	FollowSymlinks    bool               `json:"followSymlinks"`
+	SkipNetworkFS     bool               `json:"skipNetworkFS"`
+	ShowTooltips      bool               `json:"showTooltips"`
+	TooltipDelayMS    int                `json:"tooltipDelayMs"`
+	AllowDelete       bool               `json:"allowDelete"`
+	DeletePermanently bool               `json:"deletePermanently"`
+	RescanOnDelete    bool               `json:"rescanOnDelete"`
+	Appearance        AppearanceSettings `json:"appearance"`
+	Controls          ControlSettings    `json:"controls"`
 }
 
 type persistedSettingsLocation struct {
@@ -90,15 +90,19 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		appearance.HoverBrightness = defaultAppearanceSettings().HoverBrightness
 	}
 	allowDelete := saved.AllowDelete
-	allowPermanentDelete := saved.AllowPermanentDelete
+	deletePermanently := saved.DeletePermanently
 	rescanOnDelete := saved.RescanOnDelete
 	if saved.Version < 3 {
 		defaults := defaultProfile()
 		allowDelete = defaults.AllowDelete
 		rescanOnDelete = defaults.RescanOnDelete
 	}
-	if saved.Version < 6 {
-		allowPermanentDelete = defaultProfile().AllowPermanentDelete
+	if saved.Version < 11 {
+		// Version 10 and earlier used allowPermanentDelete only to permit
+		// deleting items already in Trash. The new option changes every normal
+		// deletion into an irreversible operation, so it must be explicitly
+		// enabled again under the new semantics.
+		deletePermanently = false
 	}
 	controls := saved.Controls
 	if saved.Version < 7 {
@@ -120,7 +124,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		ShowTooltips:         showTooltips,
 		TooltipDelayMS:       tooltipDelayMS,
 		AllowDelete:          allowDelete,
-		AllowPermanentDelete: allowPermanentDelete,
+		AllowPermanentDelete: deletePermanently,
 		RescanOnDelete:       rescanOnDelete,
 		Appearance:           appearance,
 		Controls:             controls,
@@ -129,19 +133,19 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 
 func saveSettings(path string, profile Profile) error {
 	saved := persistedSettings{
-		Version:              settingsFileVersion,
-		ExcludedPaths:        profile.ExcludedPaths,
-		SkipHidden:           profile.SkipHidden,
-		MinFileSize:          profile.MinFileSize,
-		FollowSymlinks:       profile.FollowSymlinks,
-		SkipNetworkFS:        profile.SkipNetworkFS,
-		ShowTooltips:         profile.ShowTooltips,
-		TooltipDelayMS:       profile.TooltipDelayMS,
-		AllowDelete:          profile.AllowDelete,
-		AllowPermanentDelete: profile.AllowPermanentDelete,
-		RescanOnDelete:       profile.RescanOnDelete,
-		Appearance:           profile.Appearance,
-		Controls:             profile.Controls,
+		Version:           settingsFileVersion,
+		ExcludedPaths:     profile.ExcludedPaths,
+		SkipHidden:        profile.SkipHidden,
+		MinFileSize:       profile.MinFileSize,
+		FollowSymlinks:    profile.FollowSymlinks,
+		SkipNetworkFS:     profile.SkipNetworkFS,
+		ShowTooltips:      profile.ShowTooltips,
+		TooltipDelayMS:    profile.TooltipDelayMS,
+		AllowDelete:       profile.AllowDelete,
+		DeletePermanently: profile.AllowPermanentDelete,
+		RescanOnDelete:    profile.RescanOnDelete,
+		Appearance:        profile.Appearance,
+		Controls:          profile.Controls,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {
