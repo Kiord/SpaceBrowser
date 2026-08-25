@@ -118,6 +118,14 @@ func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpa
 }
 
 func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {
+	return s.deleteNode(nodeID, isTrashRoot, isInTrash, moveToTrash, true)
+}
+
+func (s *TreeStore) DeleteNodePermanently(nodeID int, isTrashRoot, isInTrash func(string) bool, deletePermanently func(string) error) (DeleteResult, error) {
+	return s.deleteNode(nodeID, isTrashRoot, isInTrash, deletePermanently, false)
+}
+
+func (s *TreeStore) deleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, deletePath func(string) error, refreshTrash bool) (DeleteResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -143,10 +151,13 @@ func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 		}
 		return DeleteResult{}, fmt.Errorf("inspect selected path: %w", err)
 	}
-	if err := moveToTrash(node.FullPath); err != nil {
+	if err := deletePath(node.FullPath); err != nil {
 		return DeleteResult{}, err
 	}
-	trashRefreshes := displayedTrashNodes(s.root, node, isTrashRoot)
+	var trashRefreshes []trashRefreshTarget
+	if refreshTrash {
+		trashRefreshes = displayedTrashNodes(s.root, node, isTrashRoot)
+	}
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {

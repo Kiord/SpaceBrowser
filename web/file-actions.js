@@ -38,16 +38,12 @@ function requestSelectedDeletion() {
     return;
   }
   const emptyTrash = !!rect.is_trash_root;
-  const permanent = !!rect.is_in_trash && !emptyTrash;
+  const permanent = !emptyTrash && (!!rect.is_in_trash || !!AppState.profile?.allowPermanentDelete);
   const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
   if (!AppState.profile?.allowDelete) {
     showErrorToast(emptyTrash
       ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
       : "Delete commands are disabled. Enable Allow delete command in Settings");
-    return;
-  }
-  if (permanent && !AppState.profile?.allowPermanentDelete) {
-    showErrorToast("Permanent deletion is disabled. Enable Allow permanent deletion in Settings");
     return;
   }
   if (isPassiveRect(rect) || !rect.full_path) {
@@ -198,6 +194,7 @@ export function showContextMenu(x, y) {
   const deleteAction = menu.querySelector('[data-action="delete"]');
   const deleteLabel = deleteAction?.querySelector("span");
   const trashItem = !!rect?.is_in_trash && !rect?.is_trash_root;
+  const permanent = trashItem || (!!rect && !rect.is_trash_root && !!AppState.profile?.allowPermanentDelete);
   const restoreAction = menu.querySelector('[data-action="restore"]');
   if (restoreAction) restoreAction.hidden = !trashItem;
   if (deleteAction) {
@@ -207,7 +204,7 @@ export function showContextMenu(x, y) {
   if (deleteLabel) {
     deleteLabel.textContent = rect?.is_trash_root
       ? `Empty ${trashDestinationName()}`
-      : trashItem ? "Delete permanently" : "Delete";
+      : permanent ? "Delete permanently" : "Delete";
   }
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");

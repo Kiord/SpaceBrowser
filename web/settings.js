@@ -245,9 +245,29 @@ function closeRestoreDefaultsConfirmation() {
   pendingRestoreTab = "";
 }
 
+function closePermanentDeleteWarning() {
+  const dialog = byId("permanentDeleteWarningDialog");
+  if (dialog.open) dialog.close();
+  byId("settingsAllowPermanentDelete").checked = false;
+}
+
+function confirmPermanentDelete() {
+  byId("settingsAllowPermanentDelete").checked = true;
+  const dialog = byId("permanentDeleteWarningDialog");
+  if (dialog.open) dialog.close();
+}
+
+function requestPermanentDeleteEnable(event) {
+  if (!event.currentTarget.checked) return;
+  event.currentTarget.checked = false;
+  const dialog = byId("permanentDeleteWarningDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
 function closeSettings() {
   stopControlBindingCapture();
   closeRestoreDefaultsConfirmation();
+  closePermanentDeleteWarning();
   const dialog = byId("settingsDialog");
   if (dialog.open) dialog.close();
 }
@@ -377,6 +397,13 @@ export function initSettings(options) {
   byId("cancelSettingsButton").addEventListener("click", closeSettings);
   byId("cancelRestoreDefaultsButton").addEventListener("click", closeRestoreDefaultsConfirmation);
   byId("confirmRestoreDefaultsButton").addEventListener("click", restoreDefaultSettings);
+  byId("settingsAllowPermanentDelete").addEventListener("change", requestPermanentDeleteEnable);
+  byId("cancelPermanentDeleteButton").addEventListener("click", closePermanentDeleteWarning);
+  byId("confirmPermanentDeleteButton").addEventListener("click", confirmPermanentDelete);
+  byId("permanentDeleteWarningDialog").addEventListener("cancel", event => {
+    event.preventDefault();
+    closePermanentDeleteWarning();
+  });
   byId("restoreAllDefaultsButton").addEventListener("click", () => openRestoreDefaultsConfirmation("all"));
   byId("restoreDefaultsDialog").addEventListener("cancel", event => {
     event.preventDefault();

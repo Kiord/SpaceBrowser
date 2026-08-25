@@ -98,6 +98,7 @@ type DesktopActions interface {
 	PickFolder(context.Context, string) (string, error)
 	ShowProperties(string) error
 	MoveToTrash(string) error
+	DeletePermanently(string) error
 	IsTrashRoot(string) bool
 	IsInTrash(string) bool
 	EmptyTrash(string) error
@@ -192,6 +193,13 @@ func (Default) MoveToTrash(p string) error {
 	}
 	if err := exec.Command("gio", "trash", "--", p).Run(); err != nil {
 		return fmt.Errorf("move to Trash: %w", err)
+	}
+	return nil
+}
+
+func (Default) DeletePermanently(p string) error {
+	if err := os.RemoveAll(p); err != nil {
+		return fmt.Errorf("delete permanently: %w", err)
 	}
 	return nil
 }

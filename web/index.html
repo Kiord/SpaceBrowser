@@ -258,9 +258,9 @@
               <input id="settingsAllowDelete" type="checkbox">
               <span>Allow delete command</span>
             </label>
-            <label class="settings-check">
+            <label class="settings-check permanent-delete-check">
               <input id="settingsAllowPermanentDelete" type="checkbox">
-              <span>Allow permanent deletion</span>
+              <span>Delete permanently</span>
             </label>
             <label class="settings-check">
               <input id="settingsRescanOnDelete" type="checkbox">
@@ -435,6 +435,17 @@
       <div class="confirm-dialog-actions">
         <button id="cancelRestoreDefaultsButton" type="button">Cancel</button>
         <button id="confirmRestoreDefaultsButton" type="button">Restore</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="permanentDeleteWarningDialog" class="settings-dialog confirm-dialog" aria-labelledby="permanentDeleteWarningTitle">
+    <div class="confirm-dialog-body">
+      <h2 id="permanentDeleteWarningTitle">Enable permanent deletion?</h2>
+      <p>Every deleted file and folder will bypass Trash and cannot be restored. Enabling this can be very dangerous. Are you sure?</p>
+      <div class="confirm-dialog-actions">
+        <button id="cancelPermanentDeleteButton" type="button">Cancel</button>
+        <button id="confirmPermanentDeleteButton" class="danger-button" type="button">Enable</button>
       </div>
     </div>
   </dialog>

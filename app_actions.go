@@ -30,9 +30,6 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	if a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot) {
 		result, err = a.store.EmptyTrashNode(nodeID, a.desktop.IsTrashRoot, a.desktop.EmptyTrash)
 	} else if a.store.NodePathMatches(nodeID, a.desktop.IsInTrash) {
-		if !profile.AllowPermanentDelete {
-			return DeleteResult{}, fmt.Errorf("permanent deletion is disabled; enable Allow permanent deletion in Settings")
-		}
 		path, pathErr := a.store.NodePath(nodeID)
 		if pathErr != nil {
 			return DeleteResult{}, pathErr
@@ -41,6 +38,8 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 			files, dirs := a.store.Counts()
 			result = DeleteResult{FileCount: files, DirCount: dirs, RescanRequired: true}
 		}
+	} else if profile.AllowPermanentDelete {
+		result, err = a.store.DeleteNodePermanently(nodeID, a.desktop.IsTrashRoot, a.desktop.IsInTrash, a.desktop.DeletePermanently)
 	} else {
 		result, err = a.store.DeleteNode(nodeID, a.desktop.IsTrashRoot, a.desktop.IsInTrash, a.desktop.MoveToTrash)
 	}

@@ -1214,6 +1214,10 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   margin-left: 0;
 }
 
+.deletion-settings .permanent-delete-check {
+  color: #8b2f2a;
+}
+
 .settings-error {
   min-height: 15px;
   margin-left: 154px;

@@ -101,6 +101,14 @@ func (desktop trashActionDesktop) DeleteTrashItemPermanently(path string) error 
 	return nil
 }
 
+func (desktop trashActionDesktop) DeletePermanently(path string) error {
+	if desktop.permanentlyDeleted == nil {
+		return errors.New("permanent deletion was not expected")
+	}
+	*desktop.permanentlyDeleted = path
+	return nil
+}
+
 func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "folder")
 	if err := os.Mkdir(target, 0o700); err != nil {
@@ -467,7 +475,7 @@ func TestAppSkipsTargetedTrashRefreshWhenDeleteWillRescan(t *testing.T) {
 	}
 }
 
-func TestAppPermanentDeletionRequiresSeparatePermission(t *testing.T) {
+func TestAppTrashItemPermanentDeletionOnlyRequiresDeletePermission(t *testing.T) {
 	trashPath := filepath.Join(t.TempDir(), "$Recycle.Bin")
 	itemPath := filepath.Join(trashPath, "deleted.bin")
 	root := &Node{ID: 0, ParentID: -1, IsFolder: true}
@@ -482,20 +490,42 @@ func TestAppPermanentDeletionRequiresSeparatePermission(t *testing.T) {
 		store:   TreeStore{root: root, nodes: []*Node{root, trash, item}, fileCount: 1, dirCount: 2},
 	}
 
-	if _, err := app.DeleteNode(item.ID); err == nil {
-		t.Fatal("DeleteNode() allowed permanent deletion without its permission")
-	}
-	if deleted != "" {
-		t.Fatal("platform permanent deletion ran while disabled")
-	}
-
-	app.profile.AllowPermanentDelete = true
 	result, err := app.DeleteNode(item.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if deleted != itemPath || !result.RescanRequired {
 		t.Fatalf("permanent deletion path = %q, result = %+v", deleted, result)
+	}
+}
+
+func TestAppPermanentDeleteModeBypassesTrash(t *testing.T) {
+	base := t.TempDir()
+	targetPath := filepath.Join(base, "delete-me.bin")
+	if err := os.WriteFile(targetPath, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trashPath := filepath.Join(base, "$Recycle.Bin")
+	root := &Node{ID: 0, ParentID: -1, IsFolder: true}
+	target := &Node{ID: 1, ParentID: 0, FullPath: targetPath, Size: 4}
+	trash := &Node{ID: 2, ParentID: 0, FullPath: trashPath, IsFolder: true}
+	root.Children = []*Node{target, trash}
+	deleted := ""
+	app := &App{
+		profile: Profile{AllowDelete: true, AllowPermanentDelete: true},
+		desktop: trashActionDesktop{path: trashPath, permanentlyDeleted: &deleted},
+		store:   TreeStore{root: root, nodes: []*Node{root, target, trash}, fileCount: 1, dirCount: 2},
+	}
+
+	result, err := app.DeleteNode(target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != targetPath {
+		t.Fatalf("permanently deleted path = %q, want %q", deleted, targetPath)
+	}
+	if len(result.trashRefreshes) != 0 {
+		t.Fatalf("permanent deletion requested %d Trash refreshes", len(result.trashRefreshes))
 	}
 }
 
