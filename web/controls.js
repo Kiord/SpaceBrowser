@@ -1,3 +1,5 @@
+import { EventsOn } from "./wailsjs/runtime/runtime.js";
+
 const MODIFIER_KEYS = new Set(["Alt", "AltGraph", "Control", "Meta", "Shift"]);
 
 const KEY_NAMES = Object.freeze({
@@ -16,6 +18,34 @@ const AUXILIARY_MOUSE_EVENTS = Object.freeze([
 ]);
 
 const AUXILIARY_EVENT_DEDUPLICATION_MS = 1000;
+let nativeAuxiliaryEventsInitialised = false;
+let lastTrustedAuxiliaryEvent = null;
+
+function initialiseNativeAuxiliaryEvents() {
+  if (nativeAuxiliaryEventsInitialised) return;
+  nativeAuxiliaryEventsInitialised = true;
+  AUXILIARY_MOUSE_EVENTS.forEach(type => window.addEventListener(type, event => {
+    if (event.isTrusted && Number.isInteger(event.button) && event.button > 2) {
+      lastTrustedAuxiliaryEvent = { button: event.button, time: performance.now() };
+    }
+  }, true));
+  EventsOn("controls:auxiliary-mouse", rawButton => {
+    const button = Number(rawButton);
+    if (!Number.isInteger(button) || button <= 2) return;
+    // Let a normal DOM event win when WebKit exposes one. KDE configurations
+    // that consume the event natively receive the synthetic fallback instead.
+    setTimeout(() => {
+      const recent = lastTrustedAuxiliaryEvent;
+      if (recent && recent.button === button && performance.now() - recent.time < 100) return;
+      window.dispatchEvent(new MouseEvent("mousedown", {
+        button,
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }));
+    }, 25);
+  });
+}
 
 export function shortcutFromEvent(event) {
   if (!event || event.isComposing) return "";
@@ -60,6 +90,7 @@ export function shortcutCanRun(event) {
 // same DOM event. Listen to all standard variants and dispatch each physical
 // press once, preferring its earliest event.
 export function addControlEventListeners(handler, options = {}) {
+  initialiseNativeAuxiliaryEvents();
   const capture = !!options.capture;
   let lastAuxiliaryEvent = null;
 

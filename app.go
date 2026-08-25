@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"spacebrowser/internal/fileicon"
+	"spacebrowser/internal/nativeinput"
 	"spacebrowser/internal/platform"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -91,6 +94,9 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	nativeinput.StartAuxiliaryMouseCapture(func(button int) {
+		wailsruntime.EventsEmit(ctx, "controls:auxiliary-mouse", button)
+	})
 	a.logger.Debugf("application runtime initialized")
 }
 
