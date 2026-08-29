@@ -115,6 +115,12 @@ type LocationProvider interface {
 	ListScanLocations() ([]ScanLocation, error)
 }
 
+// DeletionValidator is an optional platform safety policy checked before an
+// ordinary filesystem item is moved to Trash or deleted permanently.
+type DeletionValidator interface {
+	ValidateDeletion(string) error
+}
+
 // API is retained as the combined native platform implementation used by the
 // application today. Dependency injection can provide its embedded interfaces
 // independently.
@@ -185,6 +191,14 @@ func (Default) PickFolder(context.Context, string) (string, error) {
 
 func (Default) ShowProperties(string) error {
 	return fmt.Errorf("filesystem properties are not supported on this platform")
+}
+
+func (Default) ValidateDeletion(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect deletion target: %w", err)
+	}
+	return validateDeletionFileType(info)
 }
 
 func (Default) MoveToTrash(p string) error {

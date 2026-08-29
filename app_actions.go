@@ -27,9 +27,22 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 
 	var result DeleteResult
 	var err error
-	if a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot) {
+	isTrashRoot := a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot)
+	isInTrash := !isTrashRoot && a.store.NodePathMatches(nodeID, a.desktop.IsInTrash)
+	if !isTrashRoot && !isInTrash {
+		if validator, ok := a.desktop.(platform.DeletionValidator); ok {
+			path, pathErr := a.store.NodePath(nodeID)
+			if pathErr != nil {
+				return DeleteResult{}, a.logDeletionError(pathErr)
+			}
+			if validationErr := validator.ValidateDeletion(path); validationErr != nil {
+				return DeleteResult{}, a.logDeletionError(validationErr)
+			}
+		}
+	}
+	if isTrashRoot {
 		result, err = a.store.EmptyTrashNode(nodeID, a.desktop.IsTrashRoot, a.desktop.EmptyTrash)
-	} else if a.store.NodePathMatches(nodeID, a.desktop.IsInTrash) {
+	} else if isInTrash {
 		path, pathErr := a.store.NodePath(nodeID)
 		if pathErr != nil {
 			return DeleteResult{}, pathErr
@@ -44,7 +57,7 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		result, err = a.store.DeleteNode(nodeID, a.desktop.IsTrashRoot, a.desktop.IsInTrash, a.desktop.MoveToTrash)
 	}
 	if err != nil {
-		return DeleteResult{}, err
+		return DeleteResult{}, a.logDeletionError(err)
 	}
 	if len(result.trashRefreshes) > 0 {
 		if profile.RescanOnDelete || result.RescanRequired {
@@ -57,6 +70,13 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	}
 	a.refreshDiskUsageAfterFilesystemChange(&result)
 	return result, nil
+}
+
+func (a *App) logDeletionError(err error) error {
+	if err != nil && a.logger != nil {
+		a.logger.Errorf("delete command failed: %v", err)
+	}
+	return err
 }
 
 func (a *App) refreshDisplayedTrash(result DeleteResult) DeleteResult {

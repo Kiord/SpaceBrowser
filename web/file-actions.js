@@ -11,6 +11,7 @@ import {
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
+import { logError } from "./logging.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
 import { hideRectToast, mousePosition, showErrorToast, showToastAt } from "./notifications.js";
 import { analyze } from "./scan.js";
@@ -28,30 +29,37 @@ function trashDestinationName() {
   return AppState.profile?.platformSystem === "windows" ? "Recycle Bin" : "Trash";
 }
 
+function showDeletionError(message) {
+  logError(`delete command rejected: ${message}`);
+  showErrorToast(message);
+}
+
 function requestSelectedDeletion() {
   hideContextMenu();
   hideRectToast();
   const rect = getSelectedRect();
   if (!rect) return;
   if (deletionInProgress) {
-    showErrorToast("Another deletion is already in progress");
+    showDeletionError("Another deletion is already in progress");
     return;
   }
   const emptyTrash = !!rect.is_trash_root;
   const permanent = !emptyTrash && (!!rect.is_in_trash || !!AppState.profile?.allowPermanentDelete);
   const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
   if (!AppState.profile?.allowDelete) {
-    showErrorToast(emptyTrash
+    showDeletionError(emptyTrash
       ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
       : "Delete commands are disabled. Enable Allow delete command in Settings");
     return;
   }
   if (isPassiveRect(rect) || !rect.full_path) {
-    showErrorToast("This item cannot be deleted");
+    showDeletionError("SpaceBrowser does not allow deleting virtual treemap items");
     return;
   }
   if (!emptyTrash && rect.node_id === AppState.node_id) {
-    showErrorToast("The current view cannot be deleted. Go to its parent first");
+    showDeletionError(rect.parent_id == null
+      ? "SpaceBrowser does not allow deleting filesystem roots"
+      : "SpaceBrowser does not allow deleting the current view. Go to its parent first");
     return;
   }
 

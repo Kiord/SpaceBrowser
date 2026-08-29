@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -9,6 +10,21 @@ import (
 	"strings"
 	"testing"
 )
+
+type rejectingDeletionDesktop struct {
+	platform.Default
+	err        error
+	moveCalled *bool
+}
+
+func (desktop rejectingDeletionDesktop) ValidateDeletion(string) error {
+	return desktop.err
+}
+
+func (desktop rejectingDeletionDesktop) MoveToTrash(string) error {
+	*desktop.moveCalled = true
+	return nil
+}
 
 type trashActionDesktop struct {
 	platform.DesktopActions
@@ -107,6 +123,44 @@ func (desktop trashActionDesktop) DeletePermanently(path string) error {
 	}
 	*desktop.permanentlyDeleted = path
 	return nil
+}
+
+func TestAppDeleteNodeLogsAndReturnsSafetyRejection(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "protected")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := &Node{ID: 0, ParentID: -1, FullPath: base, IsFolder: true}
+	child := &Node{ID: 1, ParentID: 0, FullPath: target, IsFolder: true}
+	root.Children = []*Node{child}
+
+	profile := *defaultProfile()
+	profile.AllowDelete = true
+	moveCalled := false
+	var logs bytes.Buffer
+	rejection := "SpaceBrowser does not allow deleting protected system locations"
+	desktop := rejectingDeletionDesktop{
+		err:        errors.New(rejection),
+		moveCalled: &moveCalled,
+	}
+	app := &App{
+		desktop: desktop,
+		profile: profile,
+		logger:  NewSeverityLogger(verbosityError, &logs),
+	}
+	app.store.Replace(root, []*Node{root, child}, 0, 2)
+
+	_, err := app.DeleteNode(child.ID)
+	if err == nil || !strings.Contains(err.Error(), rejection) {
+		t.Fatalf("DeleteNode error = %v", err)
+	}
+	if moveCalled {
+		t.Fatal("MoveToTrash was called after a safety rejection")
+	}
+	if !strings.Contains(logs.String(), "delete command failed") || !strings.Contains(logs.String(), rejection) {
+		t.Fatalf("error log = %q", logs.String())
+	}
 }
 
 func TestTreeStoreDeleteNodeUpdatesTree(t *testing.T) {
