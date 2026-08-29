@@ -161,6 +161,26 @@ func (r *ScanReport) Snapshot() ScanReportSnapshot {
 	return snapshot
 }
 
+func (r *ScanReport) MergeSnapshot(snapshot ScanReportSnapshot) {
+	if r == nil {
+		return
+	}
+	for reason, count := range snapshot.Skipped {
+		r.skipped[reason].Add(count)
+	}
+	for reason, count := range snapshot.Errors {
+		r.errors[reason].Add(count)
+	}
+	r.examplesMu.Lock()
+	defer r.examplesMu.Unlock()
+	for _, example := range snapshot.Examples {
+		if r.exampleLimit >= 0 && len(r.examples) >= r.exampleLimit {
+			break
+		}
+		r.examples = append(r.examples, example)
+	}
+}
+
 func formatNonzeroScanCounts(counts []int64, labels []string) string {
 	result := ""
 	for index, count := range counts {

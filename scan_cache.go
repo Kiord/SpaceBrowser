@@ -22,6 +22,7 @@ const (
 	scanSnapshotVersion       = 1
 	scanAccountingVersion     = 1
 	maximumPersistedSnapshots = 5
+	maximumInMemoryScanCaches = 3
 	maximumSnapshotNodes      = 10_000_000
 )
 
@@ -58,13 +59,21 @@ type scanCacheEntry struct {
 	watcher          treeWatcher
 	sharedAllocation bool
 	report           ScanReportSnapshot
+	lastUsed         uint64
+}
+
+type scanCacheDependency struct {
+	entry      *scanCacheEntry
+	eventCount uint64
 }
 
 type scanReusePlan struct {
-	directories map[string]*Node
-	dirty       []string
-	source      *scanCacheEntry
-	eventCount  uint64
+	directories  map[string]*Node
+	dirty        []string
+	reports      map[string]ScanReportSnapshot
+	source       *scanCacheEntry
+	eventCount   uint64
+	dependencies []scanCacheDependency
 }
 
 type loadedScanSnapshot struct {
@@ -79,7 +88,8 @@ type scanCacheManager struct {
 	mu        sync.Mutex
 	directory string
 	logger    *SeverityLogger
-	entry     *scanCacheEntry
+	entries   map[string]*scanCacheEntry
+	clock     uint64
 }
 
 func newScanCacheManager(defaultSettingsPath string, logger *SeverityLogger) *scanCacheManager {
@@ -87,7 +97,23 @@ func newScanCacheManager(defaultSettingsPath string, logger *SeverityLogger) *sc
 	if defaultSettingsPath != "" {
 		directory = filepath.Join(filepath.Dir(defaultSettingsPath), "cache", "scans")
 	}
-	return &scanCacheManager{directory: directory, logger: logger}
+	return &scanCacheManager{directory: directory, logger: logger, entries: make(map[string]*scanCacheEntry)}
+}
+
+func scanMemoryCacheKey(rootPath, profileKey string) string {
+	return canonicalCachePath(rootPath) + "\x00" + profileKey
+}
+
+func (manager *scanCacheManager) touchLocked(entry *scanCacheEntry) {
+	manager.clock++
+	entry.lastUsed = manager.clock
+}
+
+func (manager *scanCacheManager) containsLocked(entry *scanCacheEntry) bool {
+	if entry == nil {
+		return false
+	}
+	return manager.entries[scanMemoryCacheKey(entry.rootPath, entry.profileKey)] == entry
 }
 
 func scanProfileCacheKey(profile Profile) (scanCacheProfile, string) {
@@ -124,20 +150,6 @@ func (manager *scanCacheManager) snapshotPath(rootPath, profileKey string) strin
 	return filepath.Join(manager.directory, scanSnapshotFilename(rootPath, profileKey))
 }
 
-func (manager *scanCacheManager) Current(rootPath string, profile Profile) (files, dirs int, ok bool) {
-	if manager == nil {
-		return 0, 0, false
-	}
-	_, profileKey := scanProfileCacheKey(profile)
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	entry := manager.entry
-	if entry == nil || entry.profileKey != profileKey || canonicalCachePath(entry.rootPath) != canonicalCachePath(rootPath) {
-		return 0, 0, false
-	}
-	return entry.fileCount, entry.dirCount, true
-}
-
 func (manager *scanCacheManager) Prepare(rootPath string, profile Profile) scanReusePlan {
 	if manager == nil {
 		return scanReusePlan{}
@@ -145,23 +157,106 @@ func (manager *scanCacheManager) Prepare(rootPath string, profile Profile) scanR
 	_, profileKey := scanProfileCacheKey(profile)
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	entry := manager.entry
-	if entry == nil || entry.invalid || entry.profileKey != profileKey || canonicalCachePath(entry.rootPath) != canonicalCachePath(rootPath) {
-		return scanReusePlan{}
+	exact := manager.entries[scanMemoryCacheKey(rootPath, profileKey)]
+	if exact != nil {
+		manager.touchLocked(exact)
+		if exact.invalid {
+			return scanReusePlan{}
+		}
+		dirty := cacheDirtyPaths(exact)
+		plan := scanReusePlan{source: exact, eventCount: exact.eventCount, dependencies: []scanCacheDependency{{exact, exact.eventCount}}}
+		if len(dirty) > 0 && !cacheEntryIncrementallySafe(exact, profile) {
+			return plan
+		}
+		plan.directories = exact.directories
+		plan.dirty = dirty
+		return plan
 	}
+
+	// Prefer one cached ancestor: it already contains the complete requested
+	// subtree and avoids constructing another million-entry lookup map.
+	var ancestor *scanCacheEntry
+	for _, entry := range manager.entries {
+		if entry.profileKey != profileKey || entry.invalid || !cacheEntryIncrementallySafe(entry, profile) ||
+			!cachePathWithin(rootPath, entry.rootPath) {
+			continue
+		}
+		if ancestor == nil || len(canonicalCachePath(entry.rootPath)) > len(canonicalCachePath(ancestor.rootPath)) {
+			ancestor = entry
+		}
+	}
+	if ancestor != nil {
+		manager.touchLocked(ancestor)
+		return scanReusePlan{
+			directories:  ancestor.directories,
+			dirty:        cacheDirtyPaths(ancestor),
+			dependencies: []scanCacheDependency{{ancestor, ancestor.eventCount}},
+		}
+	}
+
+	// Cached child roots can accelerate a later broader scan. Multiple disjoint
+	// children may contribute, so combine their directory indexes.
+	plan := scanReusePlan{}
+	var candidates []*scanCacheEntry
+	for _, entry := range manager.entries {
+		if entry.profileKey != profileKey || entry.invalid || !cacheEntryCrossRootSafe(entry, profile) ||
+			!cachePathWithin(entry.rootPath, rootPath) {
+			continue
+		}
+		if len(entry.dirty) > 0 && (entry.report.TotalSkipped() > 0 || entry.report.TotalErrors() > 0) {
+			continue
+		}
+		candidates = append(candidates, entry)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		return len(canonicalCachePath(candidates[i].rootPath)) < len(canonicalCachePath(candidates[j].rootPath))
+	})
+	var selectedRoots []string
+	for _, entry := range candidates {
+		nested := false
+		for _, selectedRoot := range selectedRoots {
+			if cachePathWithin(entry.rootPath, selectedRoot) {
+				nested = true
+				break
+			}
+		}
+		if nested {
+			continue
+		}
+		selectedRoots = append(selectedRoots, entry.rootPath)
+		manager.touchLocked(entry)
+		if plan.directories == nil {
+			plan.directories = make(map[string]*Node)
+		}
+		for path, node := range entry.directories {
+			plan.directories[path] = node
+		}
+		plan.dirty = append(plan.dirty, cacheDirtyPaths(entry)...)
+		if entry.report.TotalSkipped() > 0 || entry.report.TotalErrors() > 0 {
+			if plan.reports == nil {
+				plan.reports = make(map[string]ScanReportSnapshot)
+			}
+			plan.reports[canonicalCachePath(entry.rootPath)] = entry.report
+		}
+		plan.dependencies = append(plan.dependencies, scanCacheDependency{entry, entry.eventCount})
+	}
+	return plan
+}
+
+func cacheDirtyPaths(entry *scanCacheEntry) []string {
 	dirty := make([]string, 0, len(entry.dirty))
 	for path := range entry.dirty {
 		dirty = append(dirty, path)
 	}
-	if len(dirty) > 0 && (entry.sharedAllocation || profile.FollowSymlinks || entry.report.TotalSkipped() > 0 || entry.report.TotalErrors() > 0) {
-		return scanReusePlan{source: entry, eventCount: entry.eventCount}
-	}
-	return scanReusePlan{
-		directories: entry.directories,
-		dirty:       dirty,
-		source:      entry,
-		eventCount:  entry.eventCount,
-	}
+	return dirty
+}
+
+func cacheEntryIncrementallySafe(entry *scanCacheEntry, profile Profile) bool {
+	return !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.TotalSkipped() == 0 && entry.report.TotalErrors() == 0
+}
+
+func cacheEntryCrossRootSafe(entry *scanCacheEntry, profile Profile) bool {
+	return !entry.sharedAllocation && !profile.FollowSymlinks
 }
 
 func (manager *scanCacheManager) StillClean(source *scanCacheEntry, eventCount uint64) bool {
@@ -170,10 +265,10 @@ func (manager *scanCacheManager) StillClean(source *scanCacheEntry, eventCount u
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	return manager.entry == source && !source.invalid && source.eventCount == eventCount && len(source.dirty) == 0
+	return manager.containsLocked(source) && !source.invalid && source.eventCount == eventCount && len(source.dirty) == 0
 }
 
-func (manager *scanCacheManager) Install(rootPath string, profile Profile, root *Node, nodes []*Node, files, dirs int, report ScanReportSnapshot, source *scanCacheEntry, sourceEventCount uint64) {
+func (manager *scanCacheManager) Install(rootPath string, profile Profile, root *Node, nodes []*Node, files, dirs int, report ScanReportSnapshot, plan scanReusePlan) {
 	if manager == nil || root == nil {
 		return
 	}
@@ -191,15 +286,51 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 
 	manager.mu.Lock()
-	old := manager.entry
-	manager.entry = entry
-	if source != nil && source.eventCount != sourceEventCount {
+	if manager.entries == nil {
+		manager.entries = make(map[string]*scanCacheEntry)
+	}
+	key := scanMemoryCacheKey(rootPath, profileKey)
+	old := manager.entries[key]
+	manager.entries[key] = entry
+	manager.touchLocked(entry)
+	if manager.dependenciesChangedLocked(plan.dependencies) {
 		entry.dirty[canonicalCachePath(rootPath)] = struct{}{}
 		entry.eventCount++
 	}
+	var retired []*scanCacheEntry
+	if old != nil && old != entry {
+		retired = append(retired, old)
+	}
+	// A broader tree makes same-profile child caches redundant.
+	for otherKey, other := range manager.entries {
+		if other == entry || other.profileKey != profileKey || !cachePathWithin(other.rootPath, rootPath) {
+			continue
+		}
+		delete(manager.entries, otherKey)
+		retired = append(retired, other)
+	}
+	for len(manager.entries) > maximumInMemoryScanCaches {
+		var oldestKey string
+		var oldest *scanCacheEntry
+		for candidateKey, candidate := range manager.entries {
+			if candidate == entry {
+				continue
+			}
+			if oldest == nil || candidate.lastUsed < oldest.lastUsed {
+				oldestKey, oldest = candidateKey, candidate
+			}
+		}
+		if oldest == nil {
+			break
+		}
+		delete(manager.entries, oldestKey)
+		retired = append(retired, oldest)
+	}
 	manager.mu.Unlock()
-	if old != nil && old.watcher != nil {
-		_ = old.watcher.Close()
+	for _, retiredEntry := range retired {
+		if retiredEntry.watcher != nil {
+			_ = retiredEntry.watcher.Close()
+		}
 	}
 
 	directories := watchedDirectories(rootPath, nodes)
@@ -208,7 +339,8 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		func(err error) { manager.markWatcherFailed(entry, err) },
 	)
 	manager.mu.Lock()
-	if manager.entry == entry {
+	retained := manager.containsLocked(entry)
+	if retained {
 		if err != nil {
 			entry.invalid = true
 		} else {
@@ -216,9 +348,21 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		}
 	}
 	manager.mu.Unlock()
+	if !retained && watcher != nil {
+		_ = watcher.Close()
+	}
 	if err != nil && manager.logger != nil {
 		manager.logger.Warningf("scan cache watcher disabled for %s: %v", rootPath, err)
 	}
+}
+
+func (manager *scanCacheManager) dependenciesChangedLocked(dependencies []scanCacheDependency) bool {
+	for _, dependency := range dependencies {
+		if !manager.containsLocked(dependency.entry) || dependency.entry.invalid || dependency.entry.eventCount != dependency.eventCount {
+			return true
+		}
+	}
+	return false
 }
 
 func watchedDirectories(rootPath string, nodes []*Node) []string {
@@ -255,7 +399,7 @@ func indexCachedDirectories(root *Node) map[string]*Node {
 func (manager *scanCacheManager) markChanged(entry *scanCacheEntry, path string) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	if manager.entry != entry {
+	if !manager.containsLocked(entry) {
 		return
 	}
 	clean := canonicalCachePath(path)
@@ -266,7 +410,7 @@ func (manager *scanCacheManager) markChanged(entry *scanCacheEntry, path string)
 
 func (manager *scanCacheManager) markWatcherFailed(entry *scanCacheEntry, err error) {
 	manager.mu.Lock()
-	if manager.entry == entry {
+	if manager.containsLocked(entry) {
 		entry.invalid = true
 		entry.eventCount++
 	}
@@ -282,11 +426,13 @@ func (manager *scanCacheManager) InvalidatePath(path string) {
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	if manager.entry == nil {
-		return
+	clean := canonicalCachePath(path)
+	for _, entry := range manager.entries {
+		if cachePathWithin(clean, entry.rootPath) || cachePathWithin(entry.rootPath, clean) {
+			entry.dirty[clean] = struct{}{}
+			entry.eventCount++
+		}
 	}
-	manager.entry.dirty[canonicalCachePath(path)] = struct{}{}
-	manager.entry.eventCount++
 }
 
 func (manager *scanCacheManager) Close() {
@@ -294,11 +440,16 @@ func (manager *scanCacheManager) Close() {
 		return
 	}
 	manager.mu.Lock()
-	entry := manager.entry
-	manager.entry = nil
+	entries := make([]*scanCacheEntry, 0, len(manager.entries))
+	for _, entry := range manager.entries {
+		entries = append(entries, entry)
+	}
+	manager.entries = make(map[string]*scanCacheEntry)
 	manager.mu.Unlock()
-	if entry != nil && entry.watcher != nil {
-		_ = entry.watcher.Close()
+	for _, entry := range entries {
+		if entry.watcher != nil {
+			_ = entry.watcher.Close()
+		}
 	}
 }
 
@@ -364,8 +515,9 @@ func (manager *scanCacheManager) LoadSnapshot(rootPath string, profile Profile) 
 	_, profileKey := scanProfileCacheKey(profile)
 
 	manager.mu.Lock()
-	entry := manager.entry
-	if entry != nil && entry.profileKey == profileKey && canonicalCachePath(entry.rootPath) == canonicalCachePath(rootPath) {
+	entry := manager.entries[scanMemoryCacheKey(rootPath, profileKey)]
+	if entry != nil {
+		manager.touchLocked(entry)
 		root, nodes := cloneAndReindexTree(entry.root)
 		loaded := loadedScanSnapshot{root: root, nodes: nodes, files: entry.fileCount, dirs: entry.dirCount, savedAt: time.Now()}
 		manager.mu.Unlock()

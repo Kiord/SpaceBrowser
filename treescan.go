@@ -68,14 +68,16 @@ type Scanner struct {
 	fileCount      int64
 	dirCount       int64
 
-	ctx               context.Context
-	onProgress        func(string)
-	progressMu        sync.Mutex
-	lastProgressAt    time.Time
-	report            ScanReport
-	cachedDirectories map[string]*Node
-	dirtyCachePaths   []string
-	reusedDirectories int64
+	ctx                context.Context
+	onProgress         func(string)
+	progressMu         sync.Mutex
+	lastProgressAt     time.Time
+	report             ScanReport
+	cachedDirectories  map[string]*Node
+	dirtyCachePaths    []string
+	cachedReports      map[string]ScanReportSnapshot
+	mergedCacheReports sync.Map
+	reusedDirectories  int64
 }
 
 type untrustedIdentityCandidate struct {
@@ -154,6 +156,10 @@ func (s *Scanner) ReportAllErrors(reportAll bool) {
 func (s *Scanner) SetIncrementalCache(directories map[string]*Node, dirtyPaths []string) {
 	s.cachedDirectories = directories
 	s.dirtyCachePaths = append([]string(nil), dirtyPaths...)
+}
+
+func (s *Scanner) SetIncrementalCacheReports(reports map[string]ScanReportSnapshot) {
+	s.cachedReports = reports
 }
 
 func (s *Scanner) ReusedDirectories() int64 {
@@ -632,6 +638,11 @@ func (s *Scanner) reusableCachedDirectory(path string) *Node {
 	for _, dirty := range s.dirtyCachePaths {
 		if cachePathWithin(dirty, clean) || cachePathWithin(clean, dirty) {
 			return nil
+		}
+	}
+	if report, ok := s.cachedReports[clean]; ok {
+		if _, alreadyMerged := s.mergedCacheReports.LoadOrStore(clean, struct{}{}); !alreadyMerged {
+			s.report.MergeSnapshot(report)
 		}
 	}
 	return cached

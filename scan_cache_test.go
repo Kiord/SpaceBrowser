@@ -144,11 +144,110 @@ func TestScanCacheWatcherChangeMarksAffectedPathDirty(t *testing.T) {
 		directories: map[string]*Node{canonicalCachePath(root): {ID: 0, FullPath: root, IsFolder: true}},
 		dirty:       make(map[string]struct{}),
 	}
-	manager := &scanCacheManager{entry: entry}
+	manager := &scanCacheManager{entries: map[string]*scanCacheEntry{scanMemoryCacheKey(root, profileKey): entry}}
 	changed := filepath.Join(root, "folder", "file.bin")
 	manager.markChanged(entry, changed)
 	plan := manager.Prepare(root, profile)
 	if len(plan.dirty) == 0 || manager.StillClean(entry, 0) {
 		t.Fatalf("watcher change did not dirty cache: %+v", plan.dirty)
+	}
+}
+
+func TestScanCacheKeepsIndependentRoots(t *testing.T) {
+	profile := *defaultProfile()
+	firstRoot := filepath.Join(t.TempDir(), "first")
+	secondRoot := filepath.Join(t.TempDir(), "second")
+	for _, root := range []string{firstRoot, secondRoot} {
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager := newScanCacheManager("", nil)
+	defer manager.Close()
+	for _, root := range []string{firstRoot, secondRoot} {
+		node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
+		manager.Install(root, profile, node, []*Node{node}, 0, 1, ScanReportSnapshot{}, scanReusePlan{})
+	}
+	if plan := manager.Prepare(firstRoot, profile); plan.source == nil || len(plan.directories) == 0 {
+		t.Fatal("first root was evicted when the second root was installed")
+	}
+}
+
+func TestScanCacheOffersChildTreeToBroaderScan(t *testing.T) {
+	profile := *defaultProfile()
+	volume := t.TempDir()
+	child := filepath.Join(volume, "large-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
+	manager := newScanCacheManager("", nil)
+	defer manager.Close()
+	report := ScanReportSnapshot{}
+	report.Skipped[scanSkipHidden] = 2
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{})
+	plan := manager.Prepare(volume, profile)
+	if plan.source != nil || plan.directories[canonicalCachePath(child)] == nil || len(plan.dependencies) != 1 || plan.reports[canonicalCachePath(child)].Skipped[scanSkipHidden] != 2 {
+		t.Fatalf("broader reuse plan = %+v", plan)
+	}
+}
+
+func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
+	volume := t.TempDir()
+	child := filepath.Join(volume, "large-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(child, "cached.bin"), []byte("cached"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cachedRoot, cachedNodes, cachedFiles, cachedDirs := scanTestTree(t, child, platform.Impl)
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	manager := newScanCacheManager("", nil)
+	defer manager.Close()
+	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{})
+
+	if err := os.WriteFile(filepath.Join(volume, "outside.bin"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	scanner := NewScannerWithFilesystem(&profile, 1, filesystem)
+	plan := manager.Prepare(volume, profile)
+	scanner.SetIncrementalCache(plan.directories, plan.dirty)
+	var files, dirs int64
+	if _, err := scanner.buildTree(volume, 0, -1, &files, &dirs); err != nil {
+		t.Fatal(err)
+	}
+	if files != 2 || filesystem.readCount(child) != 0 || scanner.ReusedDirectories() == 0 {
+		t.Fatalf("files=%d child reads=%d reused=%d", files, filesystem.readCount(child), scanner.ReusedDirectories())
+	}
+}
+
+func TestBroaderScanMergesReusedChildReport(t *testing.T) {
+	volume := t.TempDir()
+	child := filepath.Join(volume, "reported-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
+	report := ScanReportSnapshot{}
+	report.Skipped[scanSkipHidden] = 3
+	manager := newScanCacheManager("", nil)
+	defer manager.Close()
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{})
+
+	plan := manager.Prepare(volume, profile)
+	scanner := NewScannerWithFilesystem(&profile, 1, platform.Impl)
+	scanner.SetIncrementalCache(plan.directories, plan.dirty)
+	scanner.SetIncrementalCacheReports(plan.reports)
+	var files, dirs int64
+	if _, err := scanner.buildTree(volume, 0, -1, &files, &dirs); err != nil {
+		t.Fatal(err)
+	}
+	if got := scanner.Report().Skipped[scanSkipHidden]; got != 3 {
+		t.Fatalf("merged hidden skips = %d, want 3", got)
 	}
 }
