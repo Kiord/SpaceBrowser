@@ -1,5 +1,5 @@
 import { Layout } from "./wailsjs/go/main/App.js";
-import { hideContextMenu, showContextMenu } from "./file-actions.js";
+import { hideContextMenu, openRectWithDefault, showContextMenu } from "./file-actions.js";
 import { debounce, formatCompactSize, formatCount, formatModTime, formatSize } from "./format.js";
 import { navigateToSelected, updateNavButtons } from "./navigation.js";
 import { hideRectToast, initNotifications } from "./notifications.js";
@@ -542,8 +542,9 @@ export function initTreemapView() {
     const rectIndex = rectIndexAtPoint(x, y);
     const rect = AppState.rects[rectIndex];
     if (!rect || isPassiveRect(rect)) return;
-    selectRectByIndex(rectIndex);
-    navigateToSelected();
+    selectRectByIndex(rectIndex, true);
+    if (rect.is_folder) navigateToSelected();
+    else openRectWithDefault(rect);
     hideContextMenu();
   });
 

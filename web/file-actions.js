@@ -237,7 +237,7 @@ export function hideContextMenu() {
   byId("contextMenu").style.display = "none";
 }
 
-async function openRectWithDefault(rect = getSelectedRect()) {
+export async function openRectWithDefault(rect = getSelectedRect()) {
   if (!rect?.full_path || isPassiveRect(rect)) return;
   hideContextMenu();
   hideRectToast();
