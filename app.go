@@ -21,6 +21,7 @@ type App struct {
 	desktop             platform.DesktopActions
 	locations           platform.LocationProvider
 	store               TreeStore
+	scanCache           *scanCacheManager
 	showFreeSpace       bool
 	profile             Profile
 	settingsPath        string
@@ -80,7 +81,7 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 			logger.Warningf("could not load settings from %s: %v; using defaults", settingsPath, err)
 		}
 	}
-	return &App{
+	app := &App{
 		showFreeSpace:       true,
 		profile:             profile,
 		settingsPath:        settingsPath,
@@ -90,6 +91,8 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 		desktop:             desktop,
 		locations:           locations,
 	}
+	app.scanCache = newScanCacheManager(defaultPath, logger)
+	return app
 }
 
 func (a *App) Startup(ctx context.Context) {
@@ -101,6 +104,9 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) Shutdown(context.Context) {
+	if a.scanCache != nil {
+		a.scanCache.Close()
+	}
 	a.logger.Infof("SpaceBrowser stopped")
 }
 

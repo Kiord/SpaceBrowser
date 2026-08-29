@@ -3,6 +3,7 @@ module spacebrowser
 go 1.25.0
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/wailsapp/wails/v2 v2.13.0

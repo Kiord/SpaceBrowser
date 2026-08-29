@@ -27,6 +27,7 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 
 	var result DeleteResult
 	var err error
+	nodePath, _ := a.store.NodePath(nodeID)
 	isTrashRoot := a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot)
 	isInTrash := !isTrashRoot && a.store.NodePathMatches(nodeID, a.desktop.IsInTrash)
 	if !isTrashRoot && !isInTrash {
@@ -58,6 +59,9 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	}
 	if err != nil {
 		return DeleteResult{}, a.logDeletionError(err)
+	}
+	if a.scanCache != nil && nodePath != "" {
+		a.scanCache.InvalidatePath(nodePath)
 	}
 	if len(result.trashRefreshes) > 0 {
 		if profile.RescanOnDelete || result.RescanRequired {
@@ -153,6 +157,9 @@ func (a *App) RestoreNode(nodeID int) (DeleteResult, error) {
 	}
 	if err := a.desktop.RestoreTrashItem(path); err != nil {
 		return DeleteResult{}, err
+	}
+	if a.scanCache != nil {
+		a.scanCache.InvalidatePath(path)
 	}
 	files, dirs := a.store.Counts()
 	result := DeleteResult{FileCount: files, DirCount: dirs, RescanRequired: true}

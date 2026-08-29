@@ -1,4 +1,4 @@
-import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
+import { CancelScan, GetFullTree, GetScanProgress, LoadScanSnapshot, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatCount, formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
@@ -92,7 +92,7 @@ async function openScanReport() {
   }
 }
 
-function startScanProgress(path) {
+function startScanProgress(path, cachedSnapshotVisible = false) {
   const dialog = byId("scanDialog");
   const cancelButton = byId("cancelScanButton");
   const progressElement = query(".scan-progress");
@@ -100,6 +100,7 @@ function startScanProgress(path) {
   byId("scanQueryPath").textContent = path;
   byId("scanQueryPath").title = path;
   byId("scanCurrentPath").textContent = path;
+  byId("scanCacheStatus").hidden = !cachedSnapshotVisible;
   progressElement.setAttribute("aria-valuemin", "0");
   progressElement.setAttribute("aria-valuemax", "100");
   displayedScanProgress = 0;
@@ -117,7 +118,10 @@ function startScanProgress(path) {
     dotCount = dotCount % 3 + 1;
     dotsElement.textContent = ".".repeat(dotCount);
   }, 350);
-  if (!dialog.open) dialog.showModal();
+  if (!dialog.open) {
+    if (cachedSnapshotVisible) dialog.show();
+    else dialog.showModal();
+  }
 
   const token = ++scanProgressToken;
   const poll = async () => {
@@ -196,7 +200,25 @@ export async function analyze() {
     byId("pathInput").value = canonicalPath;
     clearScanWarning();
     clearTreemapForScan();
-    startScanProgress(canonicalPath);
+    let cachedSnapshotVisible = false;
+    try {
+      const snapshot = await LoadScanSnapshot(canonicalPath);
+      if (Number(snapshot?.rootId) >= 0) {
+        AppState.node_id = snapshot.rootId;
+        AppState.scanRootPath = canonicalPath;
+        AppState.navHistory = [snapshot.rootId];
+        AppState.fileCount = snapshot.fileCount;
+        AppState.dirCount = snapshot.dirCount;
+        AppState.navIndex = 0;
+        replaceBrowserHistoryEntry(snapshot.rootId, 0);
+        await redraw();
+        cachedSnapshotVisible = true;
+        logDebug(`loaded cached scan snapshot (${snapshot.snapshotAgeMilliseconds || 0} ms old)`);
+      }
+    } catch (error) {
+      logDebug("scan snapshot unavailable:", error);
+    }
+    startScanProgress(canonicalPath, cachedSnapshotVisible);
     scanStarted = true;
 
     const { rootId, fileCount, dirCount, scanReport } = await GetFullTree(canonicalPath);

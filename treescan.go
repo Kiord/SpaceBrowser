@@ -68,11 +68,14 @@ type Scanner struct {
 	fileCount      int64
 	dirCount       int64
 
-	ctx            context.Context
-	onProgress     func(string)
-	progressMu     sync.Mutex
-	lastProgressAt time.Time
-	report         ScanReport
+	ctx               context.Context
+	onProgress        func(string)
+	progressMu        sync.Mutex
+	lastProgressAt    time.Time
+	report            ScanReport
+	cachedDirectories map[string]*Node
+	dirtyCachePaths   []string
+	reusedDirectories int64
 }
 
 type untrustedIdentityCandidate struct {
@@ -146,6 +149,15 @@ func (s *Scanner) ReportAllErrors(reportAll bool) {
 		return
 	}
 	s.report.SetExampleLimit(maximumScanReportExamples)
+}
+
+func (s *Scanner) SetIncrementalCache(directories map[string]*Node, dirtyPaths []string) {
+	s.cachedDirectories = directories
+	s.dirtyCachePaths = append([]string(nil), dirtyPaths...)
+}
+
+func (s *Scanner) ReusedDirectories() int64 {
+	return atomic.LoadInt64(&s.reusedDirectories)
 }
 
 func (s *Scanner) reportProgress(path string) {
@@ -345,6 +357,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		return nil, nil
 	}
 	s.reportProgress(abs)
+	if cached := s.reusableCachedDirectory(abs); cached != nil {
+		return s.cloneCachedSubtree(cached, depth, parentID, fileCount, dirCount), nil
+	}
 
 	// directory node
 	root := &Node{
@@ -603,4 +618,69 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	// Sort children by size desc (UI expects this)
 	sort.Slice(root.Children, func(i, j int) bool { return root.Children[i].Size > root.Children[j].Size })
 	return root, nil
+}
+
+func (s *Scanner) reusableCachedDirectory(path string) *Node {
+	if len(s.cachedDirectories) == 0 {
+		return nil
+	}
+	clean := canonicalCachePath(path)
+	cached := s.cachedDirectories[clean]
+	if cached == nil {
+		return nil
+	}
+	for _, dirty := range s.dirtyCachePaths {
+		if cachePathWithin(dirty, clean) || cachePathWithin(clean, dirty) {
+			return nil
+		}
+	}
+	return cached
+}
+
+func cachePathWithin(path, root string) bool {
+	path = canonicalCachePath(path)
+	root = canonicalCachePath(root)
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
+}
+
+func (s *Scanner) cloneCachedSubtree(source *Node, depth, parentID int, fileCount, dirCount *int64) *Node {
+	var clone func(*Node, int, int) *Node
+	clone = func(cached *Node, parent, currentDepth int) *Node {
+		if cached == nil || cached.IsFreeSpace {
+			return nil
+		}
+		node := *cached
+		node.ParentID = parent
+		node.Depth = currentDepth
+		node.Children = make([]*Node, 0, len(cached.Children))
+		if cached.IsSmallFiles {
+			node.ID = -1
+		} else {
+			s.assignID(&node)
+		}
+		for _, child := range cached.Children {
+			if cloned := clone(child, node.ID, currentDepth+1); cloned != nil {
+				node.Children = append(node.Children, cloned)
+			}
+		}
+		return &node
+	}
+
+	files := source.EntryFiles
+	dirs := source.EntryDirs
+	if files == 0 && dirs == 0 {
+		files, dirs = subtreeEntryCounts(source)
+	}
+	atomic.AddInt64(fileCount, int64(files))
+	atomic.AddInt64(dirCount, int64(dirs))
+	atomic.AddInt64(&s.fileCount, int64(files))
+	atomic.AddInt64(&s.dirCount, int64(dirs))
+	atomic.AddInt64(&s.workDiscovered, int64(files+dirs))
+	atomic.AddInt64(&s.workProcessed, int64(files+dirs))
+	atomic.AddInt64(&s.reusedDirectories, int64(dirs))
+	return clone(source, parentID, depth)
 }

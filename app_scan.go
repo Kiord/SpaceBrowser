@@ -15,10 +15,12 @@ import (
 )
 
 type TreeInfo struct {
-	RootID     int             `json:"rootId"`
-	FileCount  int             `json:"fileCount"`
-	DirCount   int             `json:"dirCount"`
-	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
+	RootID                  int             `json:"rootId"`
+	FileCount               int             `json:"fileCount"`
+	DirCount                int             `json:"dirCount"`
+	ScanReport              *ScanReportInfo `json:"scanReport,omitempty"`
+	Cached                  bool            `json:"cached,omitempty"`
+	SnapshotAgeMilliseconds int64           `json:"snapshotAgeMilliseconds,omitempty"`
 }
 
 type ScanProgress struct {
@@ -187,6 +189,18 @@ func (a *App) publishScanResult(
 	return persistReport(), nil
 }
 
+func (a *App) publishCachedScanResult(ctx context.Context, generation uint64, persistReport func() *ScanReportInfo) (*ScanReportInfo, error) {
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+	if a.scanGeneration != generation || !a.scanActive {
+		return nil, errScanSuperseded
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return persistReport(), nil
+}
+
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	path, err := a.validateScanPath(path)
 	if err != nil {
@@ -207,12 +221,38 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()
+	cachePlan := a.scanCache.Prepare(path, profile)
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
+	if cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
+		if volumeUsage != nil {
+			a.store.UpdateDiskUsage(int64(volumeUsage.Total), int64(volumeUsage.Free))
+		}
+		duration := time.Since(startedAt)
+		report := cachePlan.source.report
+		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, func() *ScanReportInfo {
+			return a.persistScanReport(path, startedAt, duration, profile, report, int64(cachePlan.source.fileCount), int64(cachePlan.source.dirCount), cachePlan.source.root.Size)
+		})
+		if publishErr != nil {
+			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, publishErr
+		}
+		a.logScanReport(report)
+		a.logger.Infof("scan cache reused the complete tree for %s", path)
+		a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, cachePlan.source.fileCount, cachePlan.source.dirCount, cachePlan.source.root.Size)
+		return &TreeInfo{RootID: cachePlan.source.root.ID, FileCount: cachePlan.source.fileCount, DirCount: cachePlan.source.dirCount, ScanReport: reportInfo}, nil
+	}
+	if cachePlan.source != nil && len(cachePlan.dirty) == 0 {
+		// A watcher event arrived after Prepare. Refresh the plan so the scanner
+		// cannot reuse a tree using the now-stale empty dirty set.
+		cachePlan = a.scanCache.Prepare(path, profile)
+	}
 	var files, dirs int64
 	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
 	// Persisted scan reports need the complete error list independently of the
 	// terminal verbosity selected by the user.
 	scanner.ReportAllErrors(true)
+	if len(cachePlan.directories) > 0 {
+		scanner.SetIncrementalCache(cachePlan.directories, cachePlan.dirty)
+	}
 	a.attachScanner(generation, scanner)
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
@@ -265,8 +305,65 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
 	}
 	a.logScanReport(report)
+	if reused := scanner.ReusedDirectories(); reused > 0 {
+		a.logger.Infof("scan cache reused %d directories", reused)
+	}
+	a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan.source, cachePlan.eventCount)
+	snapshotStartedAt := time.Now()
+	if snapshotErr := a.scanCache.SaveSnapshot(path, profile, root, int(files), int(dirs), report); snapshotErr != nil {
+		a.logger.Warningf("could not save scan snapshot: %v", snapshotErr)
+	} else if a.scanCache != nil && a.scanCache.directory != "" {
+		a.logger.Debugf("scan snapshot saved in %s", time.Since(snapshotStartedAt).Round(time.Millisecond))
+	}
 	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
+}
+
+func (a *App) LoadScanSnapshot(path string) (*TreeInfo, error) {
+	path, err := a.validateScanPath(path)
+	if err != nil {
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
+	}
+	profile := a.GetProfile()
+	if files, dirs, current := a.scanCache.Current(path, profile); current {
+		return &TreeInfo{RootID: 0, FileCount: files, DirCount: dirs, Cached: true}, nil
+	}
+	loaded, err := a.scanCache.LoadSnapshot(path, profile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			a.logger.Warningf("scan snapshot unavailable for %s: %v", path, err)
+		}
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
+	}
+	if a.filesystem.IsMountRoot(path) {
+		if usage, usageErr := disk.Usage(path); usageErr == nil {
+			loaded.root.DiskTotal = int64(usage.Total)
+			loaded.root.DiskFree = int64(usage.Free)
+			for _, child := range loaded.root.Children {
+				if child.IsFreeSpace {
+					child.Size = int64(usage.Free)
+					child.DiskTotal = int64(usage.Total)
+				}
+			}
+			sort.Slice(loaded.root.Children, func(i, j int) bool { return loaded.root.Children[i].Size > loaded.root.Children[j].Size })
+		}
+	}
+	a.scanMu.Lock()
+	if a.scanActive {
+		a.scanMu.Unlock()
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
+	}
+	a.store.Replace(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
+	a.scanMu.Unlock()
+	age := time.Since(loaded.savedAt)
+	if age < 0 {
+		age = 0
+	}
+	a.logger.Infof("loaded persisted scan snapshot for %s (%s old); verifying with a live scan", path, age.Round(time.Second))
+	return &TreeInfo{
+		RootID: loaded.root.ID, FileCount: loaded.files, DirCount: loaded.dirs,
+		Cached: true, SnapshotAgeMilliseconds: age.Milliseconds(),
+	}, nil
 }
 
 func (a *App) logScanReport(report ScanReportSnapshot) {
