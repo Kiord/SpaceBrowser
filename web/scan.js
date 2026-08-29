@@ -118,10 +118,7 @@ function startScanProgress(path, cachedSnapshotVisible = false) {
     dotCount = dotCount % 3 + 1;
     dotsElement.textContent = ".".repeat(dotCount);
   }, 350);
-  if (!dialog.open) {
-    if (cachedSnapshotVisible) dialog.show();
-    else dialog.showModal();
-  }
+  if (!dialog.open) dialog.showModal();
 
   const token = ++scanProgressToken;
   const poll = async () => {
