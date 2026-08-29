@@ -1,6 +1,6 @@
 import { GetAssociatedIcon } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
-import { detailedByteSize, formatModTime } from "./format.js";
+import { detailedByteSize, formatModTime, formatSize } from "./format.js";
 import { AppState } from "./state.js";
 
 let canvasCoords = null;
@@ -112,7 +112,7 @@ function showRectToast(rect, rectIndex, clientX, clientY) {
   const nameIsPathSuffix = !!name && suffix.toLocaleLowerCase() === name.toLocaleLowerCase();
   byId("rectToastPathPrefix").textContent = nameIsPathSuffix ? fullPath.slice(0, -name.length) : fullPath;
   byId("rectToastName").textContent = nameIsPathSuffix ? name : "";
-  byId("rectToastSize").textContent = detailedByteSize(rect.size);
+  byId("rectToastSize").textContent = `${formatSize(rect.size)} (${detailedByteSize(rect.size)})`;
   byId("rectToastCreated").textContent = `Modification date : ${rect.mtime ? formatModTime(rect.mtime) : "unavailable"}`;
   updateAssociatedIcon(rect);
   byId("rectToast").hidden = false;
