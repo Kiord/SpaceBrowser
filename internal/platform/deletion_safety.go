@@ -12,6 +12,7 @@ const (
 	mountRootDeletionMessage  = "SpaceBrowser does not allow deleting mounted filesystem roots"
 	mountChildDeletionMessage = "SpaceBrowser does not allow deleting this folder because it contains a mounted filesystem"
 	specialDeletionMessage    = "SpaceBrowser does not allow deleting special filesystem objects"
+	physicalDeletionMessage   = "SpaceBrowser could not resolve the physical deletion target, so deletion was blocked"
 )
 
 func validateDeletionFileType(info os.FileInfo) error {
@@ -28,15 +29,25 @@ func validateDeletionTarget(path string, info os.FileInfo, protectedTrees, prote
 		return fmt.Errorf("inspect deletion target: %w", err)
 	}
 	clean = filepath.Clean(clean)
-
-	for _, root := range protectedTrees {
-		if pathWithin(clean, root, caseInsensitive) {
-			return fmt.Errorf("%s", protectedDeletionMessage)
-		}
+	physical, err := physicalDeletionPath(clean, info)
+	if err != nil {
+		return fmt.Errorf("%s: %w", physicalDeletionMessage, err)
 	}
-	for _, exact := range protectedExact {
-		if samePath(clean, exact, caseInsensitive) {
-			return fmt.Errorf("%s", protectedDeletionMessage)
+	paths := []string{clean}
+	if !samePath(clean, physical, caseInsensitive) {
+		paths = append(paths, physical)
+	}
+
+	for _, candidate := range paths {
+		for _, root := range protectedTrees {
+			if pathWithin(candidate, root, caseInsensitive) {
+				return fmt.Errorf("%s", protectedDeletionMessage)
+			}
+		}
+		for _, exact := range protectedExact {
+			if samePath(candidate, exact, caseInsensitive) {
+				return fmt.Errorf("%s", protectedDeletionMessage)
+			}
 		}
 	}
 	if err := validateDeletionFileType(info); err != nil {
@@ -48,15 +59,32 @@ func validateDeletionTarget(path string, info os.FileInfo, protectedTrees, prote
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil
 	}
-	for _, mountPoint := range mountPoints {
-		if samePath(clean, mountPoint, caseInsensitive) {
-			return fmt.Errorf("%s", mountRootDeletionMessage)
-		}
-		if pathWithin(mountPoint, clean, caseInsensitive) {
-			return fmt.Errorf("%s", mountChildDeletionMessage)
+	for _, candidate := range paths {
+		for _, mountPoint := range mountPoints {
+			if samePath(candidate, mountPoint, caseInsensitive) {
+				return fmt.Errorf("%s", mountRootDeletionMessage)
+			}
+			if pathWithin(mountPoint, candidate, caseInsensitive) {
+				return fmt.Errorf("%s", mountChildDeletionMessage)
+			}
 		}
 	}
 	return nil
+}
+
+// physicalDeletionPath resolves aliases in the path that RemoveAll would
+// traverse. A final symlink (including a Windows junction represented as a
+// symlink) is deliberately preserved because deleting it removes the link
+// itself rather than its target.
+func physicalDeletionPath(clean string, info os.FileInfo) (string, error) {
+	if info.Mode()&os.ModeSymlink != 0 {
+		parent, err := resolvePhysicalPath(filepath.Dir(clean))
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(parent, filepath.Base(clean)), nil
+	}
+	return resolvePhysicalPath(clean)
 }
 
 func samePath(first, second string, caseInsensitive bool) bool {
