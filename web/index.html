@@ -278,15 +278,16 @@
 
         <section id="settingsAppearancePanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsAppearanceTab" data-settings-panel="appearance" hidden>
           <div class="settings-row settings-row-top">
-            <label for="settingsPalette">Rectangle colours</label>
+            <label for="settingsPaletteButton">Rectangle colours</label>
             <div>
-              <select id="settingsPalette">
-                <option value="default">Default</option>
-                <option value="spacemonger">SpaceMonger 1.4</option>
-                <option value="earth">Earth</option>
-                <option value="ocean">Ocean</option>
-                <option value="retro">Retro</option>
-              </select>
+              <div class="palette-combobox">
+                <button id="settingsPaletteButton" class="palette-combobox-button" type="button" aria-haspopup="listbox" aria-controls="settingsPaletteMenu" aria-expanded="false">
+                  <span>Default</span>
+                  <svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5"></path></svg>
+                </button>
+                <div id="settingsPaletteMenu" class="palette-combobox-menu" role="listbox" hidden></div>
+                <select id="settingsPalette" tabindex="-1" aria-hidden="true" hidden></select>
+              </div>
               <div id="settingsPalettePreview" class="palette-preview" aria-hidden="true"></div>
               <div class="palette-buttons">
                 <button id="settingsAddPalette" type="button">Add theme</button>
@@ -301,8 +302,7 @@
               <input id="settingsCustomPaletteName" type="text" maxlength="64" autocomplete="off">
             </label>
             <div id="settingsCustomPaletteColors" class="custom-palette-colors"></div>
-            <button id="settingsAddPaletteColor" type="button">Add colour</button>
-            <small>Up to 32 colours per theme.</small>
+            <button id="settingsAddPaletteColor" type="button" aria-label="Add colour" title="Add colour">+</button>
           </fieldset>
           <div class="settings-row range-settings-row">
             <label for="settingsZoomFactor">Zoom factor</label>

@@ -28,6 +28,7 @@ let activeSettingsPath = "";
 let defaultSettingsPath = "";
 let pendingRestoreTab = "";
 let draftCustomThemes = [];
+let draggedColorIndex = -1;
 
 const MAX_CUSTOM_THEMES = 32;
 const MAX_THEME_COLORS = 32;
@@ -204,6 +205,126 @@ function populatePaletteSelect(selectedPalette) {
   }
   select.value = selectedPalette;
   if (!select.value) select.value = "default";
+  renderPaletteMenu();
+  updatePaletteComboboxButton();
+}
+
+function paletteLabel(paletteName) {
+  return BUILTIN_PALETTE_LABELS[paletteName] || paletteName || "Default";
+}
+
+function updatePaletteComboboxButton() {
+  const selected = byId("settingsPalette").value;
+  byId("settingsPaletteButton").querySelector("span").textContent = paletteLabel(selected);
+}
+
+function paletteMenuOption(value, label, customThemeIndex = -1) {
+  const option = document.createElement("button");
+  option.type = "button";
+  option.className = "palette-combobox-option";
+  option.setAttribute("role", "option");
+  option.dataset.palette = value;
+  if (customThemeIndex >= 0) option.dataset.customThemeIndex = String(customThemeIndex);
+  const selected = byId("settingsPalette").value === value;
+  option.classList.toggle("is-selected", selected);
+  option.setAttribute("aria-selected", String(selected));
+  option.textContent = label;
+  const previewOption = () => {
+    updatePalettePreview(value);
+    previewDraftPalette(value);
+  };
+  option.addEventListener("pointerenter", previewOption);
+  option.addEventListener("focus", previewOption);
+  option.addEventListener("click", () => selectPalette(value, customThemeIndex));
+  return option;
+}
+
+function renderPaletteMenu() {
+  const menu = byId("settingsPaletteMenu");
+  const children = [];
+  const builtInLabel = document.createElement("span");
+  builtInLabel.className = "palette-combobox-group";
+  builtInLabel.setAttribute("role", "presentation");
+  builtInLabel.textContent = "Built-in";
+  children.push(builtInLabel);
+  Object.entries(BUILTIN_PALETTE_LABELS).forEach(([value, label]) => {
+    children.push(paletteMenuOption(value, label));
+  });
+  if (draftCustomThemes.length) {
+    const customLabel = document.createElement("span");
+    customLabel.className = "palette-combobox-group";
+    customLabel.setAttribute("role", "presentation");
+    customLabel.textContent = "Custom";
+    children.push(customLabel);
+    draftCustomThemes.forEach((theme, index) => {
+      children.push(paletteMenuOption(theme.name, theme.name || "Unnamed theme", index));
+    });
+  }
+  menu.replaceChildren(...children);
+}
+
+function openPaletteMenu() {
+  const menu = byId("settingsPaletteMenu");
+  menu.hidden = false;
+  byId("settingsPaletteButton").setAttribute("aria-expanded", "true");
+}
+
+function closePaletteMenu(restoreSelectedPreview = true) {
+  const menu = byId("settingsPaletteMenu");
+  if (menu.hidden) return;
+  menu.hidden = true;
+  byId("settingsPaletteButton").setAttribute("aria-expanded", "false");
+  if (restoreSelectedPreview) {
+    updatePalettePreview(byId("settingsPalette").value);
+    previewDraftPalette();
+  }
+}
+
+function togglePaletteMenu() {
+  if (byId("settingsPaletteMenu").hidden) openPaletteMenu();
+  else closePaletteMenu();
+}
+
+function handlePaletteButtonKeydown(event) {
+  if (event.key === "Escape") {
+    closePaletteMenu();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  openPaletteMenu();
+  const options = [...byId("settingsPaletteMenu").querySelectorAll("[role=option]")];
+  const selectedIndex = Math.max(0, options.findIndex(option => option.classList.contains("is-selected")));
+  const index = event.key === "ArrowUp" ? Math.max(0, selectedIndex - 1) : selectedIndex;
+  options[index]?.focus();
+}
+
+function handlePaletteMenuKeydown(event) {
+  const options = [...byId("settingsPaletteMenu").querySelectorAll("[role=option]")];
+  const index = options.indexOf(document.activeElement);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePaletteMenu();
+    byId("settingsPaletteButton").focus();
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const offset = event.key === "ArrowDown" ? 1 : -1;
+    options[Math.max(0, Math.min(options.length - 1, index + offset))]?.focus();
+  }
+}
+
+function selectPalette(value, customThemeIndex = -1) {
+  const select = byId("settingsPalette");
+  select.value = value;
+  if (customThemeIndex >= 0) {
+    const selectedOption = [...select.options].find(option => option.dataset.customThemeIndex === String(customThemeIndex));
+    if (selectedOption) selectedOption.selected = true;
+  }
+  updateAppearanceFormOutputs();
+  renderPaletteMenu();
+  updatePaletteComboboxButton();
+  closePaletteMenu(false);
+  previewDraftPalette();
 }
 
 function selectedCustomThemeIndex() {
@@ -213,11 +334,11 @@ function selectedCustomThemeIndex() {
   return Number.isInteger(index) && index >= 0 && index < draftCustomThemes.length ? index : -1;
 }
 
-function previewDraftPalette() {
+function previewDraftPalette(paletteName = byId("settingsPalette").value) {
   if (AppState.node_id == null) return;
   void applyAppearance({
     ...(AppState.profile?.appearance || defaultAppearance()),
-    palette: byId("settingsPalette").value,
+    palette: paletteName,
     customThemes: draftCustomThemes,
   });
 }
@@ -236,6 +357,13 @@ function renderCustomPaletteEditor() {
   list.replaceChildren(...theme.colors.map((color, colorIndex) => {
     const row = document.createElement("div");
     row.className = "custom-palette-color";
+
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "custom-palette-color-handle";
+    dragHandle.draggable = true;
+    dragHandle.textContent = "⠿";
+    dragHandle.title = "Drag to reorder";
+    dragHandle.setAttribute("aria-label", `Reorder colour ${colorIndex + 1}`);
 
     const picker = document.createElement("input");
     picker.type = "color";
@@ -278,7 +406,36 @@ function renderCustomPaletteEditor() {
       updateAppearanceFormOutputs();
       previewDraftPalette();
     });
-    row.append(picker, textInput, removeButton);
+    dragHandle.addEventListener("dragstart", event => {
+      draggedColorIndex = colorIndex;
+      row.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(colorIndex));
+    });
+    dragHandle.addEventListener("dragend", () => {
+      draggedColorIndex = -1;
+      row.classList.remove("is-dragging");
+      list.querySelectorAll(".is-drag-target").forEach(item => item.classList.remove("is-drag-target"));
+    });
+    row.addEventListener("dragover", event => {
+      if (draggedColorIndex < 0 || draggedColorIndex === colorIndex) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      row.classList.add("is-drag-target");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("is-drag-target"));
+    row.addEventListener("drop", event => {
+      event.preventDefault();
+      row.classList.remove("is-drag-target");
+      if (draggedColorIndex < 0 || draggedColorIndex === colorIndex) return;
+      const [movedColor] = theme.colors.splice(draggedColorIndex, 1);
+      theme.colors.splice(colorIndex, 0, movedColor);
+      draggedColorIndex = -1;
+      renderCustomPaletteEditor();
+      updatePalettePreview(theme.name);
+      previewDraftPalette();
+    });
+    row.append(dragHandle, picker, textInput, removeButton);
     return row;
   }));
   byId("settingsAddPaletteColor").disabled = theme.colors.length >= MAX_THEME_COLORS;
@@ -334,6 +491,8 @@ function renameCustomTheme(event) {
     option.textContent = name || "Unnamed theme";
   }
   byId("settingsPalette").value = name;
+  renderPaletteMenu();
+  updatePaletteComboboxButton();
   updatePalettePreview(name);
   previewDraftPalette();
 }
@@ -442,6 +601,8 @@ async function openSettings() {
     populateProfileForm(profile);
     populateMiscForm(settingsPath, defaultPath);
     showSettingsTab("general");
+    byId("settingsPaletteMenu").hidden = true;
+    byId("settingsPaletteButton").setAttribute("aria-expanded", "false");
     dialog.showModal();
   } catch (error) {
     logError("loading settings failed:", error);
@@ -475,6 +636,7 @@ function requestPermanentDeleteEnable(event) {
 
 function closeSettings() {
   stopControlBindingCapture();
+  closePaletteMenu(false);
   closeRestoreDefaultsConfirmation();
   closePermanentDeleteWarning();
   const dialog = byId("settingsDialog");
@@ -656,9 +818,15 @@ export function initSettings(options) {
     button.addEventListener("click", () => clearControlBinding(button));
   });
   addControlEventListeners(captureControlBinding, { capture: true });
-  byId("settingsPalette").addEventListener("change", () => {
-    updateAppearanceFormOutputs();
+  byId("settingsPaletteButton").addEventListener("click", togglePaletteMenu);
+  byId("settingsPaletteButton").addEventListener("keydown", handlePaletteButtonKeydown);
+  byId("settingsPaletteMenu").addEventListener("keydown", handlePaletteMenuKeydown);
+  byId("settingsPaletteMenu").addEventListener("pointerleave", () => {
+    updatePalettePreview(byId("settingsPalette").value);
     previewDraftPalette();
+  });
+  document.addEventListener("pointerdown", event => {
+    if (!event.target.closest?.(".palette-combobox")) closePaletteMenu();
   });
   byId("settingsAddPalette").addEventListener("click", addCustomTheme);
   byId("settingsDeletePalette").addEventListener("click", deleteCustomTheme);
