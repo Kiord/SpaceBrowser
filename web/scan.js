@@ -92,7 +92,7 @@ async function openScanReport() {
   }
 }
 
-function startScanProgress(path, cachedSnapshotVisible = false) {
+function startScanProgress(path) {
   const dialog = byId("scanDialog");
   const cancelButton = byId("cancelScanButton");
   const progressElement = query(".scan-progress");
@@ -100,7 +100,6 @@ function startScanProgress(path, cachedSnapshotVisible = false) {
   byId("scanQueryPath").textContent = path;
   byId("scanQueryPath").title = path;
   byId("scanCurrentPath").textContent = path;
-  byId("scanCacheStatus").hidden = !cachedSnapshotVisible;
   progressElement.setAttribute("aria-valuemin", "0");
   progressElement.setAttribute("aria-valuemax", "100");
   displayedScanProgress = 0;
@@ -197,8 +196,7 @@ export async function analyze() {
     byId("pathInput").value = canonicalPath;
     clearScanWarning();
     clearTreemapForScan();
-    let cachedSnapshotVisible = false;
-    try {
+		try {
       const snapshot = await LoadScanSnapshot(canonicalPath);
       if (Number(snapshot?.rootId) >= 0) {
         AppState.node_id = snapshot.rootId;
@@ -209,13 +207,12 @@ export async function analyze() {
         AppState.navIndex = 0;
         replaceBrowserHistoryEntry(snapshot.rootId, 0);
         await redraw();
-        cachedSnapshotVisible = true;
-        logDebug(`loaded cached scan snapshot (${snapshot.snapshotAgeMilliseconds || 0} ms old)`);
+				logDebug(`loaded cached scan snapshot (${snapshot.snapshotAgeMilliseconds || 0} ms old)`);
       }
     } catch (error) {
       logDebug("scan snapshot unavailable:", error);
     }
-    startScanProgress(canonicalPath, cachedSnapshotVisible);
+		startScanProgress(canonicalPath);
     scanStarted = true;
 
     const { rootId, fileCount, dirCount, scanReport } = await GetFullTree(canonicalPath);

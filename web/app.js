@@ -1,6 +1,6 @@
 import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
-import { hideContextMenu, initFileActions } from "./file-actions.js";
+import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
@@ -49,8 +49,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const handleVisitShortcut = event => {
     if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.visitSelected)) return;
+    const rect = getSelectedRect();
+    if (!rect || isPassiveRect(rect)) return;
     event.preventDefault();
-    navigateToSelected();
+    if (rect.is_folder) navigateToSelected();
+    else openRectWithDefault(rect);
   };
   addControlEventListeners(handleVisitShortcut);
 
