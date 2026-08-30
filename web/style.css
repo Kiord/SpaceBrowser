@@ -1088,6 +1088,104 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   min-width: 0;
 }
 
+.palette-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.settings-dialog .palette-buttons button {
+  min-height: 25px;
+  padding: 3px 9px;
+}
+
+.custom-palette-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 0 154px;
+  padding: 9px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  background: #fafafa;
+}
+
+.custom-palette-editor[hidden] {
+  display: none;
+}
+
+.custom-palette-editor legend {
+  padding: 0 5px;
+  font-weight: 600;
+}
+
+.custom-palette-name {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.custom-palette-name input,
+.custom-palette-color input[type="text"] {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 5px 6px;
+  color: #333;
+  background: #fff;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+}
+
+.custom-palette-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 148px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.custom-palette-color {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 27px;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-palette-color input[type="color"] {
+  width: 34px;
+  height: 27px;
+  padding: 2px;
+  background: #fff;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.custom-palette-color input.is-invalid {
+  border-color: #b94842;
+  background: #fff2f1;
+}
+
+.settings-dialog .custom-palette-color-remove {
+  min-height: 27px;
+  padding: 0;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.custom-palette-editor > small {
+  color: #666;
+}
+
+.settings-dialog #settingsAddPaletteColor {
+  align-self: flex-start;
+  min-height: 25px;
+  padding: 3px 9px;
+}
+
 .range-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px;

@@ -23,6 +23,7 @@ func (a *App) GetProfile() Profile {
 	defer a.settingsMu.RUnlock()
 	profile := a.profile
 	profile.ExcludedPaths = append([]string(nil), a.profile.ExcludedPaths...)
+	profile.Appearance.CustomThemes = cloneColorThemes(a.profile.Appearance.CustomThemes)
 	return profile
 }
 
@@ -174,15 +175,60 @@ func normalizeControlSettings(controls ControlSettings) ControlSettings {
 }
 
 func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, error) {
-	if appearance == (AppearanceSettings{}) {
+	if appearance.Palette == "" && appearance.ZoomFactor == 0 && appearance.CornerRadius == 0 &&
+		appearance.ReliefStrength == 0 && appearance.HoverBrightness == 0 &&
+		!appearance.RollOverBoxes && len(appearance.CustomThemes) == 0 {
 		return defaultAppearanceSettings(), nil
 	}
-	validPalettes := map[string]bool{
-		"default": true, "legacy": true, "single": true, "duotone": true,
-		"tricolor": true, "playful": true, "monochrome": true,
-		"earth": true, "ocean": true, "retro": true,
+	appearance.CustomThemes = cloneColorThemes(appearance.CustomThemes)
+	const (
+		maxCustomThemes = 32
+		maxThemeColors  = 32
+	)
+	builtInPalettes := map[string]bool{
+		"default": true, "spacemonger": true, "ocean": true,
+		"earth": true, "retro": true,
 	}
-	if !validPalettes[appearance.Palette] {
+	if len(appearance.CustomThemes) > maxCustomThemes {
+		return AppearanceSettings{}, fmt.Errorf("at most %d custom colour themes are allowed", maxCustomThemes)
+	}
+	seenNames := make(map[string]struct{}, len(appearance.CustomThemes))
+	selectedPalette := strings.TrimSpace(appearance.Palette)
+	for index := range appearance.CustomThemes {
+		theme := &appearance.CustomThemes[index]
+		theme.Name = strings.TrimSpace(theme.Name)
+		if theme.Name == "" || len([]rune(theme.Name)) > 64 {
+			return AppearanceSettings{}, fmt.Errorf("custom colour theme names must contain 1 to 64 characters")
+		}
+		foldedName := strings.ToLower(theme.Name)
+		if builtInPalettes[foldedName] {
+			return AppearanceSettings{}, fmt.Errorf("custom colour theme name %q is reserved", theme.Name)
+		}
+		if _, exists := seenNames[foldedName]; exists {
+			return AppearanceSettings{}, fmt.Errorf("duplicate custom colour theme name %q", theme.Name)
+		}
+		seenNames[foldedName] = struct{}{}
+		if len(theme.Colors) == 0 || len(theme.Colors) > maxThemeColors {
+			return AppearanceSettings{}, fmt.Errorf("custom colour theme %q must contain 1 to %d colours", theme.Name, maxThemeColors)
+		}
+		for colorIndex, color := range theme.Colors {
+			normalized, ok := normalizeThemeColor(color)
+			if !ok {
+				return AppearanceSettings{}, fmt.Errorf("invalid colour %q in custom theme %q", color, theme.Name)
+			}
+			theme.Colors[colorIndex] = normalized
+		}
+		if strings.EqualFold(selectedPalette, theme.Name) {
+			selectedPalette = theme.Name
+		}
+	}
+	appearance.Palette = selectedPalette
+	if !builtInPalettes[appearance.Palette] {
+		if _, custom := seenNames[strings.ToLower(appearance.Palette)]; !custom {
+			return AppearanceSettings{}, fmt.Errorf("unknown colour palette %q", appearance.Palette)
+		}
+	}
+	if appearance.Palette == "" {
 		return AppearanceSettings{}, fmt.Errorf("unknown colour palette %q", appearance.Palette)
 	}
 	if math.IsNaN(appearance.ZoomFactor) || math.IsInf(appearance.ZoomFactor, 0) || appearance.ZoomFactor < 0.5 || appearance.ZoomFactor > 5 {
@@ -198,4 +244,34 @@ func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, err
 		return AppearanceSettings{}, fmt.Errorf("hover brightness must be between 0 and 0.3")
 	}
 	return appearance, nil
+}
+
+func cloneColorThemes(themes []ColorTheme) []ColorTheme {
+	if len(themes) == 0 {
+		return nil
+	}
+	cloned := make([]ColorTheme, len(themes))
+	for index, theme := range themes {
+		cloned[index] = ColorTheme{
+			Name:   theme.Name,
+			Colors: append([]string(nil), theme.Colors...),
+		}
+	}
+	return cloned
+}
+
+func normalizeThemeColor(color string) (string, bool) {
+	color = strings.TrimSpace(color)
+	if len(color) == 4 && color[0] == '#' {
+		color = fmt.Sprintf("#%c%c%c%c%c%c", color[1], color[1], color[2], color[2], color[3], color[3])
+	}
+	if len(color) != 7 || color[0] != '#' {
+		return "", false
+	}
+	for _, digit := range color[1:] {
+		if !((digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f') || (digit >= 'A' && digit <= 'F')) {
+			return "", false
+		}
+	}
+	return strings.ToLower(color), true
 }

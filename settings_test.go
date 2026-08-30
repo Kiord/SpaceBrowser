@@ -236,6 +236,80 @@ func TestHoverBrightnessOutsideSliderRangeIsRejected(t *testing.T) {
 	}
 }
 
+func TestCustomColourThemesPersistAndNormalize(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
+	app := newApp(settingsPath)
+	profile := app.GetProfile()
+	profile.Appearance.Palette = "Dusk"
+	profile.Appearance.CustomThemes = []ColorTheme{{
+		Name:   "  Dusk  ",
+		Colors: []string{"#ABC", " #123456 "},
+	}}
+
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatalf("SetProfile() error = %v", err)
+	}
+	got := newApp(settingsPath).GetProfile().Appearance
+	if got.Palette != "Dusk" {
+		t.Fatalf("palette = %q, want Dusk", got.Palette)
+	}
+	wantThemes := []ColorTheme{{Name: "Dusk", Colors: []string{"#aabbcc", "#123456"}}}
+	if !reflect.DeepEqual(got.CustomThemes, wantThemes) {
+		t.Fatalf("custom themes = %#v, want %#v", got.CustomThemes, wantThemes)
+	}
+}
+
+func TestInvalidCustomColourThemesAreRejected(t *testing.T) {
+	tests := []struct {
+		name   string
+		themes []ColorTheme
+	}{
+		{name: "empty name", themes: []ColorTheme{{Colors: []string{"#123456"}}}},
+		{name: "reserved name", themes: []ColorTheme{{Name: "Ocean", Colors: []string{"#123456"}}}},
+		{name: "duplicate name", themes: []ColorTheme{{Name: "Mine", Colors: []string{"#123456"}}, {Name: "mine", Colors: []string{"#abcdef"}}}},
+		{name: "no colours", themes: []ColorTheme{{Name: "Mine"}}},
+		{name: "invalid colour", themes: []ColorTheme{{Name: "Mine", Colors: []string{"red"}}}},
+		{name: "too many colours", themes: []ColorTheme{{Name: "Mine", Colors: make([]string, 33)}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			app := newApp(filepath.Join(t.TempDir(), "settings.json"))
+			profile := app.GetProfile()
+			profile.Appearance.CustomThemes = test.themes
+			if err := app.SetProfile(profile); err == nil {
+				t.Fatal("SetProfile() accepted invalid custom colour themes")
+			}
+		})
+	}
+}
+
+func TestVersionTwelvePaletteMigration(t *testing.T) {
+	for oldPalette, wantPalette := range map[string]string{
+		"legacy":  "spacemonger",
+		"playful": "default",
+	} {
+		t.Run(oldPalette, func(t *testing.T) {
+			settingsPath := filepath.Join(t.TempDir(), "settings.json")
+			legacy := []byte(`{
+  "version": 12,
+  "minFileSize": 1024,
+  "appearance": {
+    "palette": "` + oldPalette + `",
+    "zoomFactor": 1,
+    "reliefStrength": 0.3,
+    "hoverBrightness": 0.12
+  }
+}`)
+			if err := os.WriteFile(settingsPath, legacy, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := newApp(settingsPath).GetProfile().Appearance.Palette; got != wantPalette {
+				t.Fatalf("palette = %q, want %q", got, wantPalette)
+			}
+		})
+	}
+}
+
 func TestSettingsPathCanBeRelocated(t *testing.T) {
 	dir := t.TempDir()
 	defaultPath := filepath.Join(dir, "default", "settings.json")
@@ -318,7 +392,7 @@ func TestVersionOneSettingsGainDefaultAppearance(t *testing.T) {
 	}
 
 	got := newApp(settingsPath).GetProfile()
-	if got.Appearance != defaultAppearanceSettings() {
+	if !reflect.DeepEqual(got.Appearance, defaultAppearanceSettings()) {
 		t.Fatalf("appearance = %#v, want defaults %#v", got.Appearance, defaultAppearanceSettings())
 	}
 }

@@ -25,12 +25,18 @@ type Profile struct {
 }
 
 type AppearanceSettings struct {
-	Palette         string  `json:"palette"`
-	ZoomFactor      float64 `json:"zoomFactor"`
-	CornerRadius    int     `json:"cornerRadius"`
-	ReliefStrength  float64 `json:"reliefStrength"`
-	HoverBrightness float64 `json:"hoverBrightness"`
-	RollOverBoxes   bool    `json:"rollOverBoxes"`
+	Palette         string       `json:"palette"`
+	CustomThemes    []ColorTheme `json:"customThemes,omitempty"`
+	ZoomFactor      float64      `json:"zoomFactor"`
+	CornerRadius    int          `json:"cornerRadius"`
+	ReliefStrength  float64      `json:"reliefStrength"`
+	HoverBrightness float64      `json:"hoverBrightness"`
+	RollOverBoxes   bool         `json:"rollOverBoxes"`
+}
+
+type ColorTheme struct {
+	Name   string   `json:"name"`
+	Colors []string `json:"colors"`
 }
 
 type ControlSettings struct {
