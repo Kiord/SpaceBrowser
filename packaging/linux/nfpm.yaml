@@ -1,0 +1,42 @@
+name: spacebrowser
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: Kiord
+vendor: Kiord
+homepage: https://github.com/Kiord/SpaceBrowser
+license: MIT
+description: Cross-platform disk space visualizer using a size-proportional treemap.
+
+contents:
+  - src: build/bin/spacebrowser
+    dst: /usr/bin/spacebrowser
+    file_info:
+      mode: 0755
+  - src: packaging/linux/spacebrowser.desktop
+    dst: /usr/share/applications/spacebrowser.desktop
+    file_info:
+      mode: 0644
+  - src: assets/appicon.png
+    dst: /usr/share/icons/hicolor/1024x1024/apps/spacebrowser.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/spacebrowser/LICENSE
+    file_info:
+      mode: 0644
+
+overrides:
+  deb:
+    depends:
+      - libglib2.0-0
+      - libgtk-3-0
+      - libwebkit2gtk-4.1-0
+  rpm:
+    depends:
+      - glib2
+      - gtk3
+      - webkit2gtk4.1

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SpaceBrowser
+Comment=Visualize disk usage as a treemap
+Exec=spacebrowser
+Icon=spacebrowser
+Terminal=false
+Categories=System;Utility;FileTools;Filesystem;
+Keywords=disk;storage;space;treemap;filesystem;
+StartupNotify=true
+StartupWMClass=spacebrowser

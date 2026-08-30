@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="SpaceBrowser"
+    Manufacturer="Kiord"
+    Version="$(var.AppVersion)"
+    UpgradeCode="7C5648B1-F689-4FD8-8EBB-7C0D58D436D"
+    Language="1033"
+    Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of SpaceBrowser is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="SpaceBrowserIcon" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="SpaceBrowserIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="SpaceBrowser">
+        <Component Id="SpaceBrowserApplication" Guid="*" Bitness="always64">
+          <File Id="SpaceBrowserExecutable" Source="$(var.ExecutablePath)" Name="spacebrowser.exe" KeyPath="yes">
+            <Shortcut
+              Id="SpaceBrowserStartMenuShortcut"
+              Directory="ProgramMenuFolder"
+              Name="SpaceBrowser"
+              Description="Disk space visualizer"
+              WorkingDirectory="INSTALLFOLDER"
+              Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="SpaceBrowser" Level="1">
+      <ComponentRef Id="SpaceBrowserApplication" />
+    </Feature>
+  </Package>
+</Wix>

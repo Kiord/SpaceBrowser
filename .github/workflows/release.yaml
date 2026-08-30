@@ -35,6 +35,20 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
+      - name: Setup .NET
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global wix --version 4.0.6
+
+      - name: Install nFPM
+        if: runner.os == 'Linux'
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+
       - name: Prepare icons
         shell: bash
         run: |
@@ -43,44 +57,95 @@ jobs:
           [ -f assets/appicon.icns ] && cp assets/appicon.icns build/appicon.icns
           [ -f assets/appicon.ico ]  && cp assets/appicon.ico  build/windows/icon.ico
 
-      - name: Set version from tag
+      - name: Read release version
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+      - name: Set application version from tag
+        shell: bash
+        run: |
           python -c 'import json, pathlib, sys; path = pathlib.Path("wails.json"); config = json.loads(path.read_text()); config["info"]["productVersion"] = sys.argv[1]; path.write_text(json.dumps(config, indent=2) + "\n")' "$VERSION"
 
       - name: Build Wails app
         run: wails build -trimpath -tags webkit2_41
 
-      - name: Package artifact
-        id: pkg
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+
+          $portable = "dist/SpaceBrowser-$env:TAG_VERSION-windows-x64.exe"
+          Copy-Item -LiteralPath build/bin/spacebrowser.exe -Destination $portable
+
+          $executablePath = (Resolve-Path build/bin/spacebrowser.exe).Path
+          $iconPath = (Resolve-Path assets/appicon.ico).Path
+          wix build packaging/windows/SpaceBrowser.wxs `
+            -arch x64 `
+            -d "AppVersion=$env:VERSION" `
+            -d "ExecutablePath=$executablePath" `
+            -d "IconPath=$iconPath" `
+            -o "dist/SpaceBrowser-$env:TAG_VERSION-windows-x64.msi"
+
+      - name: Package Linux release
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          VERSION="${GITHUB_REF##*/}"
-          NAME="SpaceBrowser"
-          case "${{ matrix.os }}" in
-            windows-latest)
-              SRC="build/bin/spacebrowser.exe"
-              OUT="${NAME}-${VERSION}-windows-x64.exe"
-              cp "$SRC" "$OUT"
-              ;;
-            macos-latest)
-              SRC="build/bin/SpaceBrowser.app"
-              OUT="${NAME}-${VERSION}-macOS.zip"
-              ditto -c -k --sequesterRsrc --keepParent "$SRC" "$OUT"
-              ;;
-            ubuntu-latest)
-              SRC="build/bin/spacebrowser"
-              OUT="${NAME}-${VERSION}-linux-x64"
-              cp "$SRC" "$OUT"
-              chmod +x "$OUT"
-              ;;
-          esac
-          echo "artifact=$OUT" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          mkdir -p dist
+
+          cp build/bin/spacebrowser "dist/SpaceBrowser-${TAG_VERSION}-linux-x64"
+          chmod 0755 "dist/SpaceBrowser-${TAG_VERSION}-linux-x64"
+
+          nfpm package \
+            --config packaging/linux/nfpm.yaml \
+            --packager deb \
+            --target "dist/SpaceBrowser-${TAG_VERSION}-linux-amd64.deb"
+          nfpm package \
+            --config packaging/linux/nfpm.yaml \
+            --packager rpm \
+            --target "dist/SpaceBrowser-${TAG_VERSION}-linux-x86_64.rpm"
+
+          dpkg-deb --info "dist/SpaceBrowser-${TAG_VERSION}-linux-amd64.deb"
+
+      - name: Package macOS release
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/bin/SpaceBrowser.app \
+            "dist/SpaceBrowser-${TAG_VERSION}-macOS.zip"
+
+          STAGE="$(mktemp -d "${RUNNER_TEMP}/spacebrowser-dmg.XXXXXX")"
+          cleanup() {
+            case "$STAGE" in
+              "${RUNNER_TEMP}"/*) rm -rf -- "$STAGE" ;;
+              *) echo "Refusing to remove unexpected staging path: $STAGE" >&2 ;;
+            esac
+          }
+          trap cleanup EXIT
+
+          ditto build/bin/SpaceBrowser.app "$STAGE/SpaceBrowser.app"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create \
+            -volname "SpaceBrowser ${VERSION}" \
+            -srcfolder "$STAGE" \
+            -ov \
+            -format UDZO \
+            "dist/SpaceBrowser-${TAG_VERSION}-macOS.dmg"
+          hdiutil verify "dist/SpaceBrowser-${TAG_VERSION}-macOS.dmg"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.pkg.outputs.artifact }}
+          files: dist/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
