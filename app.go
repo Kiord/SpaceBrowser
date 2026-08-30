@@ -16,6 +16,8 @@ import (
 type App struct {
 	ctx                 context.Context
 	initialScanPath     string
+	initialScanNoCache  bool
+	initialScanMu       sync.Mutex
 	logger              *SeverityLogger
 	filesystem          platform.ScannerFilesystem
 	desktop             platform.DesktopActions

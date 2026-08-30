@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 11
+const settingsFileVersion = 12
 
 type persistedSettings struct {
 	Version           int                `json:"version"`
@@ -18,6 +18,7 @@ type persistedSettings struct {
 	MinFileSize       int64              `json:"minFileSize"`
 	FollowSymlinks    bool               `json:"followSymlinks"`
 	SkipNetworkFS     bool               `json:"skipNetworkFS"`
+	UseCache          bool               `json:"useCache"`
 	ShowTooltips      bool               `json:"showTooltips"`
 	TooltipDelayMS    int                `json:"tooltipDelayMs"`
 	AllowDelete       bool               `json:"allowDelete"`
@@ -114,6 +115,10 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		showTooltips = defaultProfile().ShowTooltips
 		tooltipDelayMS = defaultProfile().TooltipDelayMS
 	}
+	useCache := saved.UseCache
+	if saved.Version < 12 {
+		useCache = defaultProfile().UseCache
+	}
 
 	return normalizeProfileWithFilesystem(Profile{
 		ExcludedPaths:        saved.ExcludedPaths,
@@ -121,6 +126,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		MinFileSize:          saved.MinFileSize,
 		FollowSymlinks:       saved.FollowSymlinks,
 		SkipNetworkFS:        saved.SkipNetworkFS,
+		UseCache:             useCache,
 		ShowTooltips:         showTooltips,
 		TooltipDelayMS:       tooltipDelayMS,
 		AllowDelete:          allowDelete,
@@ -139,6 +145,7 @@ func saveSettings(path string, profile Profile) error {
 		MinFileSize:       profile.MinFileSize,
 		FollowSymlinks:    profile.FollowSymlinks,
 		SkipNetworkFS:     profile.SkipNetworkFS,
+		UseCache:          profile.UseCache,
 		ShowTooltips:      profile.ShowTooltips,
 		TooltipDelayMS:    profile.TooltipDelayMS,
 		AllowDelete:       profile.AllowDelete,

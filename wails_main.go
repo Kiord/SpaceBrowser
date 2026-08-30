@@ -43,6 +43,7 @@ func main() {
 	consoleLogger := NewSeverityLogger(cliOptions.verbosity, logOutput)
 	app := newAppWithLogger(consoleLogger)
 	app.initialScanPath = cliOptions.initialPath
+	app.initialScanNoCache = cliOptions.disableCache
 	consoleLogger.Infof("starting SpaceBrowser %s (verbosity %d)", applicationVersion(), cliOptions.verbosity)
 	if cliOptions.initialPath != "" {
 		consoleLogger.Infof("requested initial scan: %s", cliOptions.initialPath)

@@ -14,6 +14,7 @@ type Profile struct {
 	MinFileSize          int64              `json:"minFileSize"`
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	UseCache             bool               `json:"useCache"`
 	ShowTooltips         bool               `json:"showTooltips"`
 	TooltipDelayMS       int                `json:"tooltipDelayMs"`
 	AllowDelete          bool               `json:"allowDelete"`
@@ -103,6 +104,7 @@ func defaultProfile() *Profile {
 		MinFileSize:          1024,
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
+		UseCache:             true,
 		ShowTooltips:         true,
 		TooltipDelayMS:       0,
 		AllowDelete:          false,

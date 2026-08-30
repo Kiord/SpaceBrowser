@@ -463,7 +463,7 @@ func TestPublishScanResultRejectsSupersededGeneration(t *testing.T) {
 
 	replacement := &Node{ID: 0, ParentID: -1, Name: "replacement", IsFolder: true}
 	persisted := false
-	if _, err := app.publishScanResult(oldContext, oldGeneration, replacement, []*Node{replacement}, 0, 1, func() *ScanReportInfo {
+	if _, err := app.publishScanResult(oldContext, oldGeneration, replacement, []*Node{replacement}, 0, 1, false, func() *ScanReportInfo {
 		persisted = true
 		return &ScanReportInfo{}
 	}); !errors.Is(err, errScanSuperseded) {
@@ -488,7 +488,7 @@ func TestPublishScanResultCommitsCurrentGeneration(t *testing.T) {
 	root := &Node{ID: 0, ParentID: -1, Name: "current", IsFolder: true}
 	wantReport := &ScanReportInfo{ErrorCount: 1}
 	persisted := false
-	report, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, func() *ScanReportInfo {
+	report, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, false, func() *ScanReportInfo {
 		persisted = true
 		if !app.scanMu.TryLock() {
 			t.Fatal("scan lock remained held while persisting the accepted report")
@@ -518,7 +518,7 @@ func TestPublishScanResultRejectsCancelledContext(t *testing.T) {
 
 	root := &Node{ID: 0, ParentID: -1, Name: "cancelled", IsFolder: true}
 	persisted := false
-	if _, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, func() *ScanReportInfo {
+	if _, err := app.publishScanResult(ctx, generation, root, []*Node{root}, 0, 1, false, func() *ScanReportInfo {
 		persisted = true
 		return &ScanReportInfo{}
 	}); !errors.Is(err, context.Canceled) {

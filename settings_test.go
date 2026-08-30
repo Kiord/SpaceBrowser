@@ -20,6 +20,7 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		MinFileSize:          1024 * 1024,
 		FollowSymlinks:       true,
 		SkipNetworkFS:        false,
+		UseCache:             false,
 		ShowTooltips:         false,
 		TooltipDelayMS:       350,
 		AllowDelete:          true,
@@ -63,6 +64,9 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	}
 	if _, ok := persisted["deletePermanently"]; !ok {
 		t.Fatal("saved settings do not contain the deletePermanently option")
+	}
+	if _, ok := persisted["useCache"]; !ok {
+		t.Fatal("saved settings do not contain the useCache option")
 	}
 	if _, ok := persisted["allowPermanentDelete"]; ok {
 		t.Fatal("saved settings still contain the old allowPermanentDelete option")
@@ -164,6 +168,9 @@ func TestVersionSixSettingsGainDefaultInput(t *testing.T) {
 	}
 	if !profile.ShowTooltips || profile.TooltipDelayMS != 0 {
 		t.Fatalf("tooltip settings = (%v, %d), want (true, 0)", profile.ShowTooltips, profile.TooltipDelayMS)
+	}
+	if !profile.UseCache {
+		t.Fatal("legacy settings did not gain the default cache setting")
 	}
 }
 

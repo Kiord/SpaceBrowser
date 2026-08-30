@@ -10,8 +10,21 @@ func TestParseCommandLineDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if options.initialPath != "" || options.verbosity != defaultVerbosity {
+	if options.initialPath != "" || options.verbosity != defaultVerbosity || options.disableCache {
 		t.Fatalf("unexpected defaults: %+v", options)
+	}
+}
+
+func TestParseCommandLineDisablesCacheForStartupPath(t *testing.T) {
+	options, err := parseCommandLine([]string{"--no-cache", `C:\Users`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !options.disableCache || options.initialPath != `C:\Users` {
+		t.Fatalf("unexpected options: %+v", options)
+	}
+	if _, err := parseCommandLine([]string{"--no-cache"}); err == nil {
+		t.Fatal("--no-cache without a startup path was accepted")
 	}
 }
 

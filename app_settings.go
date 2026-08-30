@@ -37,13 +37,18 @@ func (a *App) SetProfile(profile Profile) error {
 	}
 
 	a.settingsMu.Lock()
-	defer a.settingsMu.Unlock()
+	wasUsingCache := a.profile.UseCache
 	if a.settingsPath != "" {
 		if err := saveSettings(a.settingsPath, profile); err != nil {
+			a.settingsMu.Unlock()
 			return fmt.Errorf("save settings: %w", err)
 		}
 	}
 	a.profile = profile
+	a.settingsMu.Unlock()
+	if wasUsingCache && !profile.UseCache && a.scanCache != nil {
+		a.scanCache.Clear()
+	}
 	return nil
 }
 

@@ -7,10 +7,11 @@ import (
 )
 
 type commandLineOptions struct {
-	initialPath string
-	verbosity   int
-	showHelp    bool
-	showVersion bool
+	initialPath  string
+	verbosity    int
+	disableCache bool
+	showHelp     bool
+	showVersion  bool
 }
 
 func parseCommandLine(args []string) (commandLineOptions, error) {
@@ -29,6 +30,9 @@ func parseCommandLine(args []string) (commandLineOptions, error) {
 				continue
 			case argument == "--version":
 				options.showVersion = true
+				continue
+			case argument == "--no-cache":
+				options.disableCache = true
 				continue
 			case argument == "-v" || argument == "--verbosity":
 				if i+1 >= len(args) {
@@ -59,6 +63,9 @@ func parseCommandLine(args []string) (commandLineOptions, error) {
 		}
 		options.initialPath = argument
 	}
+	if options.disableCache && options.initialPath == "" && !options.showHelp && !options.showVersion {
+		return options, fmt.Errorf("--no-cache requires a startup scan path")
+	}
 
 	return options, nil
 }
@@ -73,11 +80,12 @@ func setVerbosity(options *commandLineOptions, value string) error {
 }
 
 func commandLineUsage(executable string) string {
-	return fmt.Sprintf(`Usage: %s [path] [-v level]
+	return fmt.Sprintf(`Usage: %s [path] [options]
 
 Launch SpaceBrowser and optionally begin scanning path.
 
 Options:
+      --no-cache        Disable caching for the startup scan
   -v, --verbosity level  Logging verbosity: 0=critical, 1=error,
                          2=warning, 3=info, 4=debug, 5=trace (default 3)
   -h, --help             Show this help

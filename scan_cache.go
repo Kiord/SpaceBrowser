@@ -691,6 +691,30 @@ func (manager *scanCacheManager) InvalidatePath(path string) {
 	}
 }
 
+func (manager *scanCacheManager) Clear() {
+	if manager == nil {
+		return
+	}
+	manager.snapshotMu.Lock()
+	if manager.snapshotQueue != nil {
+		clear(manager.snapshotQueue)
+	}
+	manager.snapshotMu.Unlock()
+
+	manager.mu.Lock()
+	entries := make([]*scanCacheEntry, 0, len(manager.entries))
+	for _, entry := range manager.entries {
+		entries = append(entries, entry)
+	}
+	manager.entries = make(map[string]*scanCacheEntry)
+	manager.mu.Unlock()
+	for _, entry := range entries {
+		if entry.watcher != nil {
+			_ = entry.watcher.Close()
+		}
+	}
+}
+
 func (manager *scanCacheManager) QueueSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot) {
 	if manager == nil || manager.directory == "" || root == nil {
 		return

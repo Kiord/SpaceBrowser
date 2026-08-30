@@ -185,6 +185,7 @@ function populateGeneralForm(profile) {
   byId("settingsSkipHidden").checked = !!profile.skipHidden;
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
+  byId("settingsUseCache").checked = profile.useCache !== false;
   byId("settingsShowTooltips").checked = profile.showTooltips !== false;
   byId("settingsTooltipDelay").value = String(profile.tooltipDelayMs ?? 0);
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
@@ -331,6 +332,7 @@ async function saveSettings(event) {
     minFileSize,
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
+    useCache: byId("settingsUseCache").checked,
     showTooltips: byId("settingsShowTooltips").checked,
     tooltipDelayMs,
     allowDelete: byId("settingsAllowDelete").checked,
