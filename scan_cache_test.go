@@ -15,6 +15,11 @@ type countingCacheFilesystem struct {
 	reads map[string]int
 }
 
+type capacityTreeWatcher struct{}
+
+func (capacityTreeWatcher) AddDirectory(string) error { return errTreeWatchCapacity }
+func (capacityTreeWatcher) Close() error              { return nil }
+
 func (filesystem *countingCacheFilesystem) ReadDir(path string) ([]platform.DirectoryEntry, error) {
 	filesystem.mu.Lock()
 	filesystem.reads[canonicalCachePath(path)]++
@@ -240,6 +245,68 @@ func TestScanCacheWatcherChangeMarksAffectedPathDirty(t *testing.T) {
 	plan := manager.Prepare(root, profile)
 	if len(plan.dirty) == 0 || manager.StillClean(entry, 0) {
 		t.Fatalf("watcher change did not dirty cache: %+v", plan.dirty)
+	}
+}
+
+func TestScanCacheWatchCapacityDirtiesOnlyUnobservedSubtree(t *testing.T) {
+	root := t.TempDir()
+	unobserved := filepath.Join(root, "unobserved")
+	sibling := filepath.Join(root, "watched-sibling")
+	observation := &scanCacheObservation{
+		manager: &scanCacheManager{}, rootPath: root, watcher: capacityTreeWatcher{},
+		dirty: make(map[string]struct{}),
+	}
+
+	observation.WatchDirectory(unobserved)
+	if observation.invalid {
+		t.Fatal("nested watch exhaustion invalidated the complete cache")
+	}
+	if _, ok := observation.dirty[canonicalCachePath(unobserved)]; !ok {
+		t.Fatal("unobserved subtree was not marked dirty")
+	}
+	if _, ok := observation.dirty[canonicalCachePath(root)]; ok {
+		t.Fatal("watch exhaustion dirtied the scan root instead of preserving clean siblings")
+	}
+	if cachePathWithin(sibling, unobserved) || cachePathWithin(unobserved, sibling) {
+		t.Fatal("test paths unexpectedly overlap")
+	}
+	cachedUnobserved := &Node{FullPath: unobserved, IsFolder: true}
+	cachedSibling := &Node{FullPath: sibling, IsFolder: true}
+	scanner := &Scanner{}
+	scanner.SetIncrementalCache(map[string]*Node{
+		canonicalCachePath(unobserved): cachedUnobserved,
+		canonicalCachePath(sibling):    cachedSibling,
+	}, []string{unobserved})
+	if scanner.reusableCachedDirectory(unobserved) != nil {
+		t.Fatal("unobserved subtree was reused")
+	}
+	if scanner.reusableCachedDirectory(sibling) != cachedSibling {
+		t.Fatal("clean watched sibling was not reusable")
+	}
+}
+
+func TestDirtySubtreeSetCompactsAndFallsBackToRoot(t *testing.T) {
+	root := t.TempDir()
+	paths := make(map[string]struct{})
+	parent := filepath.Join(root, "parent")
+	child := filepath.Join(parent, "child")
+	if !addDirtySubtree(paths, root, child, 3) || !addDirtySubtree(paths, root, parent, 3) {
+		t.Fatal("dirty subtree was not recorded")
+	}
+	if len(paths) != 1 {
+		t.Fatalf("nested dirty paths were not compacted: %+v", paths)
+	}
+	if addDirtySubtree(paths, root, child, 3) {
+		t.Fatal("covered child was recorded twice")
+	}
+	for _, name := range []string{"second", "third", "fourth"} {
+		addDirtySubtree(paths, root, filepath.Join(root, name), 3)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("over-budget dirty paths were not collapsed: %+v", paths)
+	}
+	if _, ok := paths[canonicalCachePath(root)]; !ok {
+		t.Fatalf("over-budget dirty paths did not fall back to the scan root: %+v", paths)
 	}
 }
 

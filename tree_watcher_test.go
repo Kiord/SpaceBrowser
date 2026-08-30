@@ -21,6 +21,11 @@ func TestTreeWatcherReportsNestedChanges(t *testing.T) {
 		case changes <- path:
 		default:
 		}
+	}, func(path string) {
+		select {
+		case changes <- path:
+		default:
+		}
 	}, func(err error) {
 		select {
 		case failures <- err:

@@ -20,7 +20,7 @@ type windowsTreeWatcher struct {
 	closing bool
 }
 
-func startTreeWatcher(root string, _ []string, onChange func(string), onFailure func(error)) (treeWatcher, error) {
+func startTreeWatcher(root string, _ []string, onChange func(string), _ func(string), onFailure func(error)) (treeWatcher, error) {
 	path, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		return nil, err

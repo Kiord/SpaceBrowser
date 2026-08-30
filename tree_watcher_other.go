@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && (!darwin || !cgo)
 
 package main
 
@@ -7,9 +7,15 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// Leave most of the process/user inotify allowance available to the desktop
+// and other applications. Trees beyond this point remain cacheable, but their
+// unobserved subtrees are rescanned on the next pass.
+const maximumFSNotifyTreeWatches = 4096
 
 type fsnotifyTreeWatcher struct {
 	watcher *fsnotify.Watcher
@@ -21,7 +27,7 @@ type fsnotifyTreeWatcher struct {
 	paths   map[string]struct{}
 }
 
-func startTreeWatcher(_ string, directories []string, onChange func(string), onFailure func(error)) (treeWatcher, error) {
+func startTreeWatcher(_ string, directories []string, onChange func(string), _ func(string), onFailure func(error)) (treeWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -50,7 +56,13 @@ func (watcher *fsnotifyTreeWatcher) AddDirectory(directory string) error {
 	if _, exists := watcher.paths[clean]; exists {
 		return nil
 	}
+	if len(watcher.paths) >= maximumFSNotifyTreeWatches {
+		return fmt.Errorf("%w (%d directories)", errTreeWatchCapacity, maximumFSNotifyTreeWatches)
+	}
 	if err := watcher.watcher.Add(clean); err != nil {
+		if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || errors.Is(err, syscall.ENOMEM) {
+			return fmt.Errorf("%w: %v", errTreeWatchCapacity, err)
+		}
 		return err
 	}
 	watcher.paths[clean] = struct{}{}
@@ -63,6 +75,9 @@ func (watcher *fsnotifyTreeWatcher) run(onChange func(string), onFailure func(er
 		select {
 		case event, ok := <-watcher.watcher.Events:
 			if !ok {
+				if !watcher.isClosed() {
+					onFailure(errors.New("filesystem watcher event stream closed"))
+				}
 				return
 			}
 			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename|fsnotify.Chmod) != 0 {
@@ -70,23 +85,33 @@ func (watcher *fsnotifyTreeWatcher) run(onChange func(string), onFailure func(er
 			}
 		case err, ok := <-watcher.watcher.Errors:
 			if !ok {
+				if !watcher.isClosed() {
+					onFailure(errors.New("filesystem watcher error stream closed"))
+				}
 				return
 			}
 			onFailure(err)
+			return
 		case <-watcher.done:
 			return
 		}
 	}
 }
 
+func (watcher *fsnotifyTreeWatcher) isClosed() bool {
+	watcher.mu.Lock()
+	defer watcher.mu.Unlock()
+	return watcher.closed
+}
+
 func (watcher *fsnotifyTreeWatcher) Close() error {
 	var err error
 	watcher.once.Do(func() {
-		close(watcher.done)
 		watcher.mu.Lock()
 		watcher.closed = true
-		err = watcher.watcher.Close()
 		watcher.mu.Unlock()
+		close(watcher.done)
+		err = watcher.watcher.Close()
 		<-watcher.exited
 	})
 	return err

@@ -27,6 +27,7 @@ const (
 	maximumInMemoryScanCaches = 3
 	maximumInMemoryCacheNodes = 2_500_000
 	maximumSnapshotNodes      = 10_000_000
+	maximumUnobservedSubtrees = 4096
 )
 
 type scanCacheProfile struct {
@@ -76,15 +77,16 @@ type scanCacheDependency struct {
 // installation. Before activation it buffers events locally; afterward it
 // forwards them to the installed cache entry.
 type scanCacheObservation struct {
-	manager    *scanCacheManager
-	rootPath   string
-	mu         sync.Mutex
-	watcher    treeWatcher
-	dirty      map[string]struct{}
-	invalid    bool
-	eventCount uint64
-	entry      *scanCacheEntry
-	adopted    bool
+	manager        *scanCacheManager
+	rootPath       string
+	mu             sync.Mutex
+	watcher        treeWatcher
+	dirty          map[string]struct{}
+	invalid        bool
+	eventCount     uint64
+	entry          *scanCacheEntry
+	adopted        bool
+	warnedCapacity bool
 }
 
 type scanReusePlan struct {
@@ -309,7 +311,7 @@ func (manager *scanCacheManager) BeginObservation(rootPath string) *scanCacheObs
 	observation := &scanCacheObservation{
 		manager: manager, rootPath: rootPath, dirty: make(map[string]struct{}),
 	}
-	watcher, err := startTreeWatcher(rootPath, []string{rootPath}, observation.markChanged, observation.markFailed)
+	watcher, err := startTreeWatcher(rootPath, []string{rootPath}, observation.markChanged, observation.markSubtreeChanged, observation.markFailed)
 	observation.mu.Lock()
 	observation.watcher = watcher
 	if err != nil {
@@ -334,8 +336,73 @@ func (observation *scanCacheObservation) WatchDirectory(path string) {
 		return
 	}
 	if err := watcher.AddDirectory(path); err != nil {
+		if errors.Is(err, errTreeWatchCapacity) {
+			observation.markUnobserved(path, err)
+			return
+		}
 		observation.markFailed(err)
 	}
+}
+
+func (observation *scanCacheObservation) markUnobserved(path string, err error) {
+	clean := canonicalCachePath(path)
+	observation.mu.Lock()
+	entry := observation.entry
+	changed := false
+	if entry == nil {
+		changed = addDirtySubtree(observation.dirty, observation.rootPath, clean, maximumUnobservedSubtrees)
+		if changed {
+			observation.eventCount++
+		}
+	} else {
+		observation.mu.Unlock()
+		changed = observation.manager.markSubtreeDirty(entry, clean)
+		observation.logWatchCapacity(err, changed)
+		return
+	}
+	observation.mu.Unlock()
+	observation.logWatchCapacity(err, changed)
+}
+
+func (observation *scanCacheObservation) logWatchCapacity(err error, changed bool) {
+	if !changed || observation.manager == nil || observation.manager.logger == nil {
+		return
+	}
+	observation.mu.Lock()
+	if observation.warnedCapacity {
+		observation.mu.Unlock()
+		return
+	}
+	observation.warnedCapacity = true
+	observation.mu.Unlock()
+	observation.manager.logger.Warningf("scan cache watch capacity reached for %s; unobserved subtrees will be rescanned: %v", observation.rootPath, err)
+}
+
+func addDirtySubtree(paths map[string]struct{}, rootPath, path string, limit int) bool {
+	cleanRoot := canonicalCachePath(rootPath)
+	clean := canonicalCachePath(path)
+	for existing := range paths {
+		if cachePathWithin(clean, existing) {
+			return false
+		}
+	}
+	for existing := range paths {
+		if cachePathWithin(existing, clean) {
+			delete(paths, existing)
+		}
+	}
+	if len(paths) >= limit {
+		if len(paths) == 1 {
+			if _, alreadyRoot := paths[cleanRoot]; alreadyRoot {
+				return false
+			}
+		}
+		clear(paths)
+		paths[cleanRoot] = struct{}{}
+		return true
+	}
+	paths[clean] = struct{}{}
+	return true
 }
 
 func (observation *scanCacheObservation) markChanged(path string) {
@@ -352,6 +419,21 @@ func (observation *scanCacheObservation) markChanged(path string) {
 	}
 	observation.mu.Unlock()
 	observation.manager.markChanged(entry, clean)
+}
+
+func (observation *scanCacheObservation) markSubtreeChanged(path string) {
+	clean := canonicalCachePath(path)
+	observation.mu.Lock()
+	entry := observation.entry
+	if entry == nil {
+		if addDirtySubtree(observation.dirty, observation.rootPath, clean, maximumUnobservedSubtrees) {
+			observation.eventCount++
+		}
+		observation.mu.Unlock()
+		return
+	}
+	observation.mu.Unlock()
+	observation.manager.markSubtreeDirty(entry, clean)
 }
 
 func (observation *scanCacheObservation) markFailed(err error) {
@@ -527,7 +609,7 @@ func (manager *scanCacheManager) dependenciesChangedLocked(dependencies []scanCa
 }
 
 func watchedDirectories(rootPath string, nodes []*Node) []string {
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		return []string{rootPath}
 	}
 	directories := make([]string, 0)
@@ -567,6 +649,19 @@ func (manager *scanCacheManager) markChanged(entry *scanCacheEntry, path string)
 	entry.dirty[clean] = struct{}{}
 	entry.dirty[canonicalCachePath(filepath.Dir(clean))] = struct{}{}
 	entry.eventCount++
+}
+
+func (manager *scanCacheManager) markSubtreeDirty(entry *scanCacheEntry, path string) bool {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if !manager.containsLocked(entry) {
+		return false
+	}
+	if !addDirtySubtree(entry.dirty, entry.rootPath, path, maximumUnobservedSubtrees) {
+		return false
+	}
+	entry.eventCount++
+	return true
 }
 
 func (manager *scanCacheManager) markWatcherFailed(entry *scanCacheEntry, err error) {
