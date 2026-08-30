@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/gob"
 	"encoding/hex"
@@ -22,7 +23,9 @@ const (
 	scanSnapshotVersion       = 1
 	scanAccountingVersion     = 1
 	maximumPersistedSnapshots = 5
+	maximumPersistedBytes     = 512 << 20
 	maximumInMemoryScanCaches = 3
+	maximumInMemoryCacheNodes = 2_500_000
 	maximumSnapshotNodes      = 10_000_000
 )
 
@@ -50,6 +53,8 @@ type scanCacheEntry struct {
 	rootPath         string
 	profileKey       string
 	root             *Node
+	nodes            []*Node
+	nodeCount        int
 	fileCount        int
 	dirCount         int
 	directories      map[string]*Node
@@ -97,6 +102,16 @@ type loadedScanSnapshot struct {
 	files   int
 	dirs    int
 	savedAt time.Time
+	shared  bool
+}
+
+type snapshotRequest struct {
+	rootPath string
+	profile  Profile
+	root     *Node
+	files    int
+	dirs     int
+	report   ScanReportSnapshot
 }
 
 type scanCacheManager struct {
@@ -105,6 +120,14 @@ type scanCacheManager struct {
 	logger    *SeverityLogger
 	entries   map[string]*scanCacheEntry
 	clock     uint64
+	closeOnce sync.Once
+
+	snapshotMu     sync.Mutex
+	snapshotQueue  map[string]snapshotRequest
+	snapshotWake   chan struct{}
+	snapshotStop   chan struct{}
+	snapshotWG     sync.WaitGroup
+	snapshotClosed bool
 }
 
 func newScanCacheManager(defaultSettingsPath string, logger *SeverityLogger) *scanCacheManager {
@@ -112,7 +135,15 @@ func newScanCacheManager(defaultSettingsPath string, logger *SeverityLogger) *sc
 	if defaultSettingsPath != "" {
 		directory = filepath.Join(filepath.Dir(defaultSettingsPath), "cache", "scans")
 	}
-	return &scanCacheManager{directory: directory, logger: logger, entries: make(map[string]*scanCacheEntry)}
+	manager := &scanCacheManager{directory: directory, logger: logger, entries: make(map[string]*scanCacheEntry)}
+	if directory != "" {
+		manager.snapshotQueue = make(map[string]snapshotRequest)
+		manager.snapshotWake = make(chan struct{}, 1)
+		manager.snapshotStop = make(chan struct{})
+		manager.snapshotWG.Add(1)
+		go manager.runSnapshotWorker()
+	}
+	return manager
 }
 
 func scanMemoryCacheKey(rootPath, profileKey string) string {
@@ -395,6 +426,8 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		rootPath:         rootPath,
 		profileKey:       profileKey,
 		root:             root,
+		nodes:            nodes,
+		nodeCount:        len(nodes),
 		fileCount:        files,
 		dirCount:         dirs,
 		directories:      indexCachedDirectories(root),
@@ -428,7 +461,7 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		delete(manager.entries, otherKey)
 		retired = append(retired, other)
 	}
-	for len(manager.entries) > maximumInMemoryScanCaches {
+	for manager.memoryBudgetExceededLocked() {
 		var oldestKey string
 		var oldest *scanCacheEntry
 		for candidateKey, candidate := range manager.entries {
@@ -467,6 +500,21 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	if !retained && watcher != nil {
 		_ = watcher.Close()
 	}
+}
+
+func (manager *scanCacheManager) memoryBudgetExceededLocked() bool {
+	return scanCacheEntriesExceedBudget(manager.entries, maximumInMemoryScanCaches, maximumInMemoryCacheNodes)
+}
+
+func scanCacheEntriesExceedBudget(entries map[string]*scanCacheEntry, maxEntries, maxNodes int) bool {
+	if len(entries) > maxEntries {
+		return true
+	}
+	totalNodes := 0
+	for _, entry := range entries {
+		totalNodes += entry.nodeCount
+	}
+	return totalNodes > maxNodes && len(entries) > 1
 }
 
 func (manager *scanCacheManager) dependenciesChangedLocked(dependencies []scanCacheDependency) bool {
@@ -548,25 +596,120 @@ func (manager *scanCacheManager) InvalidatePath(path string) {
 	}
 }
 
-func (manager *scanCacheManager) Close() {
-	if manager == nil {
+func (manager *scanCacheManager) QueueSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot) {
+	if manager == nil || manager.directory == "" || root == nil {
 		return
 	}
-	manager.mu.Lock()
-	entries := make([]*scanCacheEntry, 0, len(manager.entries))
-	for _, entry := range manager.entries {
-		entries = append(entries, entry)
+	_, profileKey := scanProfileCacheKey(profile)
+	key := scanMemoryCacheKey(rootPath, profileKey)
+	request := snapshotRequest{
+		rootPath: rootPath, profile: profile, root: root,
+		files: files, dirs: dirs, report: report,
 	}
-	manager.entries = make(map[string]*scanCacheEntry)
-	manager.mu.Unlock()
-	for _, entry := range entries {
-		if entry.watcher != nil {
-			_ = entry.watcher.Close()
+	manager.snapshotMu.Lock()
+	if manager.snapshotClosed {
+		manager.snapshotMu.Unlock()
+		return
+	}
+	manager.snapshotQueue[key] = request
+	manager.snapshotMu.Unlock()
+	select {
+	case manager.snapshotWake <- struct{}{}:
+	default:
+	}
+}
+
+func (manager *scanCacheManager) runSnapshotWorker() {
+	defer manager.snapshotWG.Done()
+	for {
+		select {
+		case <-manager.snapshotStop:
+			return
+		case <-manager.snapshotWake:
+		}
+		for {
+			manager.snapshotMu.Lock()
+			var key string
+			var request snapshotRequest
+			for candidateKey, candidate := range manager.snapshotQueue {
+				key, request = candidateKey, candidate
+				break
+			}
+			if key != "" {
+				delete(manager.snapshotQueue, key)
+			}
+			manager.snapshotMu.Unlock()
+			if key == "" {
+				break
+			}
+
+			startedAt := time.Now()
+			err := manager.saveSnapshot(request.rootPath, request.profile, request.root, request.files, request.dirs, request.report, manager.snapshotStop)
+			if err != nil {
+				select {
+				case <-manager.snapshotStop:
+					return
+				default:
+				}
+				if manager.logger != nil {
+					manager.logger.Warningf("could not save scan snapshot: %v", err)
+				}
+			} else if manager.logger != nil {
+				manager.logger.Debugf("scan snapshot saved in %s", time.Since(startedAt).Round(time.Millisecond))
+			}
 		}
 	}
 }
 
+func (manager *scanCacheManager) Close() {
+	if manager == nil {
+		return
+	}
+	manager.closeOnce.Do(func() {
+		if manager.snapshotStop != nil {
+			manager.snapshotMu.Lock()
+			manager.snapshotClosed = true
+			manager.snapshotQueue = nil
+			close(manager.snapshotStop)
+			manager.snapshotMu.Unlock()
+			manager.snapshotWG.Wait()
+		}
+		manager.mu.Lock()
+		entries := make([]*scanCacheEntry, 0, len(manager.entries))
+		for _, entry := range manager.entries {
+			entries = append(entries, entry)
+		}
+		manager.entries = make(map[string]*scanCacheEntry)
+		manager.mu.Unlock()
+		for _, entry := range entries {
+			if entry.watcher != nil {
+				_ = entry.watcher.Close()
+			}
+		}
+	})
+}
+
 func (manager *scanCacheManager) SaveSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot) error {
+	return manager.saveSnapshot(rootPath, profile, root, files, dirs, report, nil)
+}
+
+type cancellableSnapshotWriter struct {
+	writer io.Writer
+	stop   <-chan struct{}
+}
+
+func (writer cancellableSnapshotWriter) Write(data []byte) (int, error) {
+	if writer.stop != nil {
+		select {
+		case <-writer.stop:
+			return 0, context.Canceled
+		default:
+		}
+	}
+	return writer.writer.Write(data)
+}
+
+func (manager *scanCacheManager) saveSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot, stop <-chan struct{}) error {
 	if manager == nil || manager.directory == "" || root == nil {
 		return nil
 	}
@@ -585,7 +728,7 @@ func (manager *scanCacheManager) SaveSnapshot(rootPath string, profile Profile, 
 		temporary.Close()
 		return fmt.Errorf("secure scan snapshot: %w", err)
 	}
-	compressor, err := gzip.NewWriterLevel(temporary, gzip.BestSpeed)
+	compressor, err := gzip.NewWriterLevel(cancellableSnapshotWriter{writer: temporary, stop: stop}, gzip.BestSpeed)
 	if err != nil {
 		temporary.Close()
 		return fmt.Errorf("create scan snapshot compressor: %w", err)
@@ -631,8 +774,10 @@ func (manager *scanCacheManager) LoadSnapshot(rootPath string, profile Profile) 
 	entry := manager.entries[scanMemoryCacheKey(rootPath, profileKey)]
 	if entry != nil {
 		manager.touchLocked(entry)
-		root, nodes := cloneAndReindexTree(entry.root)
-		loaded := loadedScanSnapshot{root: root, nodes: nodes, files: entry.fileCount, dirs: entry.dirCount, savedAt: time.Now()}
+		loaded := loadedScanSnapshot{
+			root: entry.root, nodes: entry.nodes, files: entry.fileCount, dirs: entry.dirCount,
+			savedAt: time.Now(), shared: true,
+		}
 		manager.mu.Unlock()
 		return loaded, nil
 	}
@@ -659,8 +804,8 @@ func (manager *scanCacheManager) LoadSnapshot(rootPath string, profile Profile) 
 	if err := validateSnapshotTree(rootPath, snapshot.Root); err != nil {
 		return loadedScanSnapshot{}, fmt.Errorf("validate scan snapshot: %w", err)
 	}
-	root, nodes := cloneAndReindexTree(snapshot.Root)
-	return loadedScanSnapshot{root: root, nodes: nodes, files: snapshot.FileCount, dirs: snapshot.DirCount, savedAt: snapshot.SavedAt}, nil
+	nodes := reindexTreeInPlace(snapshot.Root)
+	return loadedScanSnapshot{root: snapshot.Root, nodes: nodes, files: snapshot.FileCount, dirs: snapshot.DirCount, savedAt: snapshot.SavedAt}, nil
 }
 
 func validateSnapshotTree(rootPath string, root *Node) error {
@@ -699,34 +844,34 @@ func validateSnapshotTree(rootPath string, root *Node) error {
 	return nil
 }
 
-func cloneAndReindexTree(root *Node) (*Node, []*Node) {
+func reindexTreeInPlace(root *Node) []*Node {
 	nodes := make([]*Node, 0)
-	var clone func(*Node, int, int) *Node
-	clone = func(source *Node, parentID, depth int) *Node {
-		if source == nil {
-			return nil
+	var visit func(*Node, int, int)
+	visit = func(node *Node, parentID, depth int) {
+		if node == nil {
+			return
 		}
-		node := *source
 		node.ParentID = parentID
 		node.Depth = depth
-		node.Children = make([]*Node, 0, len(source.Children))
-		if source.IsFreeSpace || source.IsSmallFiles {
+		if node.IsFreeSpace || node.IsSmallFiles {
 			node.ID = -1
 		} else {
 			node.ID = len(nodes)
-			nodes = append(nodes, &node)
+			nodes = append(nodes, node)
 		}
-		for _, child := range source.Children {
-			if cloned := clone(child, node.ID, depth+1); cloned != nil {
-				node.Children = append(node.Children, cloned)
-			}
+		for _, child := range node.Children {
+			visit(child, node.ID, depth+1)
 		}
-		return &node
 	}
-	return clone(root, -1, 0), nodes
+	visit(root, -1, 0)
+	return nodes
 }
 
 func (manager *scanCacheManager) pruneSnapshots(current string) {
+	manager.pruneSnapshotsWithLimits(current, maximumPersistedSnapshots, maximumPersistedBytes)
+}
+
+func (manager *scanCacheManager) pruneSnapshotsWithLimits(current string, maxCount int, maxBytes int64) {
 	entries, err := os.ReadDir(manager.directory)
 	if err != nil {
 		return
@@ -734,6 +879,7 @@ func (manager *scanCacheManager) pruneSnapshots(current string) {
 	type candidate struct {
 		path string
 		time time.Time
+		size int64
 	}
 	var candidates []candidate
 	for _, entry := range entries {
@@ -742,16 +888,28 @@ func (manager *scanCacheManager) pruneSnapshots(current string) {
 		}
 		info, infoErr := entry.Info()
 		if infoErr == nil {
-			candidates = append(candidates, candidate{path: filepath.Join(manager.directory, entry.Name()), time: info.ModTime()})
+			candidates = append(candidates, candidate{path: filepath.Join(manager.directory, entry.Name()), time: info.ModTime(), size: info.Size()})
 		}
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].time.After(candidates[j].time) })
-	if len(candidates) <= maximumPersistedSnapshots {
-		return
-	}
-	for _, candidate := range candidates[maximumPersistedSnapshots:] {
-		if candidate.path != current {
-			_ = os.Remove(candidate.path)
+	keptCount := 0
+	var keptBytes int64
+	for _, candidate := range candidates {
+		if candidate.path == current {
+			keptCount++
+			keptBytes += candidate.size
+			break
 		}
+	}
+	for _, candidate := range candidates {
+		if candidate.path == current {
+			continue
+		}
+		if keptCount < maxCount && keptBytes+candidate.size <= maxBytes {
+			keptCount++
+			keptBytes += candidate.size
+			continue
+		}
+		_ = os.Remove(candidate.path)
 	}
 }

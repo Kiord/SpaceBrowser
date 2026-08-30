@@ -13,11 +13,15 @@ import (
 // TreeStore owns the currently scanned tree and its dense node index.
 // It also applies successful filesystem deletions to the in-memory model.
 type TreeStore struct {
-	mu        sync.RWMutex
-	root      *Node
-	nodes     []*Node // nodes[id] == *Node
-	fileCount int
-	dirCount  int
+	mu           sync.RWMutex
+	root         *Node
+	nodes        []*Node // nodes[id] == *Node
+	fileCount    int
+	dirCount     int
+	shared       bool
+	diskTotal    int64
+	diskFree     int64
+	hasDiskUsage bool
 }
 
 type DeleteResult struct {
@@ -51,7 +55,65 @@ func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) 
 	s.mu.Lock()
 	s.root, s.nodes = root, nodes
 	s.fileCount, s.dirCount = fileCount, dirCount
+	s.shared = false
+	s.captureDiskUsageLocked()
 	s.mu.Unlock()
+}
+
+func (s *TreeStore) ReplaceShared(root *Node, nodes []*Node, fileCount, dirCount int) {
+	s.mu.Lock()
+	s.root, s.nodes = root, nodes
+	s.fileCount, s.dirCount = fileCount, dirCount
+	s.shared = true
+	s.captureDiskUsageLocked()
+	s.mu.Unlock()
+}
+
+func (s *TreeStore) captureDiskUsageLocked() {
+	s.hasDiskUsage = false
+	s.diskTotal = 0
+	s.diskFree = 0
+	if s.root == nil {
+		return
+	}
+	for _, child := range s.root.Children {
+		if child.IsFreeSpace {
+			s.hasDiskUsage = true
+			s.diskTotal = s.root.DiskTotal
+			s.diskFree = child.Size
+			return
+		}
+	}
+}
+
+func (s *TreeStore) ensureOwnedLocked() {
+	if !s.shared || s.root == nil {
+		return
+	}
+	s.root, s.nodes = cloneTreePreservingIDs(s.root, len(s.nodes))
+	s.shared = false
+}
+
+func cloneTreePreservingIDs(root *Node, nodeCount int) (*Node, []*Node) {
+	nodes := make([]*Node, nodeCount)
+	var clone func(*Node) *Node
+	clone = func(source *Node) *Node {
+		if source == nil {
+			return nil
+		}
+		node := *source
+		node.Children = make([]*Node, 0, len(source.Children))
+		if node.ID >= 0 && node.ID < len(nodes) {
+			nodes[node.ID] = &node
+		}
+		for _, child := range source.Children {
+			if copied := clone(child); copied != nil {
+				node.Children = append(node.Children, copied)
+			}
+		}
+		return &node
+	}
+	return clone(root), nodes
 }
 
 func (s *TreeStore) DiskUsageRootPath() (string, bool) {
@@ -59,6 +121,9 @@ func (s *TreeStore) DiskUsageRootPath() (string, bool) {
 	defer s.mu.RUnlock()
 	if s.root == nil || s.root.FullPath == "" {
 		return "", false
+	}
+	if s.hasDiskUsage {
+		return s.root.FullPath, true
 	}
 	for _, child := range s.root.Children {
 		if child.IsFreeSpace {
@@ -74,20 +139,20 @@ func (s *TreeStore) UpdateDiskUsage(total, free int64) bool {
 	if s.root == nil {
 		return false
 	}
-	for _, child := range s.root.Children {
-		if !child.IsFreeSpace {
-			continue
+	if !s.hasDiskUsage {
+		for _, child := range s.root.Children {
+			if child.IsFreeSpace {
+				s.hasDiskUsage = true
+				break
+			}
 		}
-		s.root.DiskTotal = total
-		s.root.DiskFree = free
-		child.Size = free
-		child.DiskTotal = total
-		sort.Slice(s.root.Children, func(i, j int) bool {
-			return s.root.Children[i].Size > s.root.Children[j].Size
-		})
-		return true
+		if !s.hasDiskUsage {
+			return false
+		}
 	}
-	return false
+	s.diskTotal = total
+	s.diskFree = free
+	return true
 }
 
 func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpace bool) ([]Rect, error) {
@@ -106,12 +171,25 @@ func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpa
 	}
 
 	viewRoot := *node
-	if !showFreeSpace {
+	if !showFreeSpace || (node == s.root && s.hasDiskUsage) {
 		viewRoot.Children = make([]*Node, 0, len(node.Children))
 		for _, child := range node.Children {
-			if !child.IsFreeSpace {
-				viewRoot.Children = append(viewRoot.Children, child)
+			if child.IsFreeSpace {
+				if !showFreeSpace {
+					continue
+				}
+				freeNode := *child
+				freeNode.Size = s.diskFree
+				freeNode.DiskTotal = s.diskTotal
+				viewRoot.Children = append(viewRoot.Children, &freeNode)
+				continue
 			}
+			viewRoot.Children = append(viewRoot.Children, child)
+		}
+		if node == s.root && s.hasDiskUsage {
+			viewRoot.DiskTotal = s.diskTotal
+			viewRoot.DiskFree = s.diskFree
+			sort.Slice(viewRoot.Children, func(i, j int) bool { return viewRoot.Children[i].Size > viewRoot.Children[j].Size })
 		}
 	}
 	return ComputeTreemapRects(&viewRoot, float64(width), float64(height), scale), nil
@@ -158,6 +236,8 @@ func (s *TreeStore) deleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 	if refreshTrash {
 		trashRefreshes = displayedTrashNodes(s.root, node, isTrashRoot)
 	}
+	s.ensureOwnedLocked()
+	node = s.nodes[nodeID]
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {
@@ -197,6 +277,8 @@ func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scan
 	if sPath, tPath := filepath.Clean(scanned.FullPath), filepath.Clean(target.FullPath); sPath != tPath {
 		return DeleteResult{}, fmt.Errorf("refreshed subtree path changed from %s to %s", tPath, sPath)
 	}
+	s.ensureOwnedLocked()
+	target = s.nodes[nodeID]
 
 	oldSize := target.Size
 	oldFiles, oldDirsIncludingRoot := subtreeEntryCounts(target)
@@ -300,6 +382,8 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 	if err := emptyTrash(node.FullPath); err != nil {
 		return DeleteResult{}, err
 	}
+	s.ensureOwnedLocked()
+	node = s.nodes[nodeID]
 
 	emptiedSize := node.Size
 	rescanRequired := subtreeHasSharedAllocation(node)

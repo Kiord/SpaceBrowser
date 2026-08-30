@@ -628,11 +628,55 @@ func TestTreeStoreUpdatesFreeSpaceAccounting(t *testing.T) {
 	if !store.UpdateDiskUsage(1400, 800) {
 		t.Fatal("UpdateDiskUsage() did not find the free-space node")
 	}
-	if root.DiskTotal != 1400 || root.DiskFree != 800 || free.DiskTotal != 1400 || free.Size != 800 {
-		t.Fatalf("updated disk accounting = root(%d total, %d free), node(%d total, %d free)", root.DiskTotal, root.DiskFree, free.DiskTotal, free.Size)
+	if !store.hasDiskUsage || store.diskTotal != 1400 || store.diskFree != 800 {
+		t.Fatalf("disk accounting overlay = enabled %t, %d total, %d free", store.hasDiskUsage, store.diskTotal, store.diskFree)
 	}
-	if root.Children[0] != free || root.Children[1] != used {
-		t.Fatal("disk usage update did not retain size ordering")
+	if root.DiskTotal != 1000 || root.DiskFree != 400 || free.DiskTotal != 1000 || free.Size != 400 {
+		t.Fatal("disk usage update mutated the source tree")
+	}
+	rects, err := store.Layout(root.ID, 100, 100, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rects) == 0 || rects[0].DiskTotal != 1400 || rects[0].DiskFree != 800 {
+		t.Fatalf("layout root accounting = %+v", rects)
+	}
+	var renderedFree *Rect
+	for i := range rects {
+		if rects[i].IsFree {
+			renderedFree = &rects[i]
+			break
+		}
+	}
+	if renderedFree == nil || renderedFree.Size != 800 || renderedFree.DiskTotal != 1400 {
+		t.Fatalf("layout free-space accounting = %+v", renderedFree)
+	}
+}
+
+func TestTreeStoreCopiesSharedTreeBeforeDeletion(t *testing.T) {
+	rootPath := t.TempDir()
+	filePath := filepath.Join(rootPath, "cached.bin")
+	if err := os.WriteFile(filePath, []byte("cached"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, Size: 6, IsFolder: true, EntryFiles: 1, EntryDirs: 1}
+	file := &Node{ID: 1, ParentID: 0, FullPath: filePath, Name: "cached.bin", Size: 6, EntryFiles: 1}
+	root.Children = []*Node{file}
+	store := &TreeStore{}
+	store.ReplaceShared(root, []*Node{root, file}, 1, 1)
+
+	result, err := store.DeleteNode(file.ID, nil, nil, func(string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FileCount != 0 || len(store.root.Children) != 0 {
+		t.Fatalf("store was not updated: result=%+v children=%d", result, len(store.root.Children))
+	}
+	if store.root == root || store.shared {
+		t.Fatal("shared tree was not copied before mutation")
+	}
+	if root.Size != 6 || len(root.Children) != 1 || root.Children[0] != file {
+		t.Fatal("cached source tree was mutated")
 	}
 }
 

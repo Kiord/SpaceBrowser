@@ -88,6 +88,7 @@ func TestPersistedScanSnapshotRoundTrip(t *testing.T) {
 	profile := *defaultProfile()
 	profile.MinFileSize = 0
 	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
+	defer manager.Close()
 	report := ScanReportSnapshot{}
 	if err := manager.SaveSnapshot(rootPath, profile, root, int(files), int(dirs), report); err != nil {
 		t.Fatal(err)
@@ -112,11 +113,99 @@ func TestPersistedScanSnapshotRejectsPathsOutsideRoot(t *testing.T) {
 	}
 	profile := *defaultProfile()
 	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
+	defer manager.Close()
 	if err := manager.SaveSnapshot(rootPath, profile, root, 1, 1, ScanReportSnapshot{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := manager.LoadSnapshot(rootPath, profile); err == nil {
 		t.Fatal("snapshot containing an out-of-root path was accepted")
+	}
+}
+
+func TestQueuedScanSnapshotIsPersisted(t *testing.T) {
+	rootPath := t.TempDir()
+	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
+	profile := *defaultProfile()
+	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
+	defer manager.Close()
+
+	manager.QueueSnapshot(rootPath, profile, root, 0, 1, ScanReportSnapshot{})
+	_, profileKey := scanProfileCacheKey(profile)
+	snapshotPath := manager.snapshotPath(rootPath, profileKey)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(snapshotPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("queued snapshot was not persisted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestInMemorySnapshotLoadSharesCachedTree(t *testing.T) {
+	rootPath := t.TempDir()
+	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
+	nodes := []*Node{root}
+	profile := *defaultProfile()
+	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
+	defer manager.Close()
+	manager.Install(rootPath, profile, root, nodes, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(rootPath))
+
+	loaded, err := manager.LoadSnapshot(rootPath, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.shared || loaded.root != root || len(loaded.nodes) != 1 || loaded.nodes[0] != root {
+		t.Fatal("in-memory cache load cloned the immutable tree")
+	}
+}
+
+func TestScanCacheBudgetsCountNodesAndEntries(t *testing.T) {
+	entries := map[string]*scanCacheEntry{
+		"first":  {nodeCount: 60},
+		"second": {nodeCount: 50},
+	}
+	if !scanCacheEntriesExceedBudget(entries, 3, 100) {
+		t.Fatal("node budget was not enforced")
+	}
+	if scanCacheEntriesExceedBudget(entries, 3, 110) {
+		t.Fatal("cache at the node budget was rejected")
+	}
+	if !scanCacheEntriesExceedBudget(entries, 1, 1000) {
+		t.Fatal("entry budget was not enforced")
+	}
+	if scanCacheEntriesExceedBudget(map[string]*scanCacheEntry{"only": {nodeCount: 200}}, 3, 100) {
+		t.Fatal("the only cache entry should be retained even when it exceeds the node budget")
+	}
+}
+
+func TestPersistedSnapshotPruningUsesByteBudget(t *testing.T) {
+	manager := &scanCacheManager{directory: t.TempDir()}
+	current := filepath.Join(manager.directory, "current.gob.gz")
+	older := filepath.Join(manager.directory, "older.gob.gz")
+	oldest := filepath.Join(manager.directory, "oldest.gob.gz")
+	for _, path := range []string{current, older, oldest} {
+		if err := os.WriteFile(path, make([]byte, 10), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Keep the explicitly current snapshot regardless of ordering, then retain
+	// only as many other snapshots as fit the byte budget.
+	manager.pruneSnapshotsWithLimits(current, 3, 20)
+	if _, err := os.Stat(current); err != nil {
+		t.Fatalf("current snapshot was pruned: %v", err)
+	}
+	kept := 0
+	for _, path := range []string{older, oldest} {
+		if _, err := os.Stat(path); err == nil {
+			kept++
+		}
+	}
+	if kept != 1 {
+		t.Fatalf("kept %d older snapshots, want 1", kept)
 	}
 }
 

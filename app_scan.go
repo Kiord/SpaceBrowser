@@ -184,7 +184,10 @@ func (a *App) publishScanResult(
 		return nil, err
 	}
 
-	a.store.Replace(root, nodes, files, dirs)
+	// Published scan trees become immutable: the cache and snapshot worker may
+	// retain this allocation after publication. TreeStore detaches lazily before
+	// any later structural mutation.
+	a.store.ReplaceShared(root, nodes, files, dirs)
 	a.scanMu.Unlock()
 	return persistReport(), nil
 }
@@ -198,7 +201,7 @@ func (a *App) publishCachedScanResult(ctx context.Context, generation uint64, ro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	a.store.Replace(root, nodes, files, dirs)
+	a.store.ReplaceShared(root, nodes, files, dirs)
 	return persistReport(), nil
 }
 
@@ -225,18 +228,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	cachePlan := a.scanCache.Prepare(path, profile)
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS)
 	if cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
-		cachedRoot, cachedNodes := cloneAndReindexTree(cachePlan.source.root)
-		if volumeUsage != nil {
-			cachedRoot.DiskTotal = int64(volumeUsage.Total)
-			cachedRoot.DiskFree = int64(volumeUsage.Free)
-			for _, child := range cachedRoot.Children {
-				if child.IsFreeSpace {
-					child.Size = int64(volumeUsage.Free)
-					child.DiskTotal = int64(volumeUsage.Total)
-				}
-			}
-			sort.Slice(cachedRoot.Children, func(i, j int) bool { return cachedRoot.Children[i].Size > cachedRoot.Children[j].Size })
-		}
+		cachedRoot, cachedNodes := cachePlan.source.root, cachePlan.source.nodes
 		duration := time.Since(startedAt)
 		report := cachePlan.source.report
 		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, cachedRoot, cachedNodes, cachePlan.source.fileCount, cachePlan.source.dirCount, func() *ScanReportInfo {
@@ -244,6 +236,9 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		})
 		if publishErr != nil {
 			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, publishErr
+		}
+		if volumeUsage != nil {
+			a.store.UpdateDiskUsage(int64(volumeUsage.Total), int64(volumeUsage.Free))
 		}
 		a.logScanReport(report)
 		a.logger.Infof("scan cache reused the complete tree for %s", path)
@@ -323,12 +318,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		a.logger.Infof("scan cache reused %d directories", reused)
 	}
 	a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan, observation)
-	snapshotStartedAt := time.Now()
-	if snapshotErr := a.scanCache.SaveSnapshot(path, profile, root, int(files), int(dirs), report); snapshotErr != nil {
-		a.logger.Warningf("could not save scan snapshot: %v", snapshotErr)
-	} else if a.scanCache != nil && a.scanCache.directory != "" {
-		a.logger.Debugf("scan snapshot saved in %s", time.Since(snapshotStartedAt).Round(time.Millisecond))
-	}
+	a.scanCache.QueueSnapshot(path, profile, root, int(files), int(dirs), report)
 	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
 }
@@ -346,25 +336,23 @@ func (a *App) LoadScanSnapshot(path string) (*TreeInfo, error) {
 		}
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
 	}
+	var currentUsage *disk.UsageStat
 	if a.filesystem.IsMountRoot(path) {
-		if usage, usageErr := disk.Usage(path); usageErr == nil {
-			loaded.root.DiskTotal = int64(usage.Total)
-			loaded.root.DiskFree = int64(usage.Free)
-			for _, child := range loaded.root.Children {
-				if child.IsFreeSpace {
-					child.Size = int64(usage.Free)
-					child.DiskTotal = int64(usage.Total)
-				}
-			}
-			sort.Slice(loaded.root.Children, func(i, j int) bool { return loaded.root.Children[i].Size > loaded.root.Children[j].Size })
-		}
+		currentUsage, _ = disk.Usage(path)
 	}
 	a.scanMu.Lock()
 	if a.scanActive {
 		a.scanMu.Unlock()
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
 	}
-	a.store.Replace(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
+	if loaded.shared {
+		a.store.ReplaceShared(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
+	} else {
+		a.store.Replace(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
+	}
+	if currentUsage != nil {
+		a.store.UpdateDiskUsage(int64(currentUsage.Total), int64(currentUsage.Free))
+	}
 	a.scanMu.Unlock()
 	age := time.Since(loaded.savedAt)
 	if age < 0 {
