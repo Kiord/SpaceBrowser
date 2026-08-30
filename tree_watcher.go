@@ -1,10 +1,11 @@
 package main
 
-import "errors"
+import "spacebrowser/internal/treewatch"
 
-var errTreeWatchCapacity = errors.New("filesystem watch capacity reached")
+var errTreeWatchCapacity = treewatch.ErrCapacity
 
-type treeWatcher interface {
-	AddDirectory(string) error
-	Close() error
+type treeWatcher = treewatch.Watcher
+
+func startTreeWatcher(root string, directories []string, onChange func(string), onSubtree func(string), onFailure func(error)) (treeWatcher, error) {
+	return treewatch.Start(root, directories, onChange, onSubtree, onFailure)
 }

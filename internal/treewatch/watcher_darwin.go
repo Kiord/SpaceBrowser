@@ -1,11 +1,11 @@
 //go:build darwin && cgo
 
-package main
+package treewatch
 
 /*
 #cgo LDFLAGS: -framework CoreServices
 #include <stdlib.h>
-#include "tree_watcher_darwin.h"
+#include "watcher_darwin.h"
 */
 import "C"
 
@@ -30,7 +30,7 @@ var (
 	darwinWatchers        sync.Map
 )
 
-type darwinTreeWatcher struct {
+type darwinWatcher struct {
 	handle    uint64
 	native    *C.SBTreeWatcher
 	onChange  func(string)
@@ -41,8 +41,8 @@ type darwinTreeWatcher struct {
 	failed    atomic.Bool
 }
 
-func startTreeWatcher(root string, _ []string, onChange func(string), onSubtree func(string), onFailure func(error)) (treeWatcher, error) {
-	watcher := &darwinTreeWatcher{
+func Start(root string, _ []string, onChange func(string), onSubtree func(string), onFailure func(error)) (Watcher, error) {
+	watcher := &darwinWatcher{
 		handle: darwinWatcherSequence.Add(1), onChange: onChange, onSubtree: onSubtree, onFailure: onFailure,
 	}
 	darwinWatchers.Store(watcher.handle, watcher)
@@ -56,15 +56,14 @@ func startTreeWatcher(root string, _ []string, onChange func(string), onSubtree 
 	return watcher, nil
 }
 
-func (watcher *darwinTreeWatcher) AddDirectory(string) error {
+func (watcher *darwinWatcher) AddDirectory(string) error {
 	if watcher.closed.Load() {
 		return errors.New("filesystem watcher is closed")
 	}
-	// FSEvents observes the complete hierarchy from the scan root.
 	return nil
 }
 
-func (watcher *darwinTreeWatcher) Close() error {
+func (watcher *darwinWatcher) Close() error {
 	watcher.once.Do(func() {
 		watcher.closed.Store(true)
 		darwinWatchers.Delete(watcher.handle)
@@ -80,7 +79,7 @@ func goTreeWatcherEvent(handle C.uintptr_t, path *C.char, flags C.uint32_t) {
 	if !ok {
 		return
 	}
-	watcher := value.(*darwinTreeWatcher)
+	watcher := value.(*darwinWatcher)
 	if watcher.closed.Load() || watcher.failed.Load() {
 		return
 	}

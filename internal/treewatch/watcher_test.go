@@ -1,4 +1,4 @@
-package main
+package treewatch
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestTreeWatcherReportsNestedChanges(t *testing.T) {
+func TestWatcherReportsNestedChanges(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "nested")
 	if err := os.Mkdir(nested, 0o700); err != nil {
@@ -16,17 +16,13 @@ func TestTreeWatcherReportsNestedChanges(t *testing.T) {
 	}
 	changes := make(chan string, 16)
 	failures := make(chan error, 1)
-	watcher, err := startTreeWatcher(root, []string{root, nested}, func(path string) {
+	reportChange := func(path string) {
 		select {
 		case changes <- path:
 		default:
 		}
-	}, func(path string) {
-		select {
-		case changes <- path:
-		default:
-		}
-	}, func(err error) {
+	}
+	watcher, err := Start(root, []string{root, nested}, reportChange, reportChange, func(err error) {
 		select {
 		case failures <- err:
 		default:
@@ -43,7 +39,7 @@ func TestTreeWatcherReportsNestedChanges(t *testing.T) {
 	for attempt := 0; ; attempt++ {
 		select {
 		case changed := <-changes:
-			if canonicalCachePath(filepath.Dir(changed)) == canonicalCachePath(nested) {
+			if filepath.Clean(filepath.Dir(changed)) == filepath.Clean(nested) {
 				return
 			}
 		case watcherErr := <-failures:

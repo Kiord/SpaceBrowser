@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-#include "tree_watcher_darwin.h"
+#include "watcher_darwin.h"
 
 #include <CoreServices/CoreServices.h>
 #include <dispatch/dispatch.h>
@@ -45,7 +45,7 @@ SBTreeWatcher *SBTreeWatcherStart(const char *root, uintptr_t handle) {
         return NULL;
     }
 
-    FSEventStreamContext context = {0, (void *)handle, NULL, NULL, NULL};
+    FSEventStreamContext context = {0, (void *)(uintptr_t)handle, NULL, NULL, NULL};
     FSEventStreamCreateFlags flags =
         kFSEventStreamCreateFlagWatchRoot |
         kFSEventStreamCreateFlagFileEvents |

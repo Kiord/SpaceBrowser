@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package treewatch
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type windowsTreeWatcher struct {
+type windowsWatcher struct {
 	handle  windows.Handle
 	exited  chan struct{}
 	ready   chan error
@@ -20,7 +20,7 @@ type windowsTreeWatcher struct {
 	closing bool
 }
 
-func startTreeWatcher(root string, _ []string, onChange func(string), _ func(string), onFailure func(error)) (treeWatcher, error) {
+func Start(root string, _ []string, onChange func(string), _ func(string), onFailure func(error)) (Watcher, error) {
 	path, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func startTreeWatcher(root string, _ []string, onChange func(string), _ func(str
 	if err != nil {
 		return nil, err
 	}
-	watcher := &windowsTreeWatcher{handle: handle, exited: make(chan struct{}), ready: make(chan error, 1)}
+	watcher := &windowsWatcher{handle: handle, exited: make(chan struct{}), ready: make(chan error, 1)}
 	go watcher.run(filepath.Clean(root), onChange, onFailure)
 	if err := <-watcher.ready; err != nil {
 		<-watcher.exited
@@ -47,7 +47,7 @@ func startTreeWatcher(root string, _ []string, onChange func(string), _ func(str
 	return watcher, nil
 }
 
-func (watcher *windowsTreeWatcher) run(root string, onChange func(string), onFailure func(error)) {
+func (watcher *windowsWatcher) run(root string, onChange func(string), onFailure func(error)) {
 	defer close(watcher.exited)
 	event, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
@@ -125,18 +125,17 @@ func (watcher *windowsTreeWatcher) run(root string, onChange func(string), onFai
 	}
 }
 
-func (watcher *windowsTreeWatcher) isClosing() bool {
+func (watcher *windowsWatcher) isClosing() bool {
 	watcher.mu.Lock()
 	defer watcher.mu.Unlock()
 	return watcher.closing
 }
 
-func (watcher *windowsTreeWatcher) AddDirectory(string) error {
-	// ReadDirectoryChangesW watches the complete subtree from the root handle.
+func (watcher *windowsWatcher) AddDirectory(string) error {
 	return nil
 }
 
-func (watcher *windowsTreeWatcher) Close() error {
+func (watcher *windowsWatcher) Close() error {
 	var err error
 	watcher.once.Do(func() {
 		watcher.mu.Lock()

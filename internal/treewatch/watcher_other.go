@@ -1,6 +1,6 @@
 //go:build !windows && (!darwin || !cgo)
 
-package main
+package treewatch
 
 import (
 	"errors"
@@ -12,12 +12,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Leave most of the process/user inotify allowance available to the desktop
-// and other applications. Trees beyond this point remain cacheable, but their
-// unobserved subtrees are rescanned on the next pass.
 const maximumFSNotifyTreeWatches = 4096
 
-type fsnotifyTreeWatcher struct {
+type fsnotifyWatcher struct {
 	watcher *fsnotify.Watcher
 	done    chan struct{}
 	exited  chan struct{}
@@ -27,12 +24,12 @@ type fsnotifyTreeWatcher struct {
 	paths   map[string]struct{}
 }
 
-func startTreeWatcher(_ string, directories []string, onChange func(string), _ func(string), onFailure func(error)) (treeWatcher, error) {
+func Start(_ string, directories []string, onChange func(string), _ func(string), onFailure func(error)) (Watcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-	result := &fsnotifyTreeWatcher{
+	result := &fsnotifyWatcher{
 		watcher: watcher, done: make(chan struct{}), exited: make(chan struct{}),
 		paths: make(map[string]struct{}),
 	}
@@ -46,7 +43,7 @@ func startTreeWatcher(_ string, directories []string, onChange func(string), _ f
 	return result, nil
 }
 
-func (watcher *fsnotifyTreeWatcher) AddDirectory(directory string) error {
+func (watcher *fsnotifyWatcher) AddDirectory(directory string) error {
 	clean := filepath.Clean(directory)
 	watcher.mu.Lock()
 	defer watcher.mu.Unlock()
@@ -57,11 +54,11 @@ func (watcher *fsnotifyTreeWatcher) AddDirectory(directory string) error {
 		return nil
 	}
 	if len(watcher.paths) >= maximumFSNotifyTreeWatches {
-		return fmt.Errorf("%w (%d directories)", errTreeWatchCapacity, maximumFSNotifyTreeWatches)
+		return fmt.Errorf("%w (%d directories)", ErrCapacity, maximumFSNotifyTreeWatches)
 	}
 	if err := watcher.watcher.Add(clean); err != nil {
 		if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || errors.Is(err, syscall.ENOMEM) {
-			return fmt.Errorf("%w: %v", errTreeWatchCapacity, err)
+			return fmt.Errorf("%w: %v", ErrCapacity, err)
 		}
 		return err
 	}
@@ -69,7 +66,7 @@ func (watcher *fsnotifyTreeWatcher) AddDirectory(directory string) error {
 	return nil
 }
 
-func (watcher *fsnotifyTreeWatcher) run(onChange func(string), onFailure func(error)) {
+func (watcher *fsnotifyWatcher) run(onChange func(string), onFailure func(error)) {
 	defer close(watcher.exited)
 	for {
 		select {
@@ -98,13 +95,13 @@ func (watcher *fsnotifyTreeWatcher) run(onChange func(string), onFailure func(er
 	}
 }
 
-func (watcher *fsnotifyTreeWatcher) isClosed() bool {
+func (watcher *fsnotifyWatcher) isClosed() bool {
 	watcher.mu.Lock()
 	defer watcher.mu.Unlock()
 	return watcher.closed
 }
 
-func (watcher *fsnotifyTreeWatcher) Close() error {
+func (watcher *fsnotifyWatcher) Close() error {
 	var err error
 	watcher.once.Do(func() {
 		watcher.mu.Lock()
