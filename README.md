@@ -29,6 +29,7 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 - Optional free-space node for scanned volumes
 - Configurable small-file aggregation threshold
 - Live elapsed time and file/folder counts with scan cancellation
+- Incremental scan cache with filesystem change detection and persisted snapshots
 - Terminal report for skipped paths and filesystem or metadata errors
 - Exclusions for paths, hidden files, symlinks, and network filesystems
 
@@ -36,8 +37,8 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 
 - Treemap navigation with Back, Forward, Parent, and Root commands
 - Hover details with full path, byte size, modification date, and system icon
-- Open, Open with, and filesystem Properties actions
-- Confirmed move-to-trash, restore, Empty Trash, and optional permanent deletion
+- "Open" and "Open with ..." command for files and folders
+- Move-to-trah and permanent deletion with protection sensitive filesystem locations. Empty trash can be triggered as well.
 
 ### Customization
 
@@ -55,7 +56,7 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 
 Prebuilt versions are available on the [Releases page](https://github.com/Kiord/SpaceBrowser/releases): MSI and portable EXE for Windows, DEB/RPM packages and a portable binary for Linux, and DMG/ZIP packages for macOS.
 
-SpaceBrowser can be launched in a terminal, see `--help`.
+-SpaceBrowser can be launched in a terminal, see `--help`.
 
 To build SpaceBrowser from source, install Go 1.27 and the [Wails v2 development dependencies](https://wails.io/docs/gettingstarted/installation/), then run:
 
