@@ -37,6 +37,9 @@ func validateDeletionTarget(path string, info os.FileInfo, protectedTrees, prote
 	if !samePath(clean, physical, caseInsensitive) {
 		paths = append(paths, physical)
 	}
+	protectedTrees = deletionBoundaryPaths(protectedTrees, caseInsensitive)
+	protectedExact = deletionBoundaryPaths(protectedExact, caseInsensitive)
+	mountPoints = deletionBoundaryPaths(mountPoints, caseInsensitive)
 
 	for _, candidate := range paths {
 		for _, root := range protectedTrees {
@@ -70,6 +73,38 @@ func validateDeletionTarget(path string, info os.FileInfo, protectedTrees, prote
 		}
 	}
 	return nil
+}
+
+// deletionBoundaryPaths keeps the configured spelling of each safety boundary
+// and adds its physical spelling when the path exists. This is necessary when
+// the selected path and a protected path pass through different aliases of the
+// same ancestor, such as /var and /private/var on macOS or CI junctions on
+// Windows.
+func deletionBoundaryPaths(paths []string, caseInsensitive bool) []string {
+	resolved := make([]string, 0, len(paths)*2)
+	for _, path := range paths {
+		clean, err := filepath.Abs(path)
+		if err != nil {
+			clean = filepath.Clean(path)
+		} else {
+			clean = filepath.Clean(clean)
+		}
+		resolved = appendUniquePath(resolved, clean, caseInsensitive)
+		physical, err := resolvePhysicalPath(clean)
+		if err == nil {
+			resolved = appendUniquePath(resolved, physical, caseInsensitive)
+		}
+	}
+	return resolved
+}
+
+func appendUniquePath(paths []string, candidate string, caseInsensitive bool) []string {
+	for _, existing := range paths {
+		if samePath(existing, candidate, caseInsensitive) {
+			return paths
+		}
+	}
+	return append(paths, candidate)
 }
 
 // physicalDeletionPath resolves aliases in the path that RemoveAll would

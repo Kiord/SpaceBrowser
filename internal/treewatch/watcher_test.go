@@ -54,3 +54,19 @@ func TestWatcherReportsNestedChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestLogicalEventPathMapsPhysicalRootToScanRoot(t *testing.T) {
+	base := t.TempDir()
+	logicalRoot := filepath.Join(base, "logical", "root")
+	physicalRoot := filepath.Join(base, "physical", "root")
+	physicalChange := filepath.Join(physicalRoot, "nested", "file.txt")
+	want := filepath.Join(logicalRoot, "nested", "file.txt")
+	if got := logicalEventPath(logicalRoot, physicalRoot, physicalChange); got != want {
+		t.Fatalf("logicalEventPath() = %q, want %q", got, want)
+	}
+
+	outside := filepath.Join(base, "other", "file.txt")
+	if got := logicalEventPath(logicalRoot, physicalRoot, outside); got != outside {
+		t.Fatalf("outside event = %q, want unchanged %q", got, outside)
+	}
+}

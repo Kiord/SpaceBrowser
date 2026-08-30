@@ -33,6 +33,8 @@ var (
 type darwinWatcher struct {
 	handle    uint64
 	native    *C.SBTreeWatcher
+	root      string
+	physical  string
 	onChange  func(string)
 	onSubtree func(string)
 	onFailure func(error)
@@ -42,11 +44,17 @@ type darwinWatcher struct {
 }
 
 func Start(root string, _ []string, onChange func(string), onSubtree func(string), onFailure func(error)) (Watcher, error) {
+	root = filepath.Clean(root)
+	physicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, errors.New("resolve recursive FSEvents root: " + err.Error())
+	}
 	watcher := &darwinWatcher{
-		handle: darwinWatcherSequence.Add(1), onChange: onChange, onSubtree: onSubtree, onFailure: onFailure,
+		handle: darwinWatcherSequence.Add(1), root: root, physical: filepath.Clean(physicalRoot),
+		onChange: onChange, onSubtree: onSubtree, onFailure: onFailure,
 	}
 	darwinWatchers.Store(watcher.handle, watcher)
-	cRoot := C.CString(filepath.Clean(root))
+	cRoot := C.CString(watcher.physical)
 	defer C.free(unsafe.Pointer(cRoot))
 	watcher.native = C.SBTreeWatcherStart(cRoot, C.uintptr_t(watcher.handle))
 	if watcher.native == nil {
@@ -102,7 +110,7 @@ func goTreeWatcherEvent(handle C.uintptr_t, path *C.char, flags C.uint32_t) {
 		}
 		return
 	}
-	changed := filepath.Clean(C.GoString(path))
+	changed := logicalEventPath(watcher.root, watcher.physical, C.GoString(path))
 	if changed == "" || changed == "." {
 		if watcher.failed.CompareAndSwap(false, true) {
 			watcher.onFailure(errors.New("FSEvents returned an invalid path"))

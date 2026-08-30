@@ -4,7 +4,7 @@
     Name="SpaceBrowser"
     Manufacturer="Kiord"
     Version="$(var.AppVersion)"
-    UpgradeCode="7C5648B1-F689-4FD8-8EBB-7C0D58D436D"
+    UpgradeCode="fb7f91f6-fe2a-4efe-abe2-df677553dcce"
     Language="1033"
     Scope="perMachine">
 
