@@ -67,6 +67,21 @@ type scanCacheDependency struct {
 	eventCount uint64
 }
 
+// scanCacheObservation owns the watcher that spans enumeration and cache
+// installation. Before activation it buffers events locally; afterward it
+// forwards them to the installed cache entry.
+type scanCacheObservation struct {
+	manager    *scanCacheManager
+	rootPath   string
+	mu         sync.Mutex
+	watcher    treeWatcher
+	dirty      map[string]struct{}
+	invalid    bool
+	eventCount uint64
+	entry      *scanCacheEntry
+	adopted    bool
+}
+
 type scanReusePlan struct {
 	directories  map[string]*Node
 	dirty        []string
@@ -259,6 +274,100 @@ func cacheEntryCrossRootSafe(entry *scanCacheEntry, profile Profile) bool {
 	return !entry.sharedAllocation && !profile.FollowSymlinks
 }
 
+func (manager *scanCacheManager) BeginObservation(rootPath string) *scanCacheObservation {
+	observation := &scanCacheObservation{
+		manager: manager, rootPath: rootPath, dirty: make(map[string]struct{}),
+	}
+	watcher, err := startTreeWatcher(rootPath, []string{rootPath}, observation.markChanged, observation.markFailed)
+	observation.mu.Lock()
+	observation.watcher = watcher
+	if err != nil {
+		observation.invalid = true
+	}
+	observation.mu.Unlock()
+	if err != nil && manager != nil && manager.logger != nil {
+		manager.logger.Warningf("scan cache watcher disabled for %s: %v", rootPath, err)
+	}
+	return observation
+}
+
+func (observation *scanCacheObservation) WatchDirectory(path string) {
+	if observation == nil {
+		return
+	}
+	observation.mu.Lock()
+	watcher := observation.watcher
+	invalid := observation.invalid
+	observation.mu.Unlock()
+	if watcher == nil || invalid {
+		return
+	}
+	if err := watcher.AddDirectory(path); err != nil {
+		observation.markFailed(err)
+	}
+}
+
+func (observation *scanCacheObservation) markChanged(path string) {
+	clean := canonicalCachePath(path)
+	parent := canonicalCachePath(filepath.Dir(clean))
+	observation.mu.Lock()
+	entry := observation.entry
+	if entry == nil {
+		observation.dirty[clean] = struct{}{}
+		observation.dirty[parent] = struct{}{}
+		observation.eventCount++
+		observation.mu.Unlock()
+		return
+	}
+	observation.mu.Unlock()
+	observation.manager.markChanged(entry, clean)
+}
+
+func (observation *scanCacheObservation) markFailed(err error) {
+	observation.mu.Lock()
+	entry := observation.entry
+	if entry == nil {
+		observation.invalid = true
+		observation.eventCount++
+		observation.mu.Unlock()
+		if observation.manager != nil && observation.manager.logger != nil {
+			observation.manager.logger.Warningf("scan cache watcher invalidated for %s: %v", observation.rootPath, err)
+		}
+	} else {
+		observation.mu.Unlock()
+		observation.manager.markWatcherFailed(entry, err)
+	}
+}
+
+func (observation *scanCacheObservation) activate(entry *scanCacheEntry) (treeWatcher, map[string]struct{}, bool, uint64) {
+	observation.mu.Lock()
+	defer observation.mu.Unlock()
+	observation.entry = entry
+	observation.adopted = true
+	dirty := make(map[string]struct{}, len(observation.dirty))
+	for path := range observation.dirty {
+		dirty[path] = struct{}{}
+	}
+	return observation.watcher, dirty, observation.invalid, observation.eventCount
+}
+
+func (observation *scanCacheObservation) Close() {
+	if observation == nil {
+		return
+	}
+	observation.mu.Lock()
+	if observation.adopted {
+		observation.mu.Unlock()
+		return
+	}
+	observation.adopted = true
+	watcher := observation.watcher
+	observation.mu.Unlock()
+	if watcher != nil {
+		_ = watcher.Close()
+	}
+}
+
 func (manager *scanCacheManager) StillClean(source *scanCacheEntry, eventCount uint64) bool {
 	if manager == nil || source == nil {
 		return false
@@ -268,9 +377,18 @@ func (manager *scanCacheManager) StillClean(source *scanCacheEntry, eventCount u
 	return manager.containsLocked(source) && !source.invalid && source.eventCount == eventCount && len(source.dirty) == 0
 }
 
-func (manager *scanCacheManager) Install(rootPath string, profile Profile, root *Node, nodes []*Node, files, dirs int, report ScanReportSnapshot, plan scanReusePlan) {
+func (manager *scanCacheManager) Install(rootPath string, profile Profile, root *Node, nodes []*Node, files, dirs int, report ScanReportSnapshot, plan scanReusePlan, observation *scanCacheObservation) {
 	if manager == nil || root == nil {
 		return
+	}
+	if observation == nil {
+		observation = manager.BeginObservation(rootPath)
+		// A watcher created only after enumeration cannot certify the result.
+		// Keep the fallback safe for any caller that omitted BeginObservation.
+		observation.markChanged(rootPath)
+	}
+	for _, directory := range watchedDirectories(rootPath, nodes) {
+		observation.WatchDirectory(directory)
 	}
 	_, profileKey := scanProfileCacheKey(profile)
 	entry := &scanCacheEntry{
@@ -283,6 +401,7 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		dirty:            make(map[string]struct{}),
 		sharedAllocation: subtreeHasSharedAllocation(root),
 		report:           report,
+		invalid:          true,
 	}
 
 	manager.mu.Lock()
@@ -327,32 +446,26 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		retired = append(retired, oldest)
 	}
 	manager.mu.Unlock()
+
+	watcher, observedDirty, watcherInvalid, observedEvents := observation.activate(entry)
+	manager.mu.Lock()
+	retained := manager.containsLocked(entry)
+	if retained {
+		entry.watcher = watcher
+		entry.invalid = watcherInvalid
+		for path := range observedDirty {
+			entry.dirty[path] = struct{}{}
+		}
+		entry.eventCount += observedEvents
+	}
+	manager.mu.Unlock()
 	for _, retiredEntry := range retired {
 		if retiredEntry.watcher != nil {
 			_ = retiredEntry.watcher.Close()
 		}
 	}
-
-	directories := watchedDirectories(rootPath, nodes)
-	watcher, err := startTreeWatcher(rootPath, directories,
-		func(path string) { manager.markChanged(entry, path) },
-		func(err error) { manager.markWatcherFailed(entry, err) },
-	)
-	manager.mu.Lock()
-	retained := manager.containsLocked(entry)
-	if retained {
-		if err != nil {
-			entry.invalid = true
-		} else {
-			entry.watcher = watcher
-		}
-	}
-	manager.mu.Unlock()
 	if !retained && watcher != nil {
 		_ = watcher.Close()
-	}
-	if err != nil && manager.logger != nil {
-		manager.logger.Warningf("scan cache watcher disabled for %s: %v", rootPath, err)
 	}
 }
 

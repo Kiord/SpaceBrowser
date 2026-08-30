@@ -78,6 +78,7 @@ type Scanner struct {
 	cachedReports      map[string]ScanReportSnapshot
 	mergedCacheReports sync.Map
 	reusedDirectories  int64
+	onDirectory        func(string)
 }
 
 type untrustedIdentityCandidate struct {
@@ -160,6 +161,10 @@ func (s *Scanner) SetIncrementalCache(directories map[string]*Node, dirtyPaths [
 
 func (s *Scanner) SetIncrementalCacheReports(reports map[string]ScanReportSnapshot) {
 	s.cachedReports = reports
+}
+
+func (s *Scanner) SetDirectoryObserver(observer func(string)) {
+	s.onDirectory = observer
 }
 
 func (s *Scanner) ReusedDirectories() int64 {
@@ -383,6 +388,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	atomic.AddInt64(dirCount, 1)
 	atomic.AddInt64(&s.dirCount, 1)
 
+	if s.onDirectory != nil {
+		s.onDirectory(abs)
+	}
 	entries, diagnostic, err := platform.ReadDirWithDiagnostics(s.filesystem, abs)
 	if err != nil {
 		s.report.RecordError(scanErrorReadDirectory, abs, err)

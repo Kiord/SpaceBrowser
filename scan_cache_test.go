@@ -6,6 +6,7 @@ import (
 	"spacebrowser/internal/platform"
 	"sync"
 	"testing"
+	"time"
 )
 
 type countingCacheFilesystem struct {
@@ -166,7 +167,7 @@ func TestScanCacheKeepsIndependentRoots(t *testing.T) {
 	defer manager.Close()
 	for _, root := range []string{firstRoot, secondRoot} {
 		node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
-		manager.Install(root, profile, node, []*Node{node}, 0, 1, ScanReportSnapshot{}, scanReusePlan{})
+		manager.Install(root, profile, node, []*Node{node}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(root))
 	}
 	if plan := manager.Prepare(firstRoot, profile); plan.source == nil || len(plan.directories) == 0 {
 		t.Fatal("first root was evicted when the second root was installed")
@@ -185,7 +186,7 @@ func TestScanCacheOffersChildTreeToBroaderScan(t *testing.T) {
 	defer manager.Close()
 	report := ScanReportSnapshot{}
 	report.Skipped[scanSkipHidden] = 2
-	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{})
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{}, manager.BeginObservation(child))
 	plan := manager.Prepare(volume, profile)
 	if plan.source != nil || plan.directories[canonicalCachePath(child)] == nil || len(plan.dependencies) != 1 || plan.reports[canonicalCachePath(child)].Skipped[scanSkipHidden] != 2 {
 		t.Fatalf("broader reuse plan = %+v", plan)
@@ -206,7 +207,7 @@ func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
 	profile.MinFileSize = 0
 	manager := newScanCacheManager("", nil)
 	defer manager.Close()
-	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{})
+	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(child))
 
 	if err := os.WriteFile(filepath.Join(volume, "outside.bin"), []byte("outside"), 0o600); err != nil {
 		t.Fatal(err)
@@ -237,7 +238,7 @@ func TestBroaderScanMergesReusedChildReport(t *testing.T) {
 	report.Skipped[scanSkipHidden] = 3
 	manager := newScanCacheManager("", nil)
 	defer manager.Close()
-	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{})
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{}, manager.BeginObservation(child))
 
 	plan := manager.Prepare(volume, profile)
 	scanner := NewScannerWithFilesystem(&profile, 1, platform.Impl)
@@ -249,5 +250,39 @@ func TestBroaderScanMergesReusedChildReport(t *testing.T) {
 	}
 	if got := scanner.Report().Skipped[scanSkipHidden]; got != 3 {
 		t.Fatalf("merged hidden skips = %d, want 3", got)
+	}
+}
+
+func TestScanCacheRetainsChangesObservedBeforeInstallation(t *testing.T) {
+	root := t.TempDir()
+	profile := *defaultProfile()
+	observation := newScanCacheManager("", nil).BeginObservation(root)
+	manager := observation.manager
+	defer manager.Close()
+	defer observation.Close()
+
+	changed := filepath.Join(root, "changed-during-scan.bin")
+	if err := os.WriteFile(changed, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		observation.mu.Lock()
+		observed := observation.eventCount > 0
+		observation.mu.Unlock()
+		if observed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("filesystem change was not observed before cache installation")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
+	manager.Install(root, profile, node, []*Node{node}, 1, 1, ScanReportSnapshot{}, scanReusePlan{}, observation)
+	plan := manager.Prepare(root, profile)
+	if plan.source == nil || len(plan.dirty) == 0 || manager.StillClean(plan.source, plan.eventCount) {
+		t.Fatalf("pre-install change was lost: %+v", plan)
 	}
 }

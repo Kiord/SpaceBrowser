@@ -255,11 +255,14 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		// cannot reuse a tree using the now-stale empty dirty set.
 		cachePlan = a.scanCache.Prepare(path, profile)
 	}
+	observation := a.scanCache.BeginObservation(path)
+	defer observation.Close()
 	var files, dirs int64
 	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
 	// Persisted scan reports need the complete error list independently of the
 	// terminal verbosity selected by the user.
 	scanner.ReportAllErrors(true)
+	scanner.SetDirectoryObserver(observation.WatchDirectory)
 	if len(cachePlan.directories) > 0 {
 		scanner.SetIncrementalCache(cachePlan.directories, cachePlan.dirty)
 		scanner.SetIncrementalCacheReports(cachePlan.reports)
@@ -319,7 +322,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	if reused := scanner.ReusedDirectories(); reused > 0 {
 		a.logger.Infof("scan cache reused %d directories", reused)
 	}
-	a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan)
+	a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan, observation)
 	snapshotStartedAt := time.Now()
 	if snapshotErr := a.scanCache.SaveSnapshot(path, profile, root, int(files), int(dirs), report); snapshotErr != nil {
 		a.logger.Warningf("could not save scan snapshot: %v", snapshotErr)

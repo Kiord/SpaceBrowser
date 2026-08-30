@@ -14,6 +14,7 @@ import (
 type windowsTreeWatcher struct {
 	handle  windows.Handle
 	exited  chan struct{}
+	ready   chan error
 	once    sync.Once
 	mu      sync.Mutex
 	closing bool
@@ -36,8 +37,13 @@ func startTreeWatcher(root string, _ []string, onChange func(string), onFailure 
 	if err != nil {
 		return nil, err
 	}
-	watcher := &windowsTreeWatcher{handle: handle, exited: make(chan struct{})}
+	watcher := &windowsTreeWatcher{handle: handle, exited: make(chan struct{}), ready: make(chan error, 1)}
 	go watcher.run(filepath.Clean(root), onChange, onFailure)
+	if err := <-watcher.ready; err != nil {
+		<-watcher.exited
+		_ = windows.CloseHandle(handle)
+		return nil, err
+	}
 	return watcher, nil
 }
 
@@ -45,7 +51,7 @@ func (watcher *windowsTreeWatcher) run(root string, onChange func(string), onFai
 	defer close(watcher.exited)
 	event, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
-		onFailure(err)
+		watcher.ready <- err
 		return
 	}
 	defer windows.CloseHandle(event)
@@ -57,6 +63,7 @@ func (watcher *windowsTreeWatcher) run(root string, onChange func(string), onFai
 		windows.FILE_NOTIFY_CHANGE_CREATION |
 		windows.FILE_NOTIFY_CHANGE_SECURITY
 	buffer := make([]byte, 64*1024)
+	ready := false
 	for {
 		watcher.mu.Lock()
 		if watcher.closing {
@@ -68,11 +75,19 @@ func (watcher *windowsTreeWatcher) run(root string, onChange func(string), onFai
 		err := windows.ReadDirectoryChanges(watcher.handle, &buffer[0], uint32(len(buffer)), true, notifyMask, &length, &overlapped, 0)
 		watcher.mu.Unlock()
 		if err != nil && !errors.Is(err, windows.ERROR_IO_PENDING) {
+			if !ready {
+				watcher.ready <- err
+				return
+			}
 			if watcher.isClosing() {
 				return
 			}
 			onFailure(err)
 			return
+		}
+		if !ready {
+			watcher.ready <- nil
+			ready = true
 		}
 		if _, err = windows.WaitForSingleObject(event, windows.INFINITE); err != nil {
 			if watcher.isClosing() {
@@ -114,6 +129,11 @@ func (watcher *windowsTreeWatcher) isClosing() bool {
 	watcher.mu.Lock()
 	defer watcher.mu.Unlock()
 	return watcher.closing
+}
+
+func (watcher *windowsTreeWatcher) AddDirectory(string) error {
+	// ReadDirectoryChangesW watches the complete subtree from the root handle.
+	return nil
 }
 
 func (watcher *windowsTreeWatcher) Close() error {
