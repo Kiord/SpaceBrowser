@@ -13,7 +13,9 @@ import (
 // TreeStore owns the currently scanned tree and its dense node index.
 // It also applies successful filesystem deletions to the in-memory model.
 type TreeStore struct {
+	operationMu  sync.Mutex // serializes native mutations without blocking tree readers
 	mu           sync.RWMutex
+	generation   uint64 // changes whenever tree structure is replaced or mutated
 	root         *Node
 	nodes        []*Node // nodes[id] == *Node
 	fileCount    int
@@ -53,6 +55,7 @@ func (s *TreeStore) Counts() (files, dirs int) {
 
 func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) {
 	s.mu.Lock()
+	s.generation++
 	s.root, s.nodes = root, nodes
 	s.fileCount, s.dirCount = fileCount, dirCount
 	s.shared = false
@@ -62,6 +65,7 @@ func (s *TreeStore) Replace(root *Node, nodes []*Node, fileCount, dirCount int) 
 
 func (s *TreeStore) ReplaceShared(root *Node, nodes []*Node, fileCount, dirCount int) {
 	s.mu.Lock()
+	s.generation++
 	s.root, s.nodes = root, nodes
 	s.fileCount, s.dirCount = fileCount, dirCount
 	s.shared = true
@@ -204,40 +208,40 @@ func (s *TreeStore) DeleteNodePermanently(nodeID int, isTrashRoot, isInTrash fun
 }
 
 func (s *TreeStore) deleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, deletePath func(string) error, refreshTrash bool) (DeleteResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
-		return DeleteResult{}, fmt.Errorf("selected item is no longer available")
+	s.operationMu.Lock()
+	defer s.operationMu.Unlock()
+	target, err := s.prepareFilesystemMutation(nodeID, false, refreshTrash)
+	if err != nil {
+		return DeleteResult{}, err
 	}
-	node := s.nodes[nodeID]
-	if node.ParentID < 0 || node.FullPath == "" || node.IsFreeSpace || node.IsSmallFiles {
-		return DeleteResult{}, fmt.Errorf("the scan root and virtual items cannot be deleted")
-	}
-	if isTrashRoot != nil && isTrashRoot(node.FullPath) {
+	path := target.node.FullPath
+	if isTrashRoot != nil && isTrashRoot(path) {
 		return DeleteResult{}, fmt.Errorf("the Trash root cannot be deleted; use Empty Trash instead")
 	}
-	if isInTrash != nil && isInTrash(node.FullPath) {
+	if isInTrash != nil && isInTrash(path) {
 		return DeleteResult{}, fmt.Errorf("items inside Trash cannot be deleted; restore them using the system Trash")
 	}
-	if node.ParentID >= len(s.nodes) || s.nodes[node.ParentID] == nil {
-		return DeleteResult{}, fmt.Errorf("selected item's parent is no longer available")
-	}
-	if _, err := os.Lstat(node.FullPath); err != nil {
+	if _, err := os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
 			return DeleteResult{}, fmt.Errorf("selected path no longer exists")
 		}
 		return DeleteResult{}, fmt.Errorf("inspect selected path: %w", err)
 	}
-	if err := deletePath(node.FullPath); err != nil {
+	if !s.isCurrentMutation(target) {
+		return DeleteResult{}, fmt.Errorf("the scan tree changed; select the item again")
+	}
+	if err := deletePath(path); err != nil {
 		return DeleteResult{}, err
 	}
-	var trashRefreshes []trashRefreshTarget
-	if refreshTrash {
-		trashRefreshes = displayedTrashNodes(s.root, node, isTrashRoot)
+	trashRefreshes := filterTrashTargets(target.trash, isTrashRoot)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.generation != target.generation {
+		return s.rescanResultLocked(), nil
 	}
 	s.ensureOwnedLocked()
-	node = s.nodes[nodeID]
+	node := s.nodes[nodeID]
+	s.generation++
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {
@@ -278,6 +282,7 @@ func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scan
 		return DeleteResult{}, fmt.Errorf("refreshed subtree path changed from %s to %s", tPath, sPath)
 	}
 	s.ensureOwnedLocked()
+	s.generation++
 	target = s.nodes[nodeID]
 
 	oldSize := target.Size
@@ -353,23 +358,22 @@ func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scan
 }
 
 func (s *TreeStore) NodePathMatches(nodeID int, predicate func(string) bool) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return nodeID >= 0 && nodeID < len(s.nodes) && s.nodes[nodeID] != nil && predicate != nil && predicate(s.nodes[nodeID].FullPath)
+	path, err := s.NodePath(nodeID)
+	return err == nil && predicate != nil && predicate(path)
 }
 
 func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, emptyTrash func(string) error) (DeleteResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
-		return DeleteResult{}, fmt.Errorf("selected item is no longer available")
+	s.operationMu.Lock()
+	defer s.operationMu.Unlock()
+	target, err := s.prepareFilesystemMutation(nodeID, true, true)
+	if err != nil {
+		return DeleteResult{}, err
 	}
-	node := s.nodes[nodeID]
-	if !node.IsFolder || node.FullPath == "" || isTrashRoot == nil || !isTrashRoot(node.FullPath) {
+	path := target.node.FullPath
+	if isTrashRoot == nil || !isTrashRoot(path) {
 		return DeleteResult{}, fmt.Errorf("the selected item is not a supported Trash root")
 	}
-	if _, err := os.Lstat(node.FullPath); err != nil {
+	if _, err := os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
 			return DeleteResult{}, fmt.Errorf("selected Trash no longer exists")
 		}
@@ -378,12 +382,21 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 	if emptyTrash == nil {
 		return DeleteResult{}, fmt.Errorf("empty Trash command is unavailable")
 	}
-	trashRefreshes := displayedTrashNodes(s.root, nil, isTrashRoot)
-	if err := emptyTrash(node.FullPath); err != nil {
+	trashRefreshes := filterTrashTargets(target.trash, isTrashRoot)
+	if !s.isCurrentMutation(target) {
+		return DeleteResult{}, fmt.Errorf("the scan tree changed; select the item again")
+	}
+	if err := emptyTrash(path); err != nil {
 		return DeleteResult{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.generation != target.generation {
+		return s.rescanResultLocked(), nil
+	}
 	s.ensureOwnedLocked()
-	node = s.nodes[nodeID]
+	node := s.nodes[nodeID]
+	s.generation++
 
 	emptiedSize := node.Size
 	rescanRequired := subtreeHasSharedAllocation(node)
@@ -481,7 +494,56 @@ func (s *TreeStore) adjustAncestorEntryCounts(node *Node, fileDelta, dirDelta in
 	}
 }
 
-func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []trashRefreshTarget {
+// Snapshot scalar targets under the tree lock; native predicates and actions
+// must only run after that lock is released.
+type filesystemMutation struct {
+	node       Node
+	generation uint64
+	trash      []trashRefreshTarget
+}
+
+func (s *TreeStore) prepareFilesystemMutation(nodeID int, emptyTrash, collectTrash bool) (filesystemMutation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
+		return filesystemMutation{}, fmt.Errorf("selected item is no longer available")
+	}
+	node := s.nodes[nodeID]
+	if emptyTrash {
+		if !node.IsFolder || node.FullPath == "" {
+			return filesystemMutation{}, fmt.Errorf("the selected item is not a supported Trash root")
+		}
+	} else {
+		if node.ParentID < 0 || node.FullPath == "" || node.IsFreeSpace || node.IsSmallFiles {
+			return filesystemMutation{}, fmt.Errorf("the scan root and virtual items cannot be deleted")
+		}
+		if node.ParentID >= len(s.nodes) || s.nodes[node.ParentID] == nil {
+			return filesystemMutation{}, fmt.Errorf("selected item's parent is no longer available")
+		}
+	}
+	target := filesystemMutation{node: *node, generation: s.generation}
+	target.node.Children = nil
+	if collectTrash {
+		moving := node
+		if emptyTrash {
+			moving = nil
+		}
+		target.trash = displayedTrashCandidates(s.root, moving)
+	}
+	return target, nil
+}
+
+func (s *TreeStore) isCurrentMutation(target filesystemMutation) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.generation == target.generation
+}
+
+func (s *TreeStore) rescanResultLocked() DeleteResult {
+	return DeleteResult{FileCount: s.fileCount, DirCount: s.dirCount, RescanRequired: true}
+}
+
+func displayedTrashCandidates(root, moving *Node) []trashRefreshTarget {
 	if root == nil {
 		return nil
 	}
@@ -491,10 +553,9 @@ func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []tr
 		if current == nil || current == moving {
 			return
 		}
-		if current != root && current.IsFolder && current.FullPath != "" && isPotentialSystemTrashName(current.Name) && isTrashRoot != nil && isTrashRoot(current.FullPath) {
+		if current != root && current.IsFolder && current.FullPath != "" && isPotentialSystemTrashName(current.Name) {
 			if !subtreeContains(current, moving) && !subtreeContains(moving, current) {
 				found = append(found, trashRefreshTarget{NodeID: current.ID, Path: current.FullPath})
-				return
 			}
 		}
 		for _, child := range current.Children {
@@ -503,6 +564,26 @@ func displayedTrashNodes(root, moving *Node, isTrashRoot func(string) bool) []tr
 	}
 	visit(root)
 	return found
+}
+
+func filterTrashTargets(candidates []trashRefreshTarget, isTrashRoot func(string) bool) []trashRefreshTarget {
+	if isTrashRoot == nil {
+		return nil
+	}
+	var targets []trashRefreshTarget
+	for _, candidate := range candidates {
+		nested := false
+		for _, parent := range targets {
+			if cachePathWithin(candidate.Path, parent.Path) {
+				nested = true
+				break
+			}
+		}
+		if !nested && isTrashRoot(candidate.Path) {
+			targets = append(targets, candidate)
+		}
+	}
+	return targets
 }
 
 func isPotentialSystemTrashName(name string) bool {

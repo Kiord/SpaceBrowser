@@ -14,6 +14,8 @@ import (
 )
 
 func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
+	a.filesystemMu.Lock()
+	defer a.filesystemMu.Unlock()
 	profile := a.GetProfile()
 	if !profile.AllowDelete {
 		return DeleteResult{}, fmt.Errorf("delete commands are disabled; enable Allow delete command in Settings")
@@ -143,6 +145,8 @@ func (a *App) GetTrashRestoreInfo(nodeID int) (TrashRestoreDetails, error) {
 }
 
 func (a *App) RestoreNode(nodeID int) (DeleteResult, error) {
+	a.filesystemMu.Lock()
+	defer a.filesystemMu.Unlock()
 	a.scanMu.RLock()
 	defer a.scanMu.RUnlock()
 	if a.scanActive {
