@@ -45,8 +45,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-      - name: Test scan UI behavior
-        run: node --experimental-vm-modules --test tests/scan.test.mjs
+      - name: Test frontend behavior
+        run: node --experimental-vm-modules --test --test-timeout=10000 tests/*.test.mjs
 
       - name: Run tests
         if: runner.os == 'macOS'

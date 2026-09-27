@@ -147,6 +147,9 @@ function startScanProgress(path) {
     if (token !== scanProgressToken) return;
     try {
       const progress = await GetScanProgress();
+      // Completion, cancellation, or a new scan may have invalidated this
+      // request while the backend response was in flight.
+      if (token !== scanProgressToken) return;
       if (progress?.path) byId("scanCurrentPath").textContent = progress.path;
       const workFraction = Math.max(0, Math.min(1, Number(progress?.fraction || 0)));
       const target = workFraction * SCAN_PROGRESS_CAP;
