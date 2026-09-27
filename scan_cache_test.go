@@ -396,6 +396,28 @@ func TestScanCacheKeepsIndependentRoots(t *testing.T) {
 	}
 }
 
+func TestMemorySnapshotPreservesItsOriginalAge(t *testing.T) {
+	rootPath := t.TempDir()
+	profile := *defaultProfile()
+	_, profileKey := scanProfileCacheKey(profile)
+	savedAt := time.Now().Add(-2 * time.Hour)
+	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true}
+	manager := newScanCacheManager(filepath.Join(t.TempDir(), "settings.json"), nil)
+	defer manager.Close()
+	manager.entries[scanMemoryCacheKey(rootPath, profileKey)] = &scanCacheEntry{
+		rootPath: rootPath, profileKey: profileKey, root: root, nodes: []*Node{root}, savedAt: savedAt,
+	}
+	for range 2 {
+		loaded, err := manager.LoadSnapshot(rootPath, profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded.savedAt.Equal(savedAt) {
+			t.Fatalf("snapshot timestamp reset to %s, want %s", loaded.savedAt, savedAt)
+		}
+	}
+}
+
 func TestScanCacheOffersChildTreeToBroaderScan(t *testing.T) {
 	profile := *defaultProfile()
 	volume := t.TempDir()

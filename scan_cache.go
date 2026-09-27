@@ -51,6 +51,7 @@ type persistedScanSnapshot struct {
 }
 
 type scanCacheEntry struct {
+	savedAt          time.Time
 	rootPath         string
 	profileKey       string
 	root             *Node
@@ -505,6 +506,7 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 	_, profileKey := scanProfileCacheKey(profile)
 	entry := &scanCacheEntry{
+		savedAt:          time.Now(),
 		rootPath:         rootPath,
 		profileKey:       profileKey,
 		root:             root,
@@ -895,7 +897,7 @@ func (manager *scanCacheManager) LoadSnapshot(rootPath string, profile Profile) 
 		manager.touchLocked(entry)
 		loaded := loadedScanSnapshot{
 			root: entry.root, nodes: entry.nodes, files: entry.fileCount, dirs: entry.dirCount,
-			savedAt: time.Now(), shared: true,
+			savedAt: entry.savedAt, shared: true,
 		}
 		manager.mu.Unlock()
 		return loaded, nil

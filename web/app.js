@@ -8,7 +8,7 @@ import { initLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
 import { analyze, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
-import { getSelectedRect, initTreemapView, isPassiveRect, redraw } from "./treemap-view.js";
+import { getSelectedRect, initTreemapView, isPassiveRect, redraw, resizeCanvas } from "./treemap-view.js";
 import { initZoom } from "./zoom.js";
 import { AppState } from "./state.js";
 
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavigation({ redraw, getSelectedRect, isPassiveRect });
   initSettings({ redraw });
   initFileActions({ redraw, getSelectedRect, isPassiveRect });
-  initScan({ redraw, hideContextMenu });
+  initScan({ redraw, hideContextMenu, resizeCanvas });
   initLocationSelector({ analyze });
   initFolderPicker();
   initZoom({ redraw });
