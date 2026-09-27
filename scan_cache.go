@@ -21,7 +21,7 @@ import (
 
 const (
 	scanSnapshotVersion       = 1
-	scanAccountingVersion     = 1
+	scanAccountingVersion     = 2 // aggregates retain hard-link safety metadata
 	maximumPersistedSnapshots = 5
 	maximumPersistedBytes     = 512 << 20
 	maximumInMemoryScanCaches = 3

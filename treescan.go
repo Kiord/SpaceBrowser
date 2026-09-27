@@ -37,7 +37,7 @@ type Node struct {
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
 	ModTime    int64  `json:"-"`
-	LinkCount  uint64 `json:"-"`
+	LinkCount  uint64 `json:"-"` // maximum constituent link count for small-file aggregates
 	EntryFiles int    `json:"-"`
 	EntryDirs  int    `json:"-"`
 }
@@ -60,6 +60,7 @@ type Scanner struct {
 	untrustedSeen       map[platform.FileIdentity]untrustedIdentityReference
 	untrustedCollisions map[platform.FileIdentity]*untrustedIdentityBucket
 	seenMu              sync.Mutex
+	linkMu              sync.Mutex // link metadata can be updated by another directory's worker
 	seenDirs            map[string]struct{}
 	seenDirsMu          sync.Mutex
 
@@ -206,18 +207,31 @@ func (s *Scanner) seenDirectory(path string) bool {
 	return exists
 }
 
-func updateNodeUsage(node *Node, usage platform.FileUsage) {
+func (s *Scanner) updateNodeUsage(node *Node, usage platform.FileUsage) {
 	if node != nil {
-		node.Size = usage.AllocatedSize
-		node.LinkCount = usage.LinkCount
+		// Aggregates also serve as identity references, so late hard-link
+		// discoveries survive without retaining a node for every small file.
+		if !node.IsSmallFiles {
+			node.Size = usage.AllocatedSize
+		}
+		s.recordNodeLinkCount(node, usage.LinkCount)
 	}
 }
 
+func (s *Scanner) recordNodeLinkCount(node *Node, count uint64) {
+	if node == nil {
+		return
+	}
+	s.linkMu.Lock()
+	node.LinkCount = max(node.LinkCount, count)
+	s.linkMu.Unlock()
+}
+
 func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage platform.FileUsage, node *Node) (platform.FileUsage, bool) {
+	s.updateNodeUsage(node, usage)
 	if !usage.HasIdentity {
 		return usage, false
 	}
-	updateNodeUsage(node, usage)
 	if usage.IdentityNeedsConfirmation {
 		return s.registerUntrustedFileIdentity(path, info, usage, node)
 	}
@@ -233,9 +247,8 @@ func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage plat
 	if !usage.HasLinkCount || linkCount < 2 {
 		linkCount = 2
 	}
-	if existing != nil && existing.LinkCount < linkCount {
-		existing.LinkCount = linkCount
-	}
+	s.recordNodeLinkCount(existing, linkCount)
+	s.recordNodeLinkCount(node, linkCount)
 	s.seenMu.Unlock()
 	return usage, true
 }
@@ -267,7 +280,7 @@ func (s *Scanner) registerUntrustedFileIdentity(path string, info os.FileInfo, u
 
 	candidate.usage = s.filesystem.UsageFor(path, info)
 	candidate.resolved = true
-	updateNodeUsage(node, candidate.usage)
+	s.updateNodeUsage(node, candidate.usage)
 
 	for _, previous := range bucket.candidates {
 		previousUsage := s.resolveUntrustedIdentity(previous)
@@ -275,9 +288,8 @@ func (s *Scanner) registerUntrustedFileIdentity(path string, info os.FileInfo, u
 		if !confirmed {
 			continue
 		}
-		if previous.node != nil && previous.node.LinkCount < linkCount {
-			previous.node.LinkCount = linkCount
-		}
+		s.recordNodeLinkCount(previous.node, linkCount)
+		s.recordNodeLinkCount(node, linkCount)
 		return candidate.usage, true
 	}
 
@@ -303,7 +315,7 @@ func (s *Scanner) resolveUntrustedIdentity(candidate *untrustedIdentityCandidate
 	// The candidate's size may already have contributed to an ancestor total.
 	// Only link metadata is safe and relevant to update retroactively here.
 	if candidate.node != nil && candidate.usage.HasLinkCount {
-		candidate.node.LinkCount = candidate.usage.LinkCount
+		s.recordNodeLinkCount(candidate.node, candidate.usage.LinkCount)
 	}
 	return candidate.usage
 }
@@ -409,6 +421,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 	subdirs := make([]subdir, 0, 32)
 	var smallFilesSize, smallFileCount int64
+	var smallFiles *Node
 	var processedBatch int64
 	flushProcessed := func() {
 		if processedBatch > 0 {
@@ -509,7 +522,16 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 			isSmall := s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize
 			var child *Node
-			if !isSmall {
+			if isSmall {
+				if smallFiles == nil {
+					smallFiles = &Node{
+						ID: -1, ParentID: root.ID, Name: "[Small Files]",
+						IsSmallFiles: true, SmallFileLimit: s.profile.MinFileSize,
+						Depth: root.Depth + 1,
+					}
+				}
+				child = smallFiles
+			} else {
 				child = &Node{
 					ParentID:  root.ID,
 					Name:      name,
@@ -561,16 +583,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 
 	if smallFileCount > 0 {
-		root.Children = append(root.Children, &Node{
-			ID:             -1,
-			ParentID:       root.ID,
-			Name:           "[Small Files]",
-			Size:           smallFilesSize,
-			IsSmallFiles:   true,
-			SmallFileCount: smallFileCount,
-			SmallFileLimit: s.profile.MinFileSize,
-			Depth:          root.Depth + 1,
-		})
+		smallFiles.Size = smallFilesSize
+		smallFiles.SmallFileCount = smallFileCount
+		root.Children = append(root.Children, smallFiles)
 		root.Size += smallFilesSize
 	}
 

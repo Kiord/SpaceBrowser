@@ -540,7 +540,7 @@ func subtreeHasSharedAllocation(root *Node) bool {
 	if root == nil {
 		return false
 	}
-	if !root.IsFolder && !root.IsFreeSpace && !root.IsSmallFiles && root.LinkCount > 1 {
+	if !root.IsFolder && !root.IsFreeSpace && root.LinkCount > 1 {
 		return true
 	}
 	for _, child := range root.Children {
