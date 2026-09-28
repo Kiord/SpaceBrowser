@@ -100,7 +100,7 @@ func TestSmallHardLinksPreventUnsafeCacheReuse(t *testing.T) {
 		directories: indexCachedDirectories(root), sharedAllocation: subtreeHasSharedAllocation(root),
 		report: scanner.Report(), dirty: make(map[string]struct{}),
 	}
-	manager := newScanCacheManager("", nil)
+	manager := newScanCacheManager(nil)
 	t.Cleanup(manager.Close)
 	manager.entries[scanMemoryCacheKey(left, key)] = entry
 	if plan := manager.Prepare(path, profile); len(plan.directories) != 0 {
@@ -147,24 +147,15 @@ func TestSmallHardLinksRetainLateIdentityDiscoveries(t *testing.T) {
 	}
 }
 
-func TestSmallHardLinkSafetySurvivesSnapshotsAndTreeCopies(t *testing.T) {
+func TestSmallHardLinkSafetySurvivesTreeCopies(t *testing.T) {
 	path, left, _ := smallHardLinkFixture(t)
-	scanner, root, profile := scanSmallHardLinks(t, path, smallHardLinkFilesystem{API: platform.Impl})
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "settings.json"), nil)
-	t.Cleanup(manager.Close)
-	if err := manager.SaveSnapshot(path, profile, root, root.EntryFiles, root.EntryDirs, scanner.Report()); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := manager.LoadSnapshot(path, profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clone, nodes := cloneTreePreservingIDs(loaded.root, len(loaded.nodes))
+	scanner, root, _ := scanSmallHardLinks(t, path, smallHardLinkFilesystem{API: platform.Impl})
+	clone, nodes := cloneTreePreservingIDs(root, len(scanner.Nodes()))
 	if !subtreeHasSharedAllocation(clone) {
-		t.Fatal("snapshot round trip or tree copy lost aggregate sharing metadata")
+		t.Fatal("tree copy lost aggregate sharing metadata")
 	}
 	store := &TreeStore{}
-	store.ReplaceShared(clone, nodes, loaded.files, loaded.dirs)
+	store.ReplaceShared(clone, nodes, root.EntryFiles, root.EntryDirs)
 	var target *Node
 	for _, node := range nodes {
 		if node.FullPath == left {

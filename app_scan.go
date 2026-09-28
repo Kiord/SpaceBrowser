@@ -15,12 +15,10 @@ import (
 )
 
 type TreeInfo struct {
-	RootID                  int             `json:"rootId"`
-	FileCount               int             `json:"fileCount"`
-	DirCount                int             `json:"dirCount"`
-	ScanReport              *ScanReportInfo `json:"scanReport,omitempty"`
-	Cached                  bool            `json:"cached,omitempty"`
-	SnapshotAgeMilliseconds int64           `json:"snapshotAgeMilliseconds,omitempty"`
+	RootID     int             `json:"rootId"`
+	FileCount  int             `json:"fileCount"`
+	DirCount   int             `json:"dirCount"`
+	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
 }
 
 type ScanProgress struct {
@@ -72,7 +70,7 @@ func (a *App) validateScanPath(path string) (string, error) {
 	return path, nil
 }
 
-func (a *App) startupScanCacheDisabled(path string, consume bool) bool {
+func (a *App) startupScanCacheDisabled(path string) bool {
 	a.initialScanMu.Lock()
 	defer a.initialScanMu.Unlock()
 	if !a.initialScanNoCache || a.initialScanPath == "" {
@@ -82,9 +80,7 @@ func (a *App) startupScanCacheDisabled(path string, consume bool) bool {
 	if initialPath != canonicalCachePath(path) {
 		return false
 	}
-	if consume {
-		a.initialScanNoCache = false
-	}
+	a.initialScanNoCache = false
 	return true
 }
 
@@ -202,7 +198,7 @@ func (a *App) publishScanResult(
 	}
 
 	if shared {
-		// The cache and snapshot worker retain this allocation. TreeStore
+		// The live cache retains this allocation. TreeStore
 		// detaches lazily before any later structural mutation.
 		a.store.ReplaceShared(root, nodes, files, dirs)
 	} else {
@@ -245,7 +241,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()
-	startupCacheDisabled := a.startupScanCacheDisabled(path, true)
+	startupCacheDisabled := a.startupScanCacheDisabled(path)
 	useCache := profile.UseCache && !startupCacheDisabled
 	cachePlan := scanReusePlan{}
 	if useCache {
@@ -333,7 +329,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	report := scanner.Report()
 	duration := time.Since(startedAt)
 	// Settings can be saved through another backend caller while a scan is in
-	// progress. Do not publish or persist a new cache after caching was disabled.
+	// progress. Do not publish a new cache after caching was disabled.
 	if useCache && !a.GetProfile().UseCache {
 		useCache = false
 	}
@@ -354,55 +350,9 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	if useCache {
 		a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan, observation)
-		a.scanCache.QueueSnapshot(path, profile, root, int(files), int(dirs), report)
 	}
 	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
 	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
-}
-
-func (a *App) LoadScanSnapshot(path string) (*TreeInfo, error) {
-	path, err := a.validateScanPath(path)
-	if err != nil {
-		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
-	}
-	profile := a.GetProfile()
-	if !profile.UseCache || a.startupScanCacheDisabled(path, false) {
-		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
-	}
-	loaded, err := a.scanCache.LoadSnapshot(path, profile)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			a.logger.Warningf("scan snapshot unavailable for %s: %v", path, err)
-		}
-		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
-	}
-	var currentUsage *disk.UsageStat
-	if a.filesystem.IsMountRoot(path) {
-		currentUsage, _ = disk.Usage(path)
-	}
-	a.scanMu.Lock()
-	if a.scanActive {
-		a.scanMu.Unlock()
-		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, nil
-	}
-	if loaded.shared {
-		a.store.ReplaceShared(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
-	} else {
-		a.store.Replace(loaded.root, loaded.nodes, loaded.files, loaded.dirs)
-	}
-	if currentUsage != nil {
-		a.store.UpdateDiskUsage(int64(currentUsage.Total), int64(currentUsage.Free))
-	}
-	a.scanMu.Unlock()
-	age := time.Since(loaded.savedAt)
-	if age < 0 {
-		age = 0
-	}
-	a.logger.Infof("loaded persisted scan snapshot for %s (%s old); verifying with a live scan", path, age.Round(time.Second))
-	return &TreeInfo{
-		RootID: loaded.root.ID, FileCount: loaded.files, DirCount: loaded.dirs,
-		Cached: true, SnapshotAgeMilliseconds: age.Milliseconds(),
-	}, nil
 }
 
 func (a *App) logScanReport(report ScanReportSnapshot) {

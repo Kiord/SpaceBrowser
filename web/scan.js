@@ -1,4 +1,4 @@
-import { CancelScan, GetFullTree, GetScanProgress, LoadScanSnapshot, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
+import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatCount, formatDuration } from "./format.js";
 import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
@@ -9,8 +9,6 @@ import { AppState } from "./state.js";
 
 let redraw = async () => {};
 let hideContextMenu = () => {};
-let resizeCanvas = () => {};
-let cachedSnapshotTime = null;
 let scanProgressTimer = null;
 let scanProgressToken = 0;
 let scanCancelledByUser = false;
@@ -23,26 +21,6 @@ const SCAN_PROGRESS_CAP = 0.96;
 const SCAN_PROGRESS_SMOOTHING = 0.08;
 const SCAN_PROGRESS_STEP_COUNT = 50;
 const SCAN_COMPLETION_DELAY_MS = 180;
-
-function showCachedScanStatus(status) {
-  if (cachedSnapshotTime == null) return;
-  const indicator = byId("cachedScanStatus");
-  const wasHidden = indicator.hidden;
-  indicator.textContent = `Cached results · ${status} · Snapshot from ${new Date(cachedSnapshotTime).toLocaleString()}. Files may have changed; scan again to verify.`;
-  indicator.title = indicator.textContent;
-  indicator.hidden = false;
-  if (wasHidden) resizeCanvas();
-}
-
-function clearCachedScanStatus() {
-  cachedSnapshotTime = null;
-  const indicator = byId("cachedScanStatus");
-  const wasVisible = !indicator.hidden;
-  indicator.hidden = true;
-  indicator.textContent = "";
-  indicator.title = "";
-  if (wasVisible) resizeCanvas();
-}
 
 function renderScanProgress(fraction) {
   const clamped = Math.max(0, Math.min(1, fraction));
@@ -59,7 +37,6 @@ function setUIBusy(state) {
 }
 
 function clearTreemapForScan() {
-  clearCachedScanStatus();
   hideLocationSelector();
   hideRectToast();
   for (const context of [AppState.colorCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx]) {
@@ -67,6 +44,9 @@ function clearTreemapForScan() {
   }
   AppState.rects = [];
   AppState.node_id = null;
+  AppState.scanRootPath = null;
+  AppState.fileCount = 0;
+  AppState.dirCount = 0;
   AppState.navHistory = [];
   AppState.navIndex = -1;
   AppState.navSession++;
@@ -223,25 +203,6 @@ export async function analyze() {
     byId("pathInput").value = canonicalPath;
     clearScanWarning();
     clearTreemapForScan();
-    try {
-      const snapshot = await LoadScanSnapshot(canonicalPath);
-      if (Number(snapshot?.rootId) >= 0) {
-        AppState.node_id = snapshot.rootId;
-        AppState.scanRootPath = canonicalPath;
-        AppState.navHistory = [snapshot.rootId];
-        AppState.fileCount = snapshot.fileCount;
-        AppState.dirCount = snapshot.dirCount;
-        AppState.navIndex = 0;
-        replaceBrowserHistoryEntry(snapshot.rootId, 0);
-        const age = Number(snapshot.snapshotAgeMilliseconds);
-        cachedSnapshotTime = Date.now() - (Number.isFinite(age) ? Math.max(0, age) : 0);
-        showCachedScanStatus("Verifying");
-        await redraw();
-        logDebug(`loaded cached scan snapshot (${snapshot.snapshotAgeMilliseconds || 0} ms old)`);
-      }
-    } catch (error) {
-      logDebug("scan snapshot unavailable:", error);
-    }
     startScanProgress(canonicalPath);
     scanStarted = true;
 
@@ -258,14 +219,12 @@ export async function analyze() {
     replaceBrowserHistoryEntry(rootId, 0);
     AppState.selectedRectIndex = null;
     AppState.selectedNodeId = null;
-    clearCachedScanStatus();
     showScanWarning(scanReport);
     await redraw();
   } catch (error) {
     logError("analyze failed:", error);
     if (scanStarted) stopScanProgress();
     const wasCancelled = scanCancelledByUser || /scan cancelled/i.test(String(error));
-    if (scanStarted) showCachedScanStatus(wasCancelled ? "Verification cancelled" : "Verification failed");
     if (!wasCancelled) showErrorToast(error);
   } finally {
     if (scanStarted) stopScanProgress();
@@ -279,7 +238,6 @@ export async function analyze() {
 export function initScan(options) {
   redraw = options.redraw;
   hideContextMenu = options.hideContextMenu;
-  resizeCanvas = options.resizeCanvas;
   byId("analyzeButton").addEventListener("click", analyze);
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   byId("cancelScanButton").addEventListener("click", cancelActiveScan);

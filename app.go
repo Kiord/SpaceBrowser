@@ -94,7 +94,7 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 		desktop:             desktop,
 		locations:           locations,
 	}
-	app.scanCache = newScanCacheManager(defaultPath, logger)
+	app.scanCache = newScanCacheManager(logger)
 	return app
 }
 

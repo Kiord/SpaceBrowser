@@ -76,7 +76,6 @@
       </div>
     </div>
     
-    <p id="cachedScanStatus" class="cached-scan-status" role="status" hidden></p>
     <div class="treemap-canvas-stack">
       <canvas id="colorCanvas"></canvas>
       <canvas id="hoverCanvas" aria-hidden="true"></canvas>
@@ -244,7 +243,7 @@
           </label>
           <label class="settings-check">
             <input id="settingsUseCache" type="checkbox">
-            <span>Use scan cache</span>
+            <span title="Reuse unchanged results during this app session. Closing the app clears the cache.">Use live scan cache</span>
           </label>
           <div class="tooltip-settings-row">
             <label class="settings-check">

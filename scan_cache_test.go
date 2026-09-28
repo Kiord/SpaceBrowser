@@ -84,89 +84,6 @@ func TestScannerIncrementalCacheReusesOnlyCleanSubtrees(t *testing.T) {
 	}
 }
 
-func TestPersistedScanSnapshotRoundTrip(t *testing.T) {
-	rootPath := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootPath, "file.bin"), []byte("snapshot"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	root, _, files, dirs := scanTestTree(t, rootPath, platform.Impl)
-	profile := *defaultProfile()
-	profile.MinFileSize = 0
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
-	defer manager.Close()
-	report := ScanReportSnapshot{}
-	if err := manager.SaveSnapshot(rootPath, profile, root, int(files), int(dirs), report); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := manager.LoadSnapshot(rootPath, profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.root == nil || canonicalCachePath(loaded.root.FullPath) != canonicalCachePath(rootPath) {
-		t.Fatalf("loaded root = %#v", loaded.root)
-	}
-	if loaded.files != int(files) || loaded.dirs != int(dirs) || len(loaded.nodes) == 0 {
-		t.Fatalf("loaded snapshot files=%d dirs=%d nodes=%d", loaded.files, loaded.dirs, len(loaded.nodes))
-	}
-}
-
-func TestPersistedScanSnapshotRejectsPathsOutsideRoot(t *testing.T) {
-	rootPath := t.TempDir()
-	root := &Node{
-		ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1,
-		Children: []*Node{{ID: 1, ParentID: 0, FullPath: filepath.Join(filepath.Dir(rootPath), "outside.bin"), Size: 1}},
-	}
-	profile := *defaultProfile()
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
-	defer manager.Close()
-	if err := manager.SaveSnapshot(rootPath, profile, root, 1, 1, ScanReportSnapshot{}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := manager.LoadSnapshot(rootPath, profile); err == nil {
-		t.Fatal("snapshot containing an out-of-root path was accepted")
-	}
-}
-
-func TestQueuedScanSnapshotIsPersisted(t *testing.T) {
-	rootPath := t.TempDir()
-	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
-	profile := *defaultProfile()
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
-	defer manager.Close()
-
-	manager.QueueSnapshot(rootPath, profile, root, 0, 1, ScanReportSnapshot{})
-	_, profileKey := scanProfileCacheKey(profile)
-	snapshotPath := manager.snapshotPath(rootPath, profileKey)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(snapshotPath); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("queued snapshot was not persisted")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-func TestInMemorySnapshotLoadSharesCachedTree(t *testing.T) {
-	rootPath := t.TempDir()
-	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
-	nodes := []*Node{root}
-	profile := *defaultProfile()
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"), nil)
-	defer manager.Close()
-	manager.Install(rootPath, profile, root, nodes, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(rootPath))
-
-	loaded, err := manager.LoadSnapshot(rootPath, profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !loaded.shared || loaded.root != root || len(loaded.nodes) != 1 || loaded.nodes[0] != root {
-		t.Fatal("in-memory cache load cloned the immutable tree")
-	}
-}
-
 func TestScanCacheBudgetsCountNodesAndEntries(t *testing.T) {
 	entries := map[string]*scanCacheEntry{
 		"first":  {nodeCount: 60},
@@ -216,6 +133,46 @@ func TestDisablingCacheClearsMemoryEntries(t *testing.T) {
 	}
 }
 
+func TestLiveCacheReusesScanUntilAppCloses(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file.bin"), []byte("content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	app := newApp(settings)
+	t.Cleanup(func() { app.Shutdown(nil) })
+	app.filesystem = filesystem
+	first, err := app.GetFullTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := filesystem.readCount(root)
+	second, err := app.GetFullTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads == 0 || filesystem.readCount(root) != reads || first.FileCount != second.FileCount {
+		t.Fatal("repeat scan did not reuse the live cache")
+	}
+	app.Shutdown(nil)
+	if len(app.scanCache.entries) != 0 {
+		t.Fatal("closing the app retained the live cache")
+	}
+	reopened := newApp(settings)
+	t.Cleanup(func() { reopened.Shutdown(nil) })
+	reopened.filesystem = filesystem
+	if _, err := reopened.GetFullTree(root); err != nil {
+		t.Fatal(err)
+	}
+	if filesystem.readCount(root) <= reads {
+		t.Fatal("a new app reused results from the previous session")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(settings), "cache", "scans")); !os.IsNotExist(err) {
+		t.Fatalf("scan created persistent cache storage: %v", err)
+	}
+}
+
 func TestCLIStartupCacheOverrideAppliesOnlyToInitialScan(t *testing.T) {
 	rootPath := t.TempDir()
 	if err := os.WriteFile(filepath.Join(rootPath, "file.bin"), []byte("content"), 0o600); err != nil {
@@ -249,34 +206,6 @@ func TestCLIStartupCacheOverrideAppliesOnlyToInitialScan(t *testing.T) {
 	app.scanCache.mu.Unlock()
 	if secondEntryCount != 1 {
 		t.Fatalf("later scan created %d cache entries, want 1", secondEntryCount)
-	}
-}
-
-func TestPersistedSnapshotPruningUsesByteBudget(t *testing.T) {
-	manager := &scanCacheManager{directory: t.TempDir()}
-	current := filepath.Join(manager.directory, "current.gob.gz")
-	older := filepath.Join(manager.directory, "older.gob.gz")
-	oldest := filepath.Join(manager.directory, "oldest.gob.gz")
-	for _, path := range []string{current, older, oldest} {
-		if err := os.WriteFile(path, make([]byte, 10), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	// Keep the explicitly current snapshot regardless of ordering, then retain
-	// only as many other snapshots as fit the byte budget.
-	manager.pruneSnapshotsWithLimits(current, 3, 20)
-	if _, err := os.Stat(current); err != nil {
-		t.Fatalf("current snapshot was pruned: %v", err)
-	}
-	kept := 0
-	for _, path := range []string{older, oldest} {
-		if _, err := os.Stat(path); err == nil {
-			kept++
-		}
-	}
-	if kept != 1 {
-		t.Fatalf("kept %d older snapshots, want 1", kept)
 	}
 }
 
@@ -385,7 +314,7 @@ func TestScanCacheKeepsIndependentRoots(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	manager := newScanCacheManager("", nil)
+	manager := newScanCacheManager(nil)
 	defer manager.Close()
 	for _, root := range []string{firstRoot, secondRoot} {
 		node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
@@ -393,28 +322,6 @@ func TestScanCacheKeepsIndependentRoots(t *testing.T) {
 	}
 	if plan := manager.Prepare(firstRoot, profile); plan.source == nil || len(plan.directories) == 0 {
 		t.Fatal("first root was evicted when the second root was installed")
-	}
-}
-
-func TestMemorySnapshotPreservesItsOriginalAge(t *testing.T) {
-	rootPath := t.TempDir()
-	profile := *defaultProfile()
-	_, profileKey := scanProfileCacheKey(profile)
-	savedAt := time.Now().Add(-2 * time.Hour)
-	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true}
-	manager := newScanCacheManager(filepath.Join(t.TempDir(), "settings.json"), nil)
-	defer manager.Close()
-	manager.entries[scanMemoryCacheKey(rootPath, profileKey)] = &scanCacheEntry{
-		rootPath: rootPath, profileKey: profileKey, root: root, nodes: []*Node{root}, savedAt: savedAt,
-	}
-	for range 2 {
-		loaded, err := manager.LoadSnapshot(rootPath, profile)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !loaded.savedAt.Equal(savedAt) {
-			t.Fatalf("snapshot timestamp reset to %s, want %s", loaded.savedAt, savedAt)
-		}
 	}
 }
 
@@ -426,7 +333,7 @@ func TestScanCacheOffersChildTreeToBroaderScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
-	manager := newScanCacheManager("", nil)
+	manager := newScanCacheManager(nil)
 	defer manager.Close()
 	report := ScanReportSnapshot{}
 	report.Skipped[scanSkipHidden] = 2
@@ -449,7 +356,7 @@ func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
 	cachedRoot, cachedNodes, cachedFiles, cachedDirs := scanTestTree(t, child, platform.Impl)
 	profile := *defaultProfile()
 	profile.MinFileSize = 0
-	manager := newScanCacheManager("", nil)
+	manager := newScanCacheManager(nil)
 	defer manager.Close()
 	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(child))
 
@@ -480,7 +387,7 @@ func TestBroaderScanMergesReusedChildReport(t *testing.T) {
 	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
 	report := ScanReportSnapshot{}
 	report.Skipped[scanSkipHidden] = 3
-	manager := newScanCacheManager("", nil)
+	manager := newScanCacheManager(nil)
 	defer manager.Close()
 	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{}, manager.BeginObservation(child))
 
@@ -500,7 +407,7 @@ func TestBroaderScanMergesReusedChildReport(t *testing.T) {
 func TestScanCacheRetainsChangesObservedBeforeInstallation(t *testing.T) {
 	root := t.TempDir()
 	profile := *defaultProfile()
-	observation := newScanCacheManager("", nil).BeginObservation(root)
+	observation := newScanCacheManager(nil).BeginObservation(root)
 	manager := observation.manager
 	defer manager.Close()
 	defer observation.Close()

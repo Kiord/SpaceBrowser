@@ -176,20 +176,6 @@ html.keyboard-navigation button:focus {
 
 
 
-.cached-scan-status {
-  flex-shrink: 0;
-  margin: 0;
-  padding: 7px 10px;
-  color: #714b0b;
-  background: #fff4d6;
-  border-bottom: 1px solid #e5cc91;
-  font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .treemap-canvas-stack {
   position: relative;
   flex: 1 1 auto;

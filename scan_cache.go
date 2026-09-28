@@ -1,57 +1,32 @@
 package main
 
 import (
-	"compress/gzip"
-	"context"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
-	scanSnapshotVersion       = 1
-	scanAccountingVersion     = 2 // aggregates retain hard-link safety metadata
-	maximumPersistedSnapshots = 5
-	maximumPersistedBytes     = 512 << 20
 	maximumInMemoryScanCaches = 3
 	maximumInMemoryCacheNodes = 2_500_000
-	maximumSnapshotNodes      = 10_000_000
 	maximumUnobservedSubtrees = 4096
 )
 
 type scanCacheProfile struct {
-	AccountingVersion int      `json:"accountingVersion"`
-	ExcludedPaths     []string `json:"excludedPaths"`
-	SkipHidden        bool     `json:"skipHidden"`
-	MinFileSize       int64    `json:"minFileSize"`
-	FollowSymlinks    bool     `json:"followSymlinks"`
-	SkipNetworkFS     bool     `json:"skipNetworkFS"`
-}
-
-type persistedScanSnapshot struct {
-	Version    int
-	RootPath   string
-	ProfileKey string
-	SavedAt    time.Time
-	Root       *Node
-	FileCount  int
-	DirCount   int
-	Report     ScanReportSnapshot
+	ExcludedPaths  []string `json:"excludedPaths"`
+	SkipHidden     bool     `json:"skipHidden"`
+	MinFileSize    int64    `json:"minFileSize"`
+	FollowSymlinks bool     `json:"followSymlinks"`
+	SkipNetworkFS  bool     `json:"skipNetworkFS"`
 }
 
 type scanCacheEntry struct {
-	savedAt          time.Time
 	rootPath         string
 	profileKey       string
 	root             *Node
@@ -99,54 +74,15 @@ type scanReusePlan struct {
 	dependencies []scanCacheDependency
 }
 
-type loadedScanSnapshot struct {
-	root    *Node
-	nodes   []*Node
-	files   int
-	dirs    int
-	savedAt time.Time
-	shared  bool
-}
-
-type snapshotRequest struct {
-	rootPath string
-	profile  Profile
-	root     *Node
-	files    int
-	dirs     int
-	report   ScanReportSnapshot
-}
-
 type scanCacheManager struct {
-	mu        sync.Mutex
-	directory string
-	logger    *SeverityLogger
-	entries   map[string]*scanCacheEntry
-	clock     uint64
-	closeOnce sync.Once
-
-	snapshotMu     sync.Mutex
-	snapshotQueue  map[string]snapshotRequest
-	snapshotWake   chan struct{}
-	snapshotStop   chan struct{}
-	snapshotWG     sync.WaitGroup
-	snapshotClosed bool
+	mu      sync.Mutex
+	logger  *SeverityLogger
+	entries map[string]*scanCacheEntry
+	clock   uint64
 }
 
-func newScanCacheManager(defaultSettingsPath string, logger *SeverityLogger) *scanCacheManager {
-	directory := ""
-	if defaultSettingsPath != "" {
-		directory = filepath.Join(filepath.Dir(defaultSettingsPath), "cache", "scans")
-	}
-	manager := &scanCacheManager{directory: directory, logger: logger, entries: make(map[string]*scanCacheEntry)}
-	if directory != "" {
-		manager.snapshotQueue = make(map[string]snapshotRequest)
-		manager.snapshotWake = make(chan struct{}, 1)
-		manager.snapshotStop = make(chan struct{})
-		manager.snapshotWG.Add(1)
-		go manager.runSnapshotWorker()
-	}
-	return manager
+func newScanCacheManager(logger *SeverityLogger) *scanCacheManager {
+	return &scanCacheManager{logger: logger, entries: make(map[string]*scanCacheEntry)}
 }
 
 func scanMemoryCacheKey(rootPath, profileKey string) string {
@@ -167,12 +103,11 @@ func (manager *scanCacheManager) containsLocked(entry *scanCacheEntry) bool {
 
 func scanProfileCacheKey(profile Profile) (scanCacheProfile, string) {
 	key := scanCacheProfile{
-		AccountingVersion: scanAccountingVersion,
-		ExcludedPaths:     append([]string(nil), profile.ExcludedPaths...),
-		SkipHidden:        profile.SkipHidden,
-		MinFileSize:       profile.MinFileSize,
-		FollowSymlinks:    profile.FollowSymlinks,
-		SkipNetworkFS:     profile.SkipNetworkFS,
+		ExcludedPaths:  append([]string(nil), profile.ExcludedPaths...),
+		SkipHidden:     profile.SkipHidden,
+		MinFileSize:    profile.MinFileSize,
+		FollowSymlinks: profile.FollowSymlinks,
+		SkipNetworkFS:  profile.SkipNetworkFS,
 	}
 	data, _ := json.Marshal(key)
 	sum := sha256.Sum256(data)
@@ -185,18 +120,6 @@ func canonicalCachePath(path string) string {
 		return strings.ToLower(clean)
 	}
 	return clean
-}
-
-func scanSnapshotFilename(rootPath, profileKey string) string {
-	sum := sha256.Sum256([]byte(canonicalCachePath(rootPath) + "\x00" + profileKey))
-	return hex.EncodeToString(sum[:]) + ".gob.gz"
-}
-
-func (manager *scanCacheManager) snapshotPath(rootPath, profileKey string) string {
-	if manager == nil || manager.directory == "" {
-		return ""
-	}
-	return filepath.Join(manager.directory, scanSnapshotFilename(rootPath, profileKey))
 }
 
 func (manager *scanCacheManager) Prepare(rootPath string, profile Profile) scanReusePlan {
@@ -506,7 +429,6 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 	_, profileKey := scanProfileCacheKey(profile)
 	entry := &scanCacheEntry{
-		savedAt:          time.Now(),
 		rootPath:         rootPath,
 		profileKey:       profileKey,
 		root:             root,
@@ -697,12 +619,6 @@ func (manager *scanCacheManager) Clear() {
 	if manager == nil {
 		return
 	}
-	manager.snapshotMu.Lock()
-	if manager.snapshotQueue != nil {
-		clear(manager.snapshotQueue)
-	}
-	manager.snapshotMu.Unlock()
-
 	manager.mu.Lock()
 	entries := make([]*scanCacheEntry, 0, len(manager.entries))
 	for _, entry := range manager.entries {
@@ -717,320 +633,6 @@ func (manager *scanCacheManager) Clear() {
 	}
 }
 
-func (manager *scanCacheManager) QueueSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot) {
-	if manager == nil || manager.directory == "" || root == nil {
-		return
-	}
-	_, profileKey := scanProfileCacheKey(profile)
-	key := scanMemoryCacheKey(rootPath, profileKey)
-	request := snapshotRequest{
-		rootPath: rootPath, profile: profile, root: root,
-		files: files, dirs: dirs, report: report,
-	}
-	manager.snapshotMu.Lock()
-	if manager.snapshotClosed {
-		manager.snapshotMu.Unlock()
-		return
-	}
-	manager.snapshotQueue[key] = request
-	manager.snapshotMu.Unlock()
-	select {
-	case manager.snapshotWake <- struct{}{}:
-	default:
-	}
-}
-
-func (manager *scanCacheManager) runSnapshotWorker() {
-	defer manager.snapshotWG.Done()
-	for {
-		select {
-		case <-manager.snapshotStop:
-			return
-		case <-manager.snapshotWake:
-		}
-		for {
-			manager.snapshotMu.Lock()
-			var key string
-			var request snapshotRequest
-			for candidateKey, candidate := range manager.snapshotQueue {
-				key, request = candidateKey, candidate
-				break
-			}
-			if key != "" {
-				delete(manager.snapshotQueue, key)
-			}
-			manager.snapshotMu.Unlock()
-			if key == "" {
-				break
-			}
-
-			startedAt := time.Now()
-			err := manager.saveSnapshot(request.rootPath, request.profile, request.root, request.files, request.dirs, request.report, manager.snapshotStop)
-			if err != nil {
-				select {
-				case <-manager.snapshotStop:
-					return
-				default:
-				}
-				if manager.logger != nil {
-					manager.logger.Warningf("could not save scan snapshot: %v", err)
-				}
-			} else if manager.logger != nil {
-				manager.logger.Debugf("scan snapshot saved in %s", time.Since(startedAt).Round(time.Millisecond))
-			}
-		}
-	}
-}
-
 func (manager *scanCacheManager) Close() {
-	if manager == nil {
-		return
-	}
-	manager.closeOnce.Do(func() {
-		if manager.snapshotStop != nil {
-			manager.snapshotMu.Lock()
-			manager.snapshotClosed = true
-			manager.snapshotQueue = nil
-			close(manager.snapshotStop)
-			manager.snapshotMu.Unlock()
-			manager.snapshotWG.Wait()
-		}
-		manager.mu.Lock()
-		entries := make([]*scanCacheEntry, 0, len(manager.entries))
-		for _, entry := range manager.entries {
-			entries = append(entries, entry)
-		}
-		manager.entries = make(map[string]*scanCacheEntry)
-		manager.mu.Unlock()
-		for _, entry := range entries {
-			if entry.watcher != nil {
-				_ = entry.watcher.Close()
-			}
-		}
-	})
-}
-
-func (manager *scanCacheManager) SaveSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot) error {
-	return manager.saveSnapshot(rootPath, profile, root, files, dirs, report, nil)
-}
-
-type cancellableSnapshotWriter struct {
-	writer io.Writer
-	stop   <-chan struct{}
-}
-
-func (writer cancellableSnapshotWriter) Write(data []byte) (int, error) {
-	if writer.stop != nil {
-		select {
-		case <-writer.stop:
-			return 0, context.Canceled
-		default:
-		}
-	}
-	return writer.writer.Write(data)
-}
-
-func (manager *scanCacheManager) saveSnapshot(rootPath string, profile Profile, root *Node, files, dirs int, report ScanReportSnapshot, stop <-chan struct{}) error {
-	if manager == nil || manager.directory == "" || root == nil {
-		return nil
-	}
-	_, profileKey := scanProfileCacheKey(profile)
-	path := manager.snapshotPath(rootPath, profileKey)
-	if err := os.MkdirAll(manager.directory, 0o700); err != nil {
-		return fmt.Errorf("create scan cache directory: %w", err)
-	}
-	temporary, err := os.CreateTemp(manager.directory, ".scan-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create scan snapshot: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return fmt.Errorf("secure scan snapshot: %w", err)
-	}
-	compressor, err := gzip.NewWriterLevel(cancellableSnapshotWriter{writer: temporary, stop: stop}, gzip.BestSpeed)
-	if err != nil {
-		temporary.Close()
-		return fmt.Errorf("create scan snapshot compressor: %w", err)
-	}
-	snapshot := persistedScanSnapshot{
-		Version: scanSnapshotVersion, RootPath: rootPath, ProfileKey: profileKey,
-		SavedAt: time.Now(), Root: root, FileCount: files, DirCount: dirs, Report: report,
-	}
-	if err := gob.NewEncoder(compressor).Encode(snapshot); err != nil {
-		compressor.Close()
-		temporary.Close()
-		return fmt.Errorf("encode scan snapshot: %w", err)
-	}
-	if err := compressor.Close(); err != nil {
-		temporary.Close()
-		return fmt.Errorf("finish scan snapshot: %w", err)
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return fmt.Errorf("flush scan snapshot: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return fmt.Errorf("close scan snapshot: %w", err)
-	}
-	if err := replaceFile(temporaryPath, path); err != nil {
-		return fmt.Errorf("replace scan snapshot: %w", err)
-	}
-	manager.pruneSnapshots(path)
-	return nil
-}
-
-func replaceFile(source, target string) error {
-	return os.Rename(source, target)
-}
-
-func (manager *scanCacheManager) LoadSnapshot(rootPath string, profile Profile) (loadedScanSnapshot, error) {
-	if manager == nil || manager.directory == "" {
-		return loadedScanSnapshot{}, os.ErrNotExist
-	}
-	_, profileKey := scanProfileCacheKey(profile)
-
-	manager.mu.Lock()
-	entry := manager.entries[scanMemoryCacheKey(rootPath, profileKey)]
-	if entry != nil {
-		manager.touchLocked(entry)
-		loaded := loadedScanSnapshot{
-			root: entry.root, nodes: entry.nodes, files: entry.fileCount, dirs: entry.dirCount,
-			savedAt: entry.savedAt, shared: true,
-		}
-		manager.mu.Unlock()
-		return loaded, nil
-	}
-	manager.mu.Unlock()
-
-	path := manager.snapshotPath(rootPath, profileKey)
-	file, err := os.Open(path)
-	if err != nil {
-		return loadedScanSnapshot{}, err
-	}
-	defer file.Close()
-	decompressor, err := gzip.NewReader(file)
-	if err != nil {
-		return loadedScanSnapshot{}, fmt.Errorf("open scan snapshot: %w", err)
-	}
-	defer decompressor.Close()
-	var snapshot persistedScanSnapshot
-	if err := gob.NewDecoder(io.LimitReader(decompressor, 4<<30)).Decode(&snapshot); err != nil {
-		return loadedScanSnapshot{}, fmt.Errorf("decode scan snapshot: %w", err)
-	}
-	if snapshot.Version != scanSnapshotVersion || snapshot.ProfileKey != profileKey || canonicalCachePath(snapshot.RootPath) != canonicalCachePath(rootPath) || snapshot.Root == nil {
-		return loadedScanSnapshot{}, errors.New("scan snapshot is incompatible")
-	}
-	if err := validateSnapshotTree(rootPath, snapshot.Root); err != nil {
-		return loadedScanSnapshot{}, fmt.Errorf("validate scan snapshot: %w", err)
-	}
-	nodes := reindexTreeInPlace(snapshot.Root)
-	return loadedScanSnapshot{root: snapshot.Root, nodes: nodes, files: snapshot.FileCount, dirs: snapshot.DirCount, savedAt: snapshot.SavedAt}, nil
-}
-
-func validateSnapshotTree(rootPath string, root *Node) error {
-	if root == nil || !root.IsFolder || canonicalCachePath(root.FullPath) != canonicalCachePath(rootPath) {
-		return errors.New("snapshot root does not match the requested folder")
-	}
-	visited := make(map[*Node]struct{})
-	stack := []*Node{root}
-	for len(stack) > 0 {
-		node := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if _, exists := visited[node]; exists {
-			return errors.New("snapshot tree contains a cycle or duplicate node reference")
-		}
-		visited[node] = struct{}{}
-		if len(visited) > maximumSnapshotNodes {
-			return errors.New("snapshot tree is unreasonably large")
-		}
-		if node.Size < 0 || node.EntryFiles < 0 || node.EntryDirs < 0 {
-			return errors.New("snapshot contains negative accounting values")
-		}
-		virtual := node.IsFreeSpace || node.IsSmallFiles
-		if !virtual && (node.FullPath == "" || !cachePathWithin(node.FullPath, rootPath)) {
-			return errors.New("snapshot contains a path outside its scan root")
-		}
-		if !node.IsFolder && !virtual && len(node.Children) > 0 {
-			return errors.New("snapshot file contains child nodes")
-		}
-		for _, child := range node.Children {
-			if child == nil {
-				return errors.New("snapshot contains a nil child")
-			}
-			stack = append(stack, child)
-		}
-	}
-	return nil
-}
-
-func reindexTreeInPlace(root *Node) []*Node {
-	nodes := make([]*Node, 0)
-	var visit func(*Node, int, int)
-	visit = func(node *Node, parentID, depth int) {
-		if node == nil {
-			return
-		}
-		node.ParentID = parentID
-		node.Depth = depth
-		if node.IsFreeSpace || node.IsSmallFiles {
-			node.ID = -1
-		} else {
-			node.ID = len(nodes)
-			nodes = append(nodes, node)
-		}
-		for _, child := range node.Children {
-			visit(child, node.ID, depth+1)
-		}
-	}
-	visit(root, -1, 0)
-	return nodes
-}
-
-func (manager *scanCacheManager) pruneSnapshots(current string) {
-	manager.pruneSnapshotsWithLimits(current, maximumPersistedSnapshots, maximumPersistedBytes)
-}
-
-func (manager *scanCacheManager) pruneSnapshotsWithLimits(current string, maxCount int, maxBytes int64) {
-	entries, err := os.ReadDir(manager.directory)
-	if err != nil {
-		return
-	}
-	type candidate struct {
-		path string
-		time time.Time
-		size int64
-	}
-	var candidates []candidate
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".gob.gz") {
-			continue
-		}
-		info, infoErr := entry.Info()
-		if infoErr == nil {
-			candidates = append(candidates, candidate{path: filepath.Join(manager.directory, entry.Name()), time: info.ModTime(), size: info.Size()})
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].time.After(candidates[j].time) })
-	keptCount := 0
-	var keptBytes int64
-	for _, candidate := range candidates {
-		if candidate.path == current {
-			keptCount++
-			keptBytes += candidate.size
-			break
-		}
-	}
-	for _, candidate := range candidates {
-		if candidate.path == current {
-			continue
-		}
-		if keptCount < maxCount && keptBytes+candidate.size <= maxBytes {
-			keptCount++
-			keptBytes += candidate.size
-			continue
-		}
-		_ = os.Remove(candidate.path)
-	}
+	manager.Clear()
 }

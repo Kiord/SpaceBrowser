@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, loadUI } from "./helpers/ui.mjs";
 
-async function harness(snapshot) {
+async function harness() {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -19,14 +19,15 @@ async function harness(snapshot) {
   let started;
   const scanning = new Promise(resolve => { started = resolve; });
   const errors = [];
-  let resizes = 0;
+  let redraws = 0;
+  let locationPrompts = 0;
   let scans = 0, cancellations = 0, nextTimer = 0;
   const timers = new Map(), intervals = new Set();
   const controls = [{ disabled: false }, { disabled: false }];
   const backend = {
     CancelScan: async () => { cancellations++; rejectScan(new Error("scan cancelled")); },
     GetFullTree: () => { scans++; started(); return scan; },
-    GetScanProgress: async () => ({}), LoadScanSnapshot: async () => snapshot,
+    GetScanProgress: async () => ({}),
     OpenPath() {}, ValidateScanPath: async path => path,
   };
   const modules = {
@@ -36,7 +37,7 @@ async function harness(snapshot) {
     "./navigation.js": { replaceBrowserHistoryEntry() {}, updateNavButtons() {} },
     "./notifications.js": { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     "./logging.js": { logDebug() {}, logError() {} },
-    "./locations.js": { hideLocationSelector() {}, showLocationSelector() {} },
+    "./locations.js": { hideLocationSelector() {}, showLocationSelector() { locationPrompts++; } },
     "./state.js": { AppState: state },
   };
   const ui = await loadUI("scan.js", modules, {
@@ -52,67 +53,58 @@ async function harness(snapshot) {
     setInterval() { const id = ++nextTimer; intervals.add(id); return id; },
     clearInterval: id => intervals.delete(id),
   });
-  ui.initScan({ redraw: async () => {}, hideContextMenu() {}, resizeCanvas() { resizes++; } });
+  ui.initScan({ redraw: async () => { redraws++; }, hideContextMenu() {} });
   return { element, state, errors, scanning, resolveScan, rejectScan,
-    analyze: ui.analyze, resizes: () => resizes, backend, controls, timers, intervals,
+    analyze: ui.analyze, redraws: () => redraws, locationPrompts: () => locationPrompts, backend, controls, timers, intervals,
     scans: () => scans, cancellations: () => cancellations,
     poll() { const [id, callback] = timers.entries().next().value; timers.delete(id); return callback(); } };
 }
 
-const snapshot = { rootId: 7, fileCount: 2, dirCount: 1, snapshotAgeMilliseconds: 86400000 };
-
-test("cancelled snapshot verification remains visibly cached", async () => {
-  const h = await harness(snapshot);
+test("starting a scan clears previous results and publishes only the completed tree", async () => {
+  const h = await harness();
+  Object.assign(h.state, { node_id: 7, scanRootPath: "previous-folder", fileCount: 99, dirCount: 8 });
   const run = h.analyze();
   await h.scanning;
-  const banner = h.element("cachedScanStatus");
-  assert.equal(banner.hidden, false);
-  assert.match(banner.textContent, /Cached results.*Verifying.*Snapshot from/);
-  const timestamp = banner.textContent.split("Snapshot from")[1];
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.state.scanRootPath, null);
+  assert.equal(h.state.fileCount, 0);
+  assert.equal(h.state.dirCount, 0);
+  assert.equal(h.redraws(), 0);
+  h.resolveScan({ rootId: 9, fileCount: 3, dirCount: 1 });
+  await run;
+  assert.equal(h.state.node_id, 9);
+  assert.equal(h.state.fileCount, 3);
+  assert.equal(h.state.scanRootPath, "test-folder");
+  assert.equal(h.redraws(), 1);
+});
+
+test("cancelled scans leave no stale tree and return to folder selection", async () => {
+  const h = await harness();
+  h.state.node_id = 7;
+  const run = h.analyze();
+  await h.scanning;
   await h.element("cancelScanButton").handlers.click();
   await run;
-  assert.equal(h.state.node_id, snapshot.rootId);
-  assert.equal(banner.hidden, false);
-  assert.match(banner.textContent, /Verification cancelled/);
-  assert.equal(banner.textContent.split("Snapshot from")[1], timestamp);
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.redraws(), 0);
+  assert.equal(h.locationPrompts(), 1);
   assert.equal(h.errors.length, 0);
 });
 
-test("failed verification retains the cached warning", async () => {
-  const h = await harness(snapshot);
+test("failed scans leave no stale tree and display the error", async () => {
+  const h = await harness();
   const run = h.analyze();
   await h.scanning;
   h.rejectScan(new Error("filesystem unavailable"));
   await run;
-  assert.equal(h.element("cachedScanStatus").hidden, false);
-  assert.match(h.element("cachedScanStatus").textContent, /Verification failed/);
-  assert.equal(h.errors.length, 1);
-});
-
-test("successful verification removes the warning and resizes the treemap", async () => {
-  const h = await harness(snapshot);
-  const run = h.analyze();
-  await h.scanning;
-  h.resolveScan({ rootId: 9, fileCount: 3, dirCount: 1 });
-  await run;
-  assert.equal(h.element("cachedScanStatus").hidden, true);
-  assert.equal(h.element("cachedScanStatus").textContent, "");
-  assert.equal(h.state.node_id, 9);
-  assert.equal(h.resizes(), 2);
-});
-
-test("cancellation without a snapshot does not claim cached results exist", async () => {
-  const h = await harness({ rootId: -1 });
-  const run = h.analyze();
-  await h.scanning;
-  await h.element("cancelScanButton").handlers.click();
-  await run;
-  assert.equal(h.element("cachedScanStatus").hidden, true);
   assert.equal(h.state.node_id, null);
+  assert.equal(h.redraws(), 0);
+  assert.equal(h.locationPrompts(), 1);
+  assert.match(String(h.errors[0]), /filesystem unavailable/);
 });
 
 test("duplicate scan requests are ignored and cancellation cleans up timers and controls", async () => {
-  const h = await harness({ rootId: -1 });
+  const h = await harness();
   const run = h.analyze();
   await h.scanning;
   assert.ok(h.controls.every(button => button.disabled));
@@ -129,7 +121,7 @@ test("duplicate scan requests are ignored and cancellation cleans up timers and 
 });
 
 test("validation failure preserves the displayed tree and never starts scanning", async () => {
-  const h = await harness(snapshot);
+  const h = await harness();
   h.state.node_id = 22;
   h.backend.ValidateScanPath = async () => { throw new Error("invalid folder"); };
   await h.analyze();
@@ -140,7 +132,7 @@ test("validation failure preserves the displayed tree and never starts scanning"
 });
 
 test("late progress responses cannot overwrite completed scan counts", async () => {
-  const h = await harness({ rootId: -1 });
+  const h = await harness();
   const progress = deferred();
   h.backend.GetScanProgress = () => progress.promise;
   const run = h.analyze();
@@ -156,7 +148,7 @@ test("late progress responses cannot overwrite completed scan counts", async () 
 });
 
 test("a cancelled scan's pending progress cannot update the next scan", async () => {
-  const h = await harness({ rootId: -1 });
+  const h = await harness();
   const progress = deferred();
   h.backend.GetScanProgress = () => progress.promise;
   const first = h.analyze();

@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavigation({ redraw, getSelectedRect, isPassiveRect });
   initSettings({ redraw });
   initFileActions({ redraw, getSelectedRect, isPassiveRect });
-  initScan({ redraw, hideContextMenu, resizeCanvas });
+  initScan({ redraw, hideContextMenu });
   initLocationSelector({ analyze });
   initFolderPicker();
   initZoom({ redraw });
