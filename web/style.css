@@ -1470,7 +1470,8 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 }
 
 .delete-confirm-path {
-  max-height: 54px;
+  max-height: min(240px, 40vh);
+  white-space: pre-wrap;
   overflow: auto;
   overflow-wrap: anywhere;
   color: #333 !important;

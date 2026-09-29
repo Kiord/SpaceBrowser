@@ -15,13 +15,25 @@ export async function loadUI(file, dependencies, globals = {}) {
   const context = vm.createContext(globals);
   const source = await readFile(new URL(`../../web/${file}`, import.meta.url), "utf8");
   const module = new vm.SourceTextModule(source, { context, identifier: file });
-  await module.link(name => {
+  const linked = new Map();
+  const link = async name => {
+    if (linked.has(name)) return linked.get(name);
+    if (name === "./selection.js" && !Object.hasOwn(dependencies, name)) {
+      const source = await readFile(new URL("../../web/selection.js", import.meta.url), "utf8");
+      const selected = new vm.SourceTextModule(source, { context, identifier: name });
+      linked.set(name, selected);
+      await selected.link(link);
+      return selected;
+    }
     if (!Object.hasOwn(dependencies, name)) throw new Error(`Missing test dependency: ${name}`);
     const exports = dependencies[name];
-    return new vm.SyntheticModule(Object.keys(exports), function () {
+    const dependency = new vm.SyntheticModule(Object.keys(exports), function () {
       for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
     }, { context });
-  });
+    linked.set(name, dependency);
+    return dependency;
+  };
+  await module.link(link);
   await module.evaluate();
   return module.namespace;
 }
@@ -49,7 +61,8 @@ export function dom() {
       elements.set(id, {
         ...eventTarget(), hidden: true, open: false, disabled: false, textContent: "", value: "",
         style: { setProperty: noop },
-        classList: { add: value => classes.add(value), remove: value => classes.delete(value) },
+        classList: { add: value => classes.add(value), remove: value => classes.delete(value), contains: value => classes.has(value),
+          toggle(value, force = !classes.has(value)) { if (force) classes.add(value); else classes.delete(value); return force; } },
         setAttribute: (key, value) => attributes.set(key, String(value)),
         getAttribute: key => attributes.get(key) ?? null,
         showModal() { this.open = true; }, close() { this.open = false; },

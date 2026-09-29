@@ -12,7 +12,6 @@ async function harness() {
     [name, (...args) => calls.push({ name, args })]));
   const state = { node_id: 0, navHistory: [0], navIndex: 0, navSession: 1, browserHistoryPosition: 0, rects: [{}] };
   let redraws = 0;
-  let selected = null;
   let setFreeSpace = async () => {};
   const ui = await loadUI("navigation.js", {
     "./wailsjs/go/main/App.js": { SetShowFreeSpace: value => setFreeSpace(value) },
@@ -20,9 +19,9 @@ async function harness() {
     "./controls.js": { addControlEventListeners: noop, eventMatchesShortcut: noop, shortcutCanRun: noop },
     "./logging.js": { logError: noop }, "./state.js": { AppState: state },
   }, { window });
-  ui.initNavigation({ redraw: () => { redraws++; }, getSelectedRect: () => selected, isPassiveRect: rect => rect.is_small_files });
+  ui.initNavigation({ redraw: () => { redraws++; } });
   return { ui, byId, window, state, calls, redraws: () => redraws,
-    select: rect => { selected = rect; }, failToggle: () => { setFreeSpace = async () => { throw new Error("failed"); }; } };
+    select: rect => { state.rects = rect == null ? [] : Array.isArray(rect) ? rect : [rect]; state.selectedNodeIds = new Set(state.rects.map(item => item.node_id)); }, failToggle: () => { setFreeSpace = async () => { throw new Error("failed"); }; } };
 }
 
 test("back and forward restore matching history entries", async () => {
@@ -31,17 +30,20 @@ test("back and forward restore matching history entries", async () => {
   const first = h.calls.at(-1).args[0];
   h.ui.visit(2);
   const second = h.calls.at(-1).args[0];
+  h.state.selectedNodeIds = new Set([2, 3]);
   h.ui.goBackward();
   assert.equal(h.calls.at(-1).name, "back");
   await h.window.emit("popstate", { state: first });
   assert.equal(h.state.node_id, 1);
   assert.equal(h.state.navIndex, 1);
+  assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
   h.ui.updateNavButtons();
   assert.equal(h.byId("forwardButton").disabled, false);
   h.ui.goForward();
   assert.equal(h.calls.at(-1).name, "forward");
   await h.window.emit("popstate", { state: second });
   assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
   assert.equal(h.redraws(), 4);
 });
 
@@ -91,3 +93,53 @@ test("free-space toggle rolls back when the backend rejects it", async () => {
   assert.equal(h.byId("toggleFreeSpaceButton").getAttribute("aria-pressed"), "true");
   assert.equal(h.redraws(), 0);
 });
+
+for (const selectedIds of [[2], [3], [2, 3]]) {
+  test(`Parent button preserves selected nodes ${selectedIds.join(", ")}`, async () => {
+    const h = await harness();
+    Object.assign(h.state, {
+      node_id: 2, navHistory: [0, 1, 2], navIndex: 2,
+      rects: [{ node_id: 2, parent_id: 1, is_folder: true }, { node_id: 3, parent_id: 2 }],
+      selectedNodeIds: new Set(selectedIds),
+    });
+    await h.byId("parentButton").emit("click");
+    assert.equal(h.state.node_id, 1);
+    assert.deepEqual([...h.state.selectedNodeIds], selectedIds);
+    assert.equal(h.redraws(), 1);
+    assert.equal(h.calls.at(-1).name, "pushState");
+  });
+}
+
+test("Parent at the root leaves selection and navigation unchanged", async () => {
+  const h = await harness();
+  h.state.rects = [{ node_id: 0, parent_id: null }, { node_id: 1, parent_id: 0 }];
+  h.state.selectedNodeIds = new Set([1]);
+  await h.byId("parentButton").emit("click");
+  assert.equal(h.state.node_id, 0);
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+  assert.equal(h.redraws(), 0);
+});
+
+test("visiting multiple selections does nothing and visiting one folder preserves selection", async () => {
+  const h = await harness();
+  h.select([{ node_id: 2, is_folder: true }, { node_id: 3, is_folder: true }]);
+  h.ui.navigateToSelected();
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.redraws(), 0);
+  h.select({ node_id: 2, is_folder: true });
+  h.ui.navigateToSelected();
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [2]);
+});
+
+for (const action of ["root", "visit"]) {
+  test(`${action} preserves multiple selected nodes`, async () => {
+    const h = await harness();
+    h.ui.visit(2);
+    h.state.selectedNodeIds = new Set([2, 3]);
+    if (action === "root") await h.byId("rootButton").emit("click");
+    else h.ui.visit(4);
+    assert.equal(h.state.node_id, action === "root" ? 0 : 4);
+    assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
+  });
+}

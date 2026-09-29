@@ -1,3 +1,4 @@
+import { getSelectedRect, isPassiveRect } from "./selection.js";
 import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
@@ -6,8 +7,6 @@ import { AppState } from "./state.js";
 
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
 let redraw = async () => {};
-let getSelectedRect = () => null;
-let isPassiveRect = () => false;
 
 function browserHistoryState(nodeId, navIndex) {
   return {
@@ -49,7 +48,6 @@ export function visit(nodeId) {
   AppState.navHistory.push(nodeId);
   AppState.navIndex = AppState.navHistory.length - 1;
   AppState.node_id = nodeId;
-  AppState.selectedRectIndex = null;
   pushBrowserHistoryEntry(nodeId, AppState.navIndex);
   redraw();
 }
@@ -105,7 +103,6 @@ function handlePopState(event) {
   AppState.browserHistoryPosition = state.position;
   AppState.navIndex = state.navIndex;
   AppState.node_id = state.nodeId;
-  AppState.selectedRectIndex = null;
   redraw();
 }
 
@@ -122,8 +119,6 @@ function handleNavigationShortcut(event) {
 
 export function initNavigation(options) {
   redraw = options.redraw;
-  getSelectedRect = options.getSelectedRect;
-  isPassiveRect = options.isPassiveRect;
   replaceBrowserHistoryEntry(null, -1);
   byId("rootButton").addEventListener("click", goToRoot);
   byId("parentButton").addEventListener("click", goToParent);

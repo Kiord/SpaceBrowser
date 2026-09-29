@@ -1,3 +1,4 @@
+import { clearSelection } from "./selection.js";
 import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatCount, formatDuration } from "./format.js";
@@ -51,8 +52,7 @@ function clearTreemapForScan() {
   AppState.navIndex = -1;
   AppState.navSession++;
   replaceBrowserHistoryEntry(null, -1);
-  AppState.selectedRectIndex = null;
-  AppState.selectedNodeId = null;
+  clearSelection();
   hideContextMenu();
   updateNavButtons();
 }
@@ -217,8 +217,7 @@ export async function analyze() {
     AppState.dirCount = dirCount;
     AppState.navIndex = 0;
     replaceBrowserHistoryEntry(rootId, 0);
-    AppState.selectedRectIndex = null;
-    AppState.selectedNodeId = null;
+    clearSelection();
     showScanWarning(scanReport);
     await redraw();
   } catch (error) {

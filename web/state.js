@@ -23,8 +23,7 @@ export const AppState = {
 
   rects: [],
   parentRectIndexes: new Int32Array(),
-  selectedRectIndex: null,
-  selectedNodeId: null,
+  selectedNodeIds: new Set(),
   profile: null,
   defaultProfile: null,
 

@@ -1,24 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deferred, loadUI, noop } from "./helpers/ui.mjs";
+import { deferred, eventTarget, loadUI, noop } from "./helpers/ui.mjs";
 
 async function harness() {
-  const requests = [], painted = [];
-  const state = { node_id: 1, scale: 1, rects: [], selectedRectIndex: null, selectedNodeId: null };
-  for (const name of ["color", "id", "hover"]) {
-    state[`${name}Canvas`] = { width: 800, height: 600 };
-    state[`${name}Ctx`] = { clearRect: noop, strokeRect: noop, fillRect: (...args) => painted.push({ name, args }) };
+  const requests = [], painted = [], actions = [];
+  const state = { node_id: 1, scale: 1, rects: [], selectedNodeIds: new Set() };
+  for (const name of ["color", "id", "hover", "tmp", "mask"]) {
+    state[`${name}Ctx`] = { clearRect: noop, strokeRect: noop, save: noop, restore: noop, drawImage: noop,
+      getImageData: x => ({ data: [0, 0, x + 1, 255] }),
+      fillRect(...args) { painted.push({ name, args, fill: this.fillStyle }); } };
+    state[`${name}Canvas`] = { ...eventTarget(), width: 800, height: 600, style: {},
+      parentElement: { getBoundingClientRect: () => ({ width: 800, height: 600 }) },
+      getBoundingClientRect: () => ({ left: 0, top: 0 }), getContext: () => state[`${name}Ctx`] };
   }
   const ui = await loadUI("treemap-view.js", {
     "./wailsjs/go/main/App.js": { Layout: (...args) => { const request = deferred(); requests.push({ ...request, args }); return request.promise; } },
-    "./file-actions.js": { hideContextMenu: noop, openRectWithDefault: noop, showContextMenu: noop },
+    "./file-actions.js": { hideContextMenu: noop, openRectWithDefault: rect => actions.push(["open", rect.node_id]), showContextMenu: () => actions.push(["menu"]) },
     "./format.js": { debounce: fn => fn, formatCompactSize: String, formatCount: String, formatModTime: String, formatSize: String },
-    "./navigation.js": { navigateToSelected: noop, updateNavButtons: noop },
+    "./navigation.js": { navigateToSelected: () => actions.push(["visit"]), updateNavButtons: noop },
     "./notifications.js": { hideRectToast: noop, initNotifications: noop },
     "./logging.js": { logDebug: noop, logWarning: noop },
     "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => 1 },
-  }, { performance, cancelAnimationFrame: noop });
-  return { ui, state, requests, painted };
+  }, { performance, cancelAnimationFrame: noop, requestAnimationFrame: () => 1,
+    window: { ...eventTarget(), devicePixelRatio: 1 }, document: { getElementById: id => state[id] } });
+  return { ui, state, requests, painted, actions };
 }
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
@@ -72,4 +77,67 @@ test("redraw without a scan never calls the backend", async () => {
   h.state.node_id = null;
   await h.ui.redraw();
   assert.equal(h.requests.length, 0);
+});
+
+test("canvas clicks wire modifier selection and right-click preserves the group", async () => {
+  const h = await harness();
+  h.ui.initTreemapView();
+  h.state.rects = [rect(1), rect(2), rect(3)];
+  const canvas = h.state.colorCanvas;
+  await canvas.emit("click", { clientX: 0, clientY: 0 });
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+  await canvas.emit("click", { clientX: 1, clientY: 0, ctrlKey: true });
+  assert.deepEqual([...h.state.selectedNodeIds], [1, 2]);
+  assert.equal(h.ui.getSelectedRect(), null);
+  await canvas.emit("contextmenu", { clientX: 0, clientY: 0 });
+  assert.deepEqual([...h.state.selectedNodeIds], [1, 2]);
+  assert.deepEqual(h.actions, [["menu"]]);
+  await canvas.emit("click", { clientX: 2, clientY: 0, metaKey: true });
+  assert.deepEqual([...h.state.selectedNodeIds], [1, 2, 3]);
+  await canvas.emit("click", { clientX: 1, clientY: 0 });
+  assert.deepEqual([...h.state.selectedNodeIds], [2]);
+});
+
+test("a redraw preserves and paints every selected node", async () => {
+  const h = await harness();
+  h.state.selectedNodeIds = new Set([2, 3]);
+  const run = h.ui.redraw();
+  h.requests[0].resolve([rect(3), rect(2), rect(4)]);
+  await run;
+  assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
+  assert.deepEqual(h.painted.filter(paint => paint.name === "color").map(paint => paint.fill), ["#000000", "#000000", "#fff"]);
+});
+
+for (const isFolder of [true, false]) {
+  test(`double-click ${isFolder ? "visits a folder" : "opens a file"} and keeps it selected`, async () => {
+    const h = await harness();
+    h.ui.initTreemapView();
+    h.state.rects = [{ ...rect(1), is_folder: isFolder }, rect(2)];
+    h.state.selectedNodeIds = new Set([2]);
+    const canvas = h.state.colorCanvas;
+    // Browsers dispatch both clicks before the double-click event.
+    await canvas.emit("click", { clientX: 0, clientY: 0, detail: 1 });
+    assert.deepEqual([...h.state.selectedNodeIds], [1]);
+    await canvas.emit("click", { clientX: 0, clientY: 0, detail: 2 });
+    assert.deepEqual([...h.state.selectedNodeIds], [1]);
+    await canvas.emit("dblclick", { clientX: 0, clientY: 0, detail: 2 });
+    assert.deepEqual(h.actions, [isFolder ? ["visit"] : ["open", 1]]);
+    assert.deepEqual([...h.state.selectedNodeIds], [1]);
+    const redraw = h.ui.redraw();
+    h.requests.at(-1).resolve(h.state.rects);
+    await redraw;
+    assert.deepEqual([...h.state.selectedNodeIds], [1]);
+  });
+}
+
+test("modifier double-click does not activate or clear the selection", async () => {
+  const h = await harness();
+  h.ui.initTreemapView();
+  h.state.rects = [rect(1), rect(2)];
+  h.state.selectedNodeIds = new Set([1, 2]);
+  for (const modifier of ["ctrlKey", "metaKey"]) {
+    await h.state.colorCanvas.emit("dblclick", { clientX: 0, clientY: 0, [modifier]: true });
+    assert.deepEqual([...h.state.selectedNodeIds], [1, 2]);
+  }
+  assert.deepEqual(h.actions, []);
 });

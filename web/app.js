@@ -8,7 +8,8 @@ import { initLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected } from "./navigation.js";
 import { analyze, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
-import { getSelectedRect, initTreemapView, isPassiveRect, redraw, resizeCanvas } from "./treemap-view.js";
+import { initTreemapView, redraw, resizeCanvas } from "./treemap-view.js";
+import { getSelectedRects } from "./selection.js";
 import { initZoom } from "./zoom.js";
 import { AppState } from "./state.js";
 
@@ -30,9 +31,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   analyzeButton.dataset.tooltip = "Scan folder";
 
   initTreemapView();
-  initNavigation({ redraw, getSelectedRect, isPassiveRect });
+  initNavigation({ redraw });
   initSettings({ redraw });
-  initFileActions({ redraw, getSelectedRect, isPassiveRect });
+  initFileActions({ redraw });
   initScan({ redraw, hideContextMenu });
   initLocationSelector({ analyze });
   initFolderPicker();
@@ -49,11 +50,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const handleVisitShortcut = event => {
     if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.visitSelected)) return;
-    const rect = getSelectedRect();
-    if (!rect || isPassiveRect(rect)) return;
+    const selected = getSelectedRects();
+    if (!selected.length || (selected.length > 1 && selected.some(rect => rect.is_folder))) return;
     event.preventDefault();
-    if (rect.is_folder) navigateToSelected();
-    else openRectWithDefault(rect);
+    if (selected[0].is_folder) navigateToSelected();
+    else openRectWithDefault();
   };
   addControlEventListeners(handleVisitShortcut);
 

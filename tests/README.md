@@ -16,13 +16,16 @@ triggered explicitly, without real-time sleeps.
 
 - `navigation.test.mjs`: back/forward navigation, branching history, stale scan
   sessions, removed history entries, invalid selections, and failed toggles.
-- `scan.test.mjs`: cached-result freshness, cancellation, duplicate requests,
+- `scan.test.mjs`: clearing old results, cancellation, duplicate requests,
   cleanup, validation errors, and progress responses arriving after completion
   or after a new scan starts.
+- `selection.test.mjs`: replace/toggle selection, context-menu selection,
+  selection reconciliation after layout changes, and nested deletion targets.
 - `treemap-view.test.mjs`: out-of-order layout responses, navigation/resize/scale
-  changes, invalid responses, and preservation of the last displayed view.
+  changes, invalid responses, modifier clicks, and painting selected rectangles.
 - `file-actions.test.mjs`: confirmation and cancellation, target retention,
-  duplicate submissions, protected selections, failures, rescanning, and restore.
+  duplicate submissions, protected selections, batch opening/deletion, partial
+  failures, rescanning, and restore.
 
 These are module-level behavioral tests, not browser end-to-end tests. They do
 not validate pixel output, browser history implementation, accessibility layout,

@@ -16,13 +16,16 @@ import (
 func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	a.filesystemMu.Lock()
 	defer a.filesystemMu.Unlock()
-	profile := a.GetProfile()
-	if !profile.AllowDelete {
-		return DeleteResult{}, fmt.Errorf("delete commands are disabled; enable Allow delete command in Settings")
-	}
-
 	a.scanMu.RLock()
 	defer a.scanMu.RUnlock()
+	return a.deleteNodeLocked(nodeID, a.GetProfile(), false)
+}
+
+// Caller holds filesystemMu and scanMu for the entire operation or batch.
+func (a *App) deleteNodeLocked(nodeID int, profile Profile, deferRefresh bool) (DeleteResult, error) {
+	if !profile.AllowDelete || !a.GetProfile().AllowDelete {
+		return DeleteResult{}, fmt.Errorf("delete commands are disabled; enable Allow delete command in Settings")
+	}
 	if a.scanActive {
 		return DeleteResult{}, fmt.Errorf("items cannot be deleted while a scan is running")
 	}
@@ -65,6 +68,13 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 	if a.scanCache != nil && nodePath != "" {
 		a.scanCache.InvalidatePath(nodePath)
 	}
+	if deferRefresh {
+		return result, nil
+	}
+	return a.finishDeletion(result, profile), nil
+}
+
+func (a *App) finishDeletion(result DeleteResult, profile Profile) DeleteResult {
 	if len(result.trashRefreshes) > 0 {
 		if profile.RescanOnDelete || result.RescanRequired {
 			// The frontend will perform a full scan, so avoid scanning displayed
@@ -75,7 +85,7 @@ func (a *App) DeleteNode(nodeID int) (DeleteResult, error) {
 		}
 	}
 	a.refreshDiskUsageAfterFilesystemChange(&result)
-	return result, nil
+	return result
 }
 
 func (a *App) logDeletionError(err error) error {

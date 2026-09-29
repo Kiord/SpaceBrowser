@@ -1,3 +1,5 @@
+import { getSelectedRect, getSelectedRects, isPassiveRect, selectRect, selectionIds } from "./selection.js";
+export { getSelectedRect, getSelectedRects, isPassiveRect } from "./selection.js";
 import { Layout } from "./wailsjs/go/main/App.js";
 import { hideContextMenu, openRectWithDefault, showContextMenu } from "./file-actions.js";
 import { debounce, formatCompactSize, formatCount, formatModTime, formatSize } from "./format.js";
@@ -43,7 +45,6 @@ export async function redraw() {
   }
 
   AppState.rects = rects;
-  AppState.selectedRectIndex = null;
 
   const drawStartedAt = performance.now();
   drawTreemap(rects);
@@ -112,7 +113,7 @@ function renderHoverOverlay() {
   }
   for (const rectIndex of indexes) {
     const current = AppState.rects?.[rectIndex];
-    if (!current || current.is_free_space || current.node_id === AppState.selectedNodeId || current.w <= 0 || current.h <= 0) continue;
+    if (!current || current.is_free_space || selectionIds().has(current.node_id) || current.w <= 0 || current.h <= 0) continue;
     drawHoverRect(ctx, current, strength);
   }
   renderedHoverRectIndex = requestedHoverRectIndex;
@@ -277,10 +278,9 @@ function drawRectRelief(ctx, rect, fillColor, strokeWidth) {
 }
 
 function drawRect(rect, writeId, ctx, rectIndex) {
-  const isSelected = AppState.selectedNodeId == rect.node_id;
+  const isSelected = selectionIds().has(rect.node_id);
   const isRoot = rect.parent_id == null;
   const palette = activePalette();
-  if (isSelected && rectIndex >= 0) AppState.selectedRectIndex = rectIndex;
 
   //  scaled UI constants  
   const PAD          = pxI(4);            
@@ -367,54 +367,11 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   }
 }
 
-export function getSelectedRect() {
-  const i = AppState.selectedRectIndex;
-  return (i == null) ? null : AppState.rects?.[i] || null;
-}
-
-export function isPassiveRect(rect) {
-  return !!(rect?.is_free_space || rect?.is_small_files);
-}
-
-export function selectRectByIndex(rectIndex, dontDeselect=false) {
-  const count = AppState.rects?.length || 0;
-
-  if (rectIndex == null || rectIndex < 0 || rectIndex >= count) {
-    if (!dontDeselect) {
-      const prevIdx = AppState.selectedRectIndex;
-      AppState.selectedRectIndex = null;
-      AppState.selectedNodeId = null;
-      if (prevIdx != null) reDrawRectByIndex(prevIdx);
-    }
-    return;
+export function selectRectByIndex(rectIndex, options = {}) {
+  const changed = selectRect(rectIndex, options);
+  for (let i = 0; i < AppState.rects.length; i++) {
+    if (changed.has(AppState.rects[i].node_id)) reDrawRectByIndex(i);
   }
-
-  if (AppState.selectedRectIndex === rectIndex) {
-    if (dontDeselect) return;
-    const prevIdx = AppState.selectedRectIndex;
-    AppState.selectedRectIndex = null;
-    AppState.selectedNodeId = null;
-    if (prevIdx != null) reDrawRectByIndex(prevIdx);
-    return;
-  }
-
-  const rect = AppState.rects[rectIndex];
-  if (isPassiveRect(rect)) {
-    if (!dontDeselect) {
-      const prevIdx = AppState.selectedRectIndex;
-      AppState.selectedRectIndex = null;
-      AppState.selectedNodeId = null;
-      if (prevIdx != null) reDrawRectByIndex(prevIdx);
-    }
-    return;
-  }
-
-  const prevIdx = AppState.selectedRectIndex;
-  AppState.selectedRectIndex = rectIndex;
-  AppState.selectedNodeId = AppState.rects[rectIndex].node_id;
-
-  if (prevIdx != null) reDrawRectByIndex(prevIdx);
-  reDrawRectByIndex(rectIndex);
 }
 
 function reDrawRectByIndex(idx) {
@@ -526,15 +483,14 @@ export function initTreemapView() {
 
   AppState.colorCanvas.addEventListener("click", event => {
     const { x, y } = getCanvasCoords(event);
-    selectRectByIndex(rectIndexAtPoint(x, y));
+    selectRectByIndex(rectIndexAtPoint(x, y), { additive: event.ctrlKey || event.metaKey });
     hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("contextmenu", event => {
     event.preventDefault();
     const { x, y } = getCanvasCoords(event);
-    selectRectByIndex(rectIndexAtPoint(x, y), true);
-    const rect = getSelectedRect();
-    if (rect && !isPassiveRect(rect)) showContextMenu(event.clientX, event.clientY);
+    selectRectByIndex(rectIndexAtPoint(x, y), { preserve: true });
+    if (getSelectedRects().length) showContextMenu(event.clientX, event.clientY);
     else hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("dblclick", event => {
@@ -542,7 +498,9 @@ export function initTreemapView() {
     const rectIndex = rectIndexAtPoint(x, y);
     const rect = AppState.rects[rectIndex];
     if (!rect || isPassiveRect(rect)) return;
-    selectRectByIndex(rectIndex, true);
+    if (event.ctrlKey || event.metaKey) return;
+    selectRectByIndex(rectIndex, { preserve: true });
+    if (getSelectedRects().length !== 1) return;
     if (rect.is_folder) navigateToSelected();
     else openRectWithDefault(rect);
     hideContextMenu();

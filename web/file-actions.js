@@ -1,5 +1,6 @@
+import { clearSelection, getSelectedRect, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
 import {
-  DeleteNode,
+  DeleteNodes,
   GetDefaultApplicationName,
   GetTrashRestoreInfo,
   OpenInFileBrowser,
@@ -18,8 +19,6 @@ import { analyze } from "./scan.js";
 import { AppState } from "./state.js";
 
 let redraw = async () => {};
-let getSelectedRect = () => null;
-let isPassiveRect = () => false;
 let pendingDeletion = null;
 let deletionInProgress = false;
 let contextMenuRequest = 0;
@@ -34,47 +33,54 @@ function showDeletionError(message) {
   showErrorToast(message);
 }
 
+function showActionFailures(failures, multiple) {
+  if (!failures.length) return;
+  const message = failures.join("\n");
+  if (!multiple) return showErrorToast(message);
+  byId("fileActionErrors").textContent = message;
+  const dialog = byId("fileActionErrorsDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
 function requestSelectedDeletion() {
   hideContextMenu();
   hideRectToast();
-  const rect = getSelectedRect();
-  if (!rect) return;
-  if (deletionInProgress) {
-    showDeletionError("Another deletion is already in progress");
-    return;
+  const selected = getSelectedRects();
+  if (!selected.length) return;
+  if (deletionInProgress) return showDeletionError("Another deletion is already in progress");
+  if (!AppState.profile?.allowDelete) return showDeletionError("Delete commands are disabled. Enable Allow delete command in Settings");
+  if (selected.length > 1 && selected.some(rect => rect.is_trash_root)) {
+    return showDeletionError(`Empty ${trashDestinationName()} separately from other selected items`);
   }
-  const emptyTrash = !!rect.is_trash_root;
-  const permanent = !emptyTrash && (!!rect.is_in_trash || !!AppState.profile?.allowPermanentDelete);
+  for (const rect of selected) {
+    if (isPassiveRect(rect) || !rect.full_path) return showDeletionError("SpaceBrowser does not allow deleting virtual treemap items");
+    if (!rect.is_trash_root && rect.node_id === AppState.node_id) {
+      return showDeletionError(rect.parent_id == null
+        ? "SpaceBrowser does not allow deleting filesystem roots"
+        : "SpaceBrowser does not allow deleting the current view. Go to its parent first");
+    }
+  }
+  const targets = reduceDeletionTargets(selected).map(rect => ({
+    nodeId: rect.node_id, path: rect.full_path, size: rect.size,
+    action: rect.is_trash_root ? "empty" : (rect.is_in_trash || AppState.profile?.allowPermanentDelete) ? "permanent" : "trash",
+  }));
+  const action = targets.every(target => target.action === targets[0].action) ? targets[0].action : "mixed";
+  const emptyTrash = action === "empty", permanent = action === "permanent";
   const emptiesAllTrashLocations = emptyTrash && AppState.profile?.platformSystem !== "windows";
-  if (!AppState.profile?.allowDelete) {
-    showDeletionError(emptyTrash
-      ? `Empty ${trashDestinationName()} is disabled. Enable Allow delete command in Settings`
-      : "Delete commands are disabled. Enable Allow delete command in Settings");
-    return;
-  }
-  if (isPassiveRect(rect) || !rect.full_path) {
-    showDeletionError("SpaceBrowser does not allow deleting virtual treemap items");
-    return;
-  }
-  if (!emptyTrash && rect.node_id === AppState.node_id) {
-    showDeletionError(rect.parent_id == null
-      ? "SpaceBrowser does not allow deleting filesystem roots"
-      : "SpaceBrowser does not allow deleting the current view. Go to its parent first");
-    return;
-  }
-
-  const action = emptyTrash ? "empty" : permanent ? "permanent" : "trash";
-  pendingDeletion = { action, nodeId: rect.node_id, path: rect.full_path, size: rect.size };
-  byId("deleteConfirmTitle").textContent = emptyTrash
-    ? `Empty ${trashDestinationName()}?`
-    : permanent ? "Permanently delete this item?" : `Move this item to ${trashDestinationName()}?`;
+  pendingDeletion = { targets, action, scanRootPath: AppState.scanRootPath, session: AppState.navSession };
+  const subject = targets.length === 1 ? "this item" : `these ${targets.length} items`;
+  byId("deleteConfirmTitle").textContent = emptyTrash ? `Empty ${trashDestinationName()}?`
+    : permanent ? `Permanently delete ${subject}?`
+      : action === "mixed" ? `Delete ${subject}? Some items will be permanently deleted.`
+        : `Move ${subject} to ${trashDestinationName()}?`;
   byId("deleteConfirmPath").textContent = emptiesAllTrashLocations
     ? "All Trash locations for the current user will be emptied."
-    : rect.full_path;
-  byId("deleteConfirmSizeLabel").textContent = emptiesAllTrashLocations
-    ? "Displayed size:"
-    : emptyTrash ? "Contents size:" : "Size:";
-  byId("deleteConfirmSize").textContent = detailedByteSize(rect.size);
+    : targets.map(target => action === "mixed"
+      ? `${target.action === "permanent" ? "Permanently delete" : `Move to ${trashDestinationName()}`}: ${target.path}`
+      : target.path).join("\n");
+  byId("deleteConfirmSizeLabel").textContent = targets.length > 1 || emptiesAllTrashLocations
+    ? "Displayed size:" : emptyTrash ? "Contents size:" : "Size:";
+  byId("deleteConfirmSize").textContent = detailedByteSize(targets.reduce((sum, target) => sum + target.size, 0));
   const confirmButton = byId("confirmDeleteButton");
   confirmButton.textContent = emptyTrash ? "Empty" : permanent ? "Delete permanently" : "Delete";
   confirmButton.classList.add("danger-button");
@@ -93,7 +99,7 @@ async function requestSelectedRestore() {
   }
   try {
     const details = await GetTrashRestoreInfo(rect.node_id);
-    pendingDeletion = { action: "restore", nodeId: rect.node_id, path: rect.full_path, size: rect.size };
+    pendingDeletion = { action: "restore", nodeId: rect.node_id, path: rect.full_path, size: rect.size, scanRootPath: AppState.scanRootPath, session: AppState.navSession };
     byId("deleteConfirmTitle").textContent = "Restore this item?";
     byId("deleteConfirmPath").textContent = `Original location: ${details.originalPath}`;
     byId("deleteConfirmSizeLabel").textContent = "Size:";
@@ -137,12 +143,19 @@ async function confirmSelectedDeletion() {
 
   try {
     await waitForNextPaint();
-    const result = target.action === "restore" ? await RestoreNode(target.nodeId) : await DeleteNode(target.nodeId);
+    const result = target.action === "restore" ? await RestoreNode(target.nodeId) : await DeleteNodes(target.targets);
+    const failures = result.failures || [];
+    const changed = target.action === "restore" || result.deleted?.length > 0 || result.rescanRequired;
+    const showFailures = () => showActionFailures(failures.map(item => `${item.path}: ${item.error}`), target.targets?.length > 1);
+    if (!changed || AppState.navSession !== target.session) { showFailures(); return; }
     dismissMovingToast();
-    AppState.selectedRectIndex = null;
-    AppState.selectedNodeId = null;
+    clearSelection();
+    for (const failed of failures) {
+      const item = target.targets?.find(item => item.path === failed.path);
+      if (item) selectionIds().add(item.nodeId);
+    }
     if (AppState.profile?.rescanOnDelete || result.rescanRequired) {
-      if (AppState.scanRootPath) byId("pathInput").value = AppState.scanRootPath;
+      if (target.scanRootPath) byId("pathInput").value = target.scanRootPath;
       await analyze();
     } else {
       AppState.fileCount = result.fileCount;
@@ -154,8 +167,9 @@ async function confirmSelectedDeletion() {
         ? `${trashDestinationName()} emptied`
         : target.action === "permanent" ? "Permanently deleted"
           : target.action === "restore" ? "Restored" : `Moved to ${trashDestinationName()}`;
-      showToastAt(mousePosition.x, mousePosition.y, completedText, 1600);
+      if (!failures.length) showToastAt(mousePosition.x, mousePosition.y, completedText, 1600);
     }
+    showFailures();
   } catch (error) {
     dismissMovingToast();
     showErrorToast(error);
@@ -194,19 +208,26 @@ function placeContextMenu(menu, x, y) {
 export function showContextMenu(x, y) {
   const menu = byId("contextMenu");
   const rect = getSelectedRect();
+  const selected = getSelectedRects();
+  const multiple = selected.length > 1;
   const request = ++contextMenuRequest;
   const goTo = menu.querySelector('[data-action="goto"]');
   if (goTo) goTo.classList.toggle("disabled", !rect?.is_folder);
   const properties = menu.querySelector('[data-action="properties"]');
+  const chooser = menu.querySelector('[data-action="open-with"]');
+  if (chooser) chooser.classList.toggle("disabled", multiple);
   if (properties) properties.classList.toggle("disabled", !rect?.full_path || isPassiveRect(rect));
   const deleteAction = menu.querySelector('[data-action="delete"]');
   const deleteLabel = deleteAction?.querySelector("span");
   const trashItem = !!rect?.is_in_trash && !rect?.is_trash_root;
-  const permanent = trashItem || (!!rect && !rect.is_trash_root && !!AppState.profile?.allowPermanentDelete);
+  const permanent = selected.length > 0 && selected.every(item => !item.is_trash_root
+    && (item.is_in_trash || AppState.profile?.allowPermanentDelete));
+  const copyLabel = menu.querySelector('[data-action="copy"]')?.querySelector("span");
+  if (copyLabel) copyLabel.textContent = multiple ? "Copy paths" : "Copy path";
   const restoreAction = menu.querySelector('[data-action="restore"]');
   if (restoreAction) restoreAction.hidden = !trashItem;
   if (deleteAction) {
-    deleteAction.classList.remove("disabled");
+    deleteAction.classList.toggle("disabled", !selected.length || (multiple && selected.some(item => item.is_trash_root)));
     deleteAction.classList.add("context-menu-delete");
   }
   if (deleteLabel) {
@@ -216,8 +237,8 @@ export function showContextMenu(x, y) {
   }
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");
-  if (defaultOpen) defaultOpen.hidden = !rect || rect.is_folder;
-  if (defaultOpenLabel) defaultOpenLabel.textContent = "Open with default application";
+  if (defaultOpen) defaultOpen.hidden = !multiple && (!rect || rect.is_folder);
+  if (defaultOpenLabel) defaultOpenLabel.textContent = multiple ? `Open ${selected.length} selected items` : "Open with default application";
 
   placeContextMenu(menu, x, y);
   if (!rect || rect.is_folder || !defaultOpenLabel) return;
@@ -245,15 +266,20 @@ export function hideContextMenu() {
   byId("contextMenu").style.display = "none";
 }
 
-export async function openRectWithDefault(rect = getSelectedRect()) {
-  if (!rect?.full_path || isPassiveRect(rect)) return;
+async function applyToSelected(operation, rects = getSelectedRects()) {
   hideContextMenu();
   hideRectToast();
-  try {
-    await OpenPath(rect.full_path);
-  } catch (error) {
-    showErrorToast(error);
+  const failures = [];
+  for (const rect of rects) {
+    if (!rect?.full_path || isPassiveRect(rect)) continue;
+    try { await operation(rect.full_path); }
+    catch (error) { failures.push(`${rect.full_path}: ${error}`); }
   }
+  showActionFailures(failures, rects.length > 1);
+}
+
+export async function openRectWithDefault(rect) {
+  await applyToSelected(OpenPath, rect ? [rect] : getSelectedRects());
 }
 
 async function openRectWithChooser(rect = getSelectedRect()) {
@@ -268,13 +294,13 @@ async function openRectWithChooser(rect = getSelectedRect()) {
 }
 
 async function copySelectedPathAt(position) {
-  const rect = getSelectedRect();
-  if (!rect?.full_path) return;
+  const paths = getSelectedRects().map(rect => rect.full_path).filter(Boolean).join("\n");
+  if (!paths) return;
   try {
-    await navigator.clipboard.writeText(rect.full_path);
+    await navigator.clipboard.writeText(paths);
   } catch {
     const textarea = document.createElement("textarea");
-    textarea.value = rect.full_path;
+    textarea.value = paths;
     textarea.style.position = "fixed";
     textarea.style.opacity = "0";
     document.body.appendChild(textarea);
@@ -290,34 +316,33 @@ async function copySelectedPathAt(position) {
 async function handleContextMenuAction(event) {
   const item = event.target.closest("li");
   const rect = getSelectedRect();
-  if (!item || !rect) return;
+  if (!item || item.classList?.contains("disabled") || !getSelectedRects().length) return;
   if (item.dataset.action === "copy") {
     await copySelectedPathAt({ x: event.clientX, y: event.clientY });
   } else if (item.dataset.action === "delete") {
     requestSelectedDeletion();
   } else if (item.dataset.action === "restore") {
     await requestSelectedRestore();
-  } else if (item.dataset.action === "open" && rect.full_path) {
-    await OpenInFileBrowser(rect.full_path);
-  } else if (item.dataset.action === "open-default" && !rect.is_folder) {
-    await openRectWithDefault(rect);
+  } else if (item.dataset.action === "open") {
+    await applyToSelected(OpenInFileBrowser);
+  } else if (item.dataset.action === "open-default") {
+    await openRectWithDefault();
   } else if (item.dataset.action === "open-with") {
     await openRectWithChooser(rect);
-  } else if (item.dataset.action === "properties" && rect.full_path && !isPassiveRect(rect)) {
+  } else if (item.dataset.action === "properties" && rect?.full_path && !isPassiveRect(rect)) {
     try {
       await ShowProperties(rect.full_path);
     } catch (error) {
       showErrorToast(error);
     }
-  } else if (item.dataset.action === "goto") {
+  } else if (item.dataset.action === "goto" && rect?.is_folder) {
     visit(rect.node_id);
   }
 }
 
 export function initFileActions(options) {
   redraw = options.redraw;
-  getSelectedRect = options.getSelectedRect;
-  isPassiveRect = options.isPassiveRect;
+  byId("closeFileActionErrorsButton").addEventListener("click", () => byId("fileActionErrorsDialog").close());
   byId("cancelDeleteButton").addEventListener("click", closeDeleteConfirmation);
   byId("confirmDeleteButton").addEventListener("click", confirmSelectedDeletion);
   byId("deleteConfirmDialog").addEventListener("cancel", event => {
@@ -333,21 +358,21 @@ export function initFileActions(options) {
     const open = eventMatchesShortcut(event, bindings?.open);
     if (!openWith && !open) return;
     const rect = getSelectedRect();
-    if (!rect?.full_path || isPassiveRect(rect)) return;
+    if (openWith ? !rect?.full_path : !getSelectedRects().length) return;
     event.preventDefault();
     if (openWith) openRectWithChooser(rect);
-    else openRectWithDefault(rect);
+    else openRectWithDefault();
   };
   addControlEventListeners(handleOpenShortcut);
   window.addEventListener("keydown", event => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && getSelectedRect()?.full_path) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c" && shortcutCanRun(event) && getSelectedRects().length) {
       event.preventDefault();
       copySelectedPathAt();
     }
   });
   const handleDeleteShortcut = event => {
     if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.delete)) return;
-    if (!getSelectedRect()) return;
+    if (!getSelectedRects().length) return;
     event.preventDefault();
     requestSelectedDeletion();
   };
