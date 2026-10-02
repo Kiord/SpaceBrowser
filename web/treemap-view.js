@@ -218,10 +218,10 @@ function filterLinesByAvailableSpace(ctx, lines, fontBounds, maxW, maxH){
     if (spec.ellipsize) {
       const text = ellipsize(ctx, spec.text, maxW);
       if (text.length > 0)
-        out.push(text);
+        out.push({ text, width: ctx.measureText(text).width });
     }
-    else if(textFits(ctx, spec.text, maxW)){
-      out.push(spec.text);
+    else if(textFits(ctx, spec.layoutText || spec.text, maxW)){
+      out.push({ text: spec.text, width: ctx.measureText(spec.layoutText || spec.text).width });
     }
   }
 
@@ -242,10 +242,10 @@ function writeCenteredLinesInRect(ctx, lines, fontBounds, rect){
   for (let i = 0; i < text_lines.length; i++) {
     const t = text_lines[i];
     if (!t) continue;
-    const tw = ctx.measureText(t).width;
+    const tw = t.width;
     const x  = Math.round(rect.x + (rect.w - tw) / 2);  
     const y  = Math.round(baseY + i * lineH);           
-    ctx.fillText(t, x, y);
+    ctx.fillText(t.text, x, y);
   }
 }
 
@@ -376,7 +376,9 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
-      {text:`Free Space: ${percent.toFixed(1)}%${scanStatusMarker(rect)}`, ellipsize:false},
+      {text:`Free Space: ${percent.toFixed(1)}%${scanStatusMarker(rect)}`,
+        layoutText: AppState.liveScanPreview && rect.scan_incomplete ? `Free Space: ${percent.toFixed(1)}% ...` : undefined,
+        ellipsize:false},
       {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
       {text:`Files: ${fileCount}`, ellipsize:false},
       {text:`Folders: ${dirCount}`, ellipsize:false}
