@@ -108,6 +108,19 @@ test("a redraw preserves and paints every selected node", async () => {
   assert.deepEqual(h.painted.filter(paint => paint.name === "color").map(paint => paint.fill), ["#000000", "#000000", "#fff"]);
 });
 
+test("separate canvas clicks toggle a rectangle off immediately and repaint it", async () => {
+  const h = await harness();
+  h.ui.initTreemapView();
+  h.state.rects = [rect(1)];
+  const event = { clientX: 0, clientY: 0, detail: 1 };
+  await h.state.colorCanvas.emit("click", event);
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+  await h.state.colorCanvas.emit("click", event);
+  assert.deepEqual([...h.state.selectedNodeIds], []);
+  assert.equal(h.painted.filter(paint => paint.name === "tmp").at(-1).fill, "#fff");
+  assert.deepEqual(h.actions, []);
+});
+
 for (const isFolder of [true, false]) {
   test(`double-click ${isFolder ? "visits a folder" : "opens a file"} and keeps it selected`, async () => {
     const h = await harness();

@@ -21,6 +21,24 @@ test("normal clicks replace selection; modifier clicks add and toggle", async ()
   ui.selectRect(0, { additive: true });
   assert.equal(ui.getSelectedRect().node_id, 2);
   ui.selectRect(0);
+  assert.deepEqual([...state.selectedNodeIds], [1]);
+});
+
+test("clicking the sole selected rectangle again deselects and marks it for repaint", async () => {
+  const { state, ui } = await harness();
+  ui.selectRect(0);
+  const changed = ui.selectRect(0);
+  assert.deepEqual([...state.selectedNodeIds], []);
+  assert.deepEqual([...changed], [1]);
+  assert.equal(ui.getSelectedRect(), null);
+  ui.selectRect(0);
+  assert.deepEqual([...state.selectedNodeIds], [1]);
+});
+
+test("plain click on a selected group member selects only that member", async () => {
+  const { state, ui } = await harness();
+  ui.selectRect(0);
+  ui.selectRect(1, { additive: true });
   ui.selectRect(0);
   assert.deepEqual([...state.selectedNodeIds], [1]);
 });

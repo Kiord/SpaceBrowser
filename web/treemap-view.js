@@ -483,7 +483,9 @@ export function initTreemapView() {
 
   AppState.colorCanvas.addEventListener("click", event => {
     const { x, y } = getCanvasCoords(event);
-    selectRectByIndex(rectIndexAtPoint(x, y), { additive: event.ctrlKey || event.metaKey });
+    const additive = event.ctrlKey || event.metaKey;
+    // The second click belongs to activation; don't toggle its selection off.
+    selectRectByIndex(rectIndexAtPoint(x, y), { additive, preserve: !additive && event.detail > 1 });
     hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("contextmenu", event => {

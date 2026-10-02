@@ -29,8 +29,9 @@ export function selectRect(rectIndex, { additive = false, preserve = false } = {
   const rect = AppState.rects?.[rectIndex];
   const selectable = rect && !isPassiveRect(rect) && rect.node_id >= 0;
   if (selectable && preserve && ids.has(rect.node_id)) return new Set();
+  const toggleOff = selectable && !additive && !preserve && ids.size === 1 && ids.has(rect.node_id);
   if (!additive) ids.clear();
-  if (selectable) {
+  if (selectable && !toggleOff) {
     if (additive && ids.has(rect.node_id)) ids.delete(rect.node_id);
     else ids.add(rect.node_id);
   }
