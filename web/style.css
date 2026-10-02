@@ -1617,13 +1617,15 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 }
 
 .scan-status-section { display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
-.controls .compact-scan-status { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-color: transparent; background: transparent; box-shadow: none; font-size: 11px; }
-.controls .compact-scan-status:hover { background: #f4f4f2; border-color: #ccc; }
+.controls .compact-scan-status { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .controls .compact-scan-status[hidden] { display: none; }
-.compact-scan-progress { display: block; position: relative; width: clamp(50px, 9vw, 120px); height: 13px; border: 1px solid #858585; background: #f4f4f2; }
+.compact-scan-progress { display: block; position: relative; width: clamp(50px, 9vw, 120px); height: 8px; border: 1px solid #858585; background: #f4f4f2; }
 #compactScanTime, #compactScanPercent { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #compactScanPercent { min-width: 28px; text-align: right; }
 .scan-dialog .scan-close-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 23px; min-height: 23px; padding: 0; }
 .scan-close-button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .scan-dialog .scan-title { padding-right: 22px; }
 #flashCanvas { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+
+#compactScanBar { background: #527eaf; }
+.compact-scan-status[data-complete="true"] #compactScanBar { background: #568957; }

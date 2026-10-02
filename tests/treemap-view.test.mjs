@@ -227,3 +227,22 @@ test('flash stops when a cancelled scan restores another session', async () => {
   assert.equal(h.frames.size, 0);
   assert.equal(h.painted.length, paints);
 });
+
+test('scan markers show animated dots for pending nodes and ticks for ready nodes only during previews', async () => {
+  const h = await harness();
+  const pending = { node_id: 1, scan_incomplete: true };
+  const ready = { node_id: 2 };
+  const small = { node_id: -1, parent_id: 1, is_small_files: true };
+  h.state.rects = [pending, ready, small];
+  h.state.liveScanPreview = true;
+  for (const dots of ['.', '..', '...', '.']) {
+    h.state.scanDots = dots;
+    assert.equal(h.ui.scanStatusMarker(pending), ` ${dots}`);
+    assert.equal(h.ui.scanStatusMarker(small), ` ${dots}`);
+    assert.equal(h.ui.scanStatusMarker(ready), ' \u2713');
+  }
+  pending.scan_incomplete = false;
+  assert.equal(h.ui.scanStatusMarker(small), ' \u2713');
+  h.state.liveScanPreview = false;
+  for (const node of h.state.rects) assert.equal(h.ui.scanStatusMarker(node), '');
+});

@@ -309,6 +309,21 @@ function drawRectRelief(ctx, rect, fillColor, strokeWidth) {
   ctx.restore();
 }
 
+export function scanStatusMarker(rect) {
+  if (!AppState.liveScanPreview) return "";
+  const pending = rect.scan_incomplete || (rect.is_small_files &&
+    AppState.rects.find(parent => parent.node_id === rect.parent_id)?.scan_incomplete);
+  return ` ${pending ? AppState.scanDots || "." : "\u2713"}`;
+}
+
+export function repaintScanLabels() {
+  if (!AppState.liveScanPreview) return;
+  AppState.rects.forEach((rect, index) => {
+    if (rect.w >= pxI(40) && rect.h >= pxI(FONT_SIZE + 4) &&
+        (rect.scan_incomplete || rect.is_small_files)) reDrawRectByIndex(index);
+  });
+}
+
 function drawRect(rect, writeId, ctx, rectIndex) {
   const isSelected = selectionIds().has(rect.node_id);
   const isRoot = rect.parent_id == null;
@@ -361,8 +376,8 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
-      {text:`${rect.scan_incomplete ? "Free / unscanned" : "Free Space"}: ${percent.toFixed(1)}%`, ellipsize:false},
-      {text:`${formatSize(rect.size || 0, 1)} ${rect.scan_incomplete ? "remaining" : "Free"}`, ellipsize:false},
+      {text:`Free Space: ${percent.toFixed(1)}%${scanStatusMarker(rect)}`, ellipsize:false},
+      {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
       {text:`Files: ${fileCount}`, ellipsize:false},
       {text:`Folders: ${dirCount}`, ellipsize:false}
     ];
@@ -372,18 +387,18 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const count = formatCount(rect.small_file_count);
     const limit = formatCompactSize(rect.small_file_limit || 0);
     writeCenteredLinesInRect(ctx, [
-      { text: `${count} <${limit} files`, ellipsize: false },
+      { text: `${count} <${limit} files${scanStatusMarker(rect)}`, ellipsize: false },
       { text: sizeStr, ellipsize: false },
     ], fontBounds, rect);
   }
   else if (rect.is_folder) {
     if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
       let display = `${anonymize ? "A folder" : rect.name} (${sizeStr})`;
-      if (rect.scan_incomplete) display += " · scanning…";
       if (isRoot && rect.disk_total > 0) {
         const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
       }
+      display += scanStatusMarker(rect);
       const label = ellipsize(ctx, display, rect.w - PAD*2);
       const y = Math.round(rect.y + PAD + fontBounds.ascent);
       const x = Math.round(rect.x + PAD);
@@ -393,7 +408,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   else { // file
     const dateStr = rect.mtime ? formatModTime(rect.mtime) : "";
     writeCenteredLinesInRect(ctx, [
-      { text: anonymize ? "A file" : rect.name,  ellipsize: true  },
+      { text: `${anonymize ? "A file" : rect.name}${scanStatusMarker(rect)}`,  ellipsize: true  },
       { text: sizeStr,    ellipsize: false },
       { text: dateStr,    ellipsize: false },
     ], fontBounds, rect);

@@ -24,7 +24,7 @@ async function harness(rects) {
     "./navigation.js": { initNavigation: noop, navigateToSelected: () => calls.push(["visit"]) },
     "./scan.js": { analyze: noop, initScan: noop },
     "./settings.js": { initSettings: noop, loadSettingsState: async () => {} },
-    "./treemap-view.js": { initTreemapView: noop, redraw: noop, resizeCanvas: noop },
+    "./treemap-view.js": { initTreemapView: noop, redraw: noop, resizeCanvas: noop, repaintScanLabels: noop },
     "./zoom.js": { initZoom: noop },
     "./state.js": { AppState: state },
   }, { document, window });

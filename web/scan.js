@@ -10,6 +10,9 @@ import { hideLocationSelector, showLocationSelector } from "./locations.js";
 import { AppState } from "./state.js";
 
 let redraw = async () => {};
+let repaintScanLabels = () => {};
+let scanStartedAt = 0;
+let scanCompleted = false;
 let hideContextMenu = () => {};
 let scanProgressTimer = null;
 let scanProgressToken = 0;
@@ -102,6 +105,12 @@ async function openScanReport() {
 
 function startScanProgress(path, live = false) {
   const dialog = byId("scanDialog");
+  if (dialog.open) dialog.close();
+  scanStartedAt = performance.now();
+  scanCompleted = false;
+  byId("compactScanStatus").setAttribute("data-complete", "false");
+  byId("compactScanPercent").hidden = false;
+  byId("scanPhase").textContent = "Scanning ";
   const cancelButton = byId("cancelScanButton");
   const progressElement = query(".scan-progress");
   const dotsElement = byId("scanningDots");
@@ -115,6 +124,7 @@ function startScanProgress(path, live = false) {
   byId("scanElapsedTime").textContent = "0:00";
   byId("scanFileCount").textContent = "0";
   byId("scanFolderCount").textContent = "0";
+  cancelButton.hidden = false;
   cancelButton.disabled = false;
   cancelButton.textContent = "Cancel";
   scanCancelledByUser = false;
@@ -124,12 +134,14 @@ function startScanProgress(path, live = false) {
   scanDotsTimer = setInterval(() => {
     dotCount = dotCount % 3 + 1;
     dotsElement.textContent = ".".repeat(dotCount);
+    AppState.scanDots = dotsElement.textContent;
+    repaintScanLabels();
   }, 350);
-  byId("compactScanStatus").hidden = !live;
+  AppState.scanDots = ".";
+  byId("compactScanStatus").hidden = false;
   byId("compactScanTime").textContent = "0:00";
-  byId("closeScanDetailsButton").hidden = !live;
+  byId("closeScanDetailsButton").hidden = false;
   AppState.liveScanPreview = live;
-  if (!live && !dialog.open) dialog.showModal();
 
   const token = ++scanProgressToken;
   let previewRevision = 0;
@@ -180,10 +192,20 @@ async function completeScanProgress(fileCount, dirCount) {
   byId("scanFileCount").textContent = formatCount(fileCount);
   byId("scanFolderCount").textContent = formatCount(dirCount);
   renderScanProgress(1);
+  scanCompleted = true;
+  AppState.liveScanPreview = false;
+  const elapsed = performance.now() - scanStartedAt;
+  byId("scanElapsedTime").textContent = formatDuration(elapsed);
+  byId("compactScanTime").textContent = `Done in ${(elapsed / 1000).toFixed(1)}s`;
+  byId("compactScanPercent").hidden = true;
+  byId("compactScanStatus").setAttribute("data-complete", "true");
+  byId("scanPhase").textContent = "Scanned ";
+  byId("scanningDots").textContent = "";
+  byId("cancelScanButton").hidden = true;
   await new Promise(resolve => setTimeout(resolve, SCAN_COMPLETION_DELAY_MS));
   const dialog = byId("scanDialog");
   if (dialog.open) dialog.close();
-  byId("compactScanStatus").hidden = true;
+  byId("compactScanStatus").hidden = !scanCompleted;
 }
 
 function stopScanProgress() {
@@ -194,11 +216,11 @@ function stopScanProgress() {
   scanDotsTimer = null;
   const dialog = byId("scanDialog");
   if (dialog.open) dialog.close();
-  byId("compactScanStatus").hidden = true;
+  byId("compactScanStatus").hidden = !scanCompleted;
 }
 
 async function cancelActiveScan() {
-  if (scanCancelledByUser) return;
+  if (scanCancelledByUser || scanCompleted) return;
   scanCancelledByUser = true;
   const button = byId("cancelScanButton");
   button.disabled = true;
@@ -270,6 +292,7 @@ export async function analyze() {
   } finally {
     if (scanStarted) stopScanProgress();
     analyzeInFlight = false;
+    AppState.liveScanPreview = false;
     setUIBusy(false);
     updateNavButtons();
     if (AppState.node_id == null) showLocationSelector({ refresh: true });
@@ -312,6 +335,7 @@ export async function refreshSelectedFolders() {
 
 export function initScan(options) {
   redraw = options.redraw;
+  repaintScanLabels = options.repaintScanLabels || (() => {});
   hideContextMenu = options.hideContextMenu;
   addControlEventListeners(event => {
     if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.refresh)) return;
@@ -321,14 +345,13 @@ export function initScan(options) {
   byId("analyzeButton").addEventListener("click", analyze);
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   byId("cancelScanButton").addEventListener("click", cancelActiveScan);
-  byId("compactScanStatus").addEventListener("click", () => {
+  byId("scanDetailsButton").addEventListener("click", () => {
     const dialog = byId("scanDialog");
     if (!dialog.open) dialog.showModal();
   });
   byId("closeScanDetailsButton").addEventListener("click", () => byId("scanDialog").close());
   byId("scanDialog").addEventListener("cancel", event => {
     event.preventDefault();
-    if (!byId("compactScanStatus").hidden) byId("scanDialog").close();
-    else cancelActiveScan();
+    byId("scanDialog").close();
   });
 }

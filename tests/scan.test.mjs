@@ -7,7 +7,7 @@ async function harness() {
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
       hidden: true, open: false, textContent: "", value: "test-folder", handlers: {},
-      style: { setProperty() {} }, setAttribute() {},
+      attributes: {}, style: { setProperty() {} }, setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(name, fn) { this.handlers[name] = fn; },
       showModal() { this.open = true; }, close() { this.open = false; },
     });
@@ -45,6 +45,7 @@ async function harness() {
     "./state.js": { AppState: state },
   };
   const ui = await loadUI("scan.js", modules, {
+    performance: { now: () => 1500 },
     // Tests explicitly trigger progress polls; the completion paint delay
     // resolves on a microtask, avoiding wall-clock sleeps.
     setTimeout(fn, delay) {
@@ -295,7 +296,8 @@ test('live previews redraw at new revisions and preserve browsing through comple
   assert.deepEqual([...h.state.selectedNodeIds], [3]);
   assert.deepEqual(h.state.navHistory, [0, 2]);
   assert.equal(h.state.fileCount, 10);
-  assert.equal(h.element('compactScanStatus').hidden, true);
+  assert.equal(h.element('compactScanStatus').hidden, false);
+  assert.equal(h.state.liveScanPreview, false);
   assert.equal(h.state.scanInProgress, false);
 });
 
@@ -364,14 +366,45 @@ test('details can expand and minimize without cancelling the scan', async () => 
   const h = await harness();
   const run = h.analyze();
   await h.scanning;
-  h.element('compactScanStatus').handlers.click();
+  h.element('scanDetailsButton').handlers.click();
   assert.equal(h.element('scanDialog').open, true);
   h.element('closeScanDetailsButton').handlers.click();
   assert.equal(h.element('scanDialog').open, false);
-  h.element('compactScanStatus').handlers.click();
+  h.element('scanDetailsButton').handlers.click();
   h.element('scanDialog').handlers.cancel({ preventDefault() {} });
   assert.equal(h.element('scanDialog').open, false);
   assert.equal(h.cancellations(), 0);
   h.resolveScan({ rootId: 0, fileCount: 1, dirCount: 1 });
   await run;
 });
+
+for (const partial of [false, true]) {
+  test(`${partial ? 'partial' : 'full'} scan starts compact and retains completed status and details`, async () => {
+    const h = await harness();
+    if (partial) selectRefreshFolders(h);
+    const run = partial ? h.refresh() : h.analyze();
+    await h.scanning;
+    assert.equal(h.element('scanDialog').open, false);
+    assert.equal(h.element('compactScanStatus').hidden, false);
+    assert.equal(h.element('compactScanStatus').handlers.click, undefined);
+    assert.equal(h.element('compactScanStatus').attributes['data-complete'], 'false');
+    h.element('scanDetailsButton').handlers.click();
+    assert.equal(h.element('scanDialog').open, true);
+    h.element('closeScanDetailsButton').handlers.click();
+    assert.equal(h.cancellations(), 0);
+    h.resolveScan({ rootId: 0, fileCount: 12, dirCount: 5, nodeIds: {} });
+    await run;
+    assert.equal(h.element('compactScanStatus').hidden, false);
+    assert.equal(h.element('compactScanStatus').attributes['data-complete'], 'true');
+    assert.match(h.element('compactScanTime').textContent, /^Done in [0-9.]+s$/);
+    assert.equal(h.element('compactScanPercent').hidden, true);
+    assert.equal(h.element('cancelScanButton').hidden, true);
+    assert.equal(h.element('scanningDots').textContent, '');
+    h.element('scanDetailsButton').handlers.click();
+    assert.equal(h.element('scanDialog').open, true);
+    assert.equal(h.element('scanPhase').textContent, 'Scanned ');
+    assert.equal(h.element('scanFileCount').textContent, '12');
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.intervals.size, 0);
+  });
+}

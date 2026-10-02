@@ -26,11 +26,12 @@
       </div>
 
       <div class="scan-status-section">
-        <button id="compactScanStatus" class="compact-scan-status" type="button" aria-label="Show scan progress details" hidden>
+        <div id="compactScanStatus" class="compact-scan-status" hidden>
           <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
           <span id="compactScanTime">0:00</span>
           <span id="compactScanPercent">0%</span>
-        </button>
+          <button id="scanDetailsButton" class="nav-button" type="button" aria-label="Show scan details" data-tooltip="Scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"></rect><path d="M7 8h10M7 12h10M7 16h6"></path></svg></button>
+        </div>
         <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
           <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -512,7 +513,7 @@
     <button id="closeScanDetailsButton" class="scan-close-button" type="button" aria-label="Close scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
     <div class="scan-dialog-body">
       <div id="scanDialogTitle" class="scan-title">
-        <span>Scanning&nbsp;</span><span id="scanQueryPath" class="scan-query-path"></span>
+        <span id="scanPhase">Scanning </span><span id="scanQueryPath" class="scan-query-path"></span>
         <span id="scanningDots" class="scanning-dots" aria-hidden="true">.</span>
       </div>
       <div id="scanCurrentPath" class="scan-current-path"></div>
