@@ -32,14 +32,20 @@ type App struct {
 	iconServiceOnce     sync.Once
 	iconService         *fileicon.Service
 
-	scanMu         sync.RWMutex
-	filesystemMu   sync.Mutex // serialize user mutations through their targeted refreshes
-	scanGeneration uint64
-	scanActive     bool
-	scanPath       string
-	scanCancel     context.CancelFunc
-	scanStartedAt  time.Time
-	scanScanner    *Scanner
+	scanMu              sync.RWMutex
+	filesystemMu        sync.Mutex // serialize user mutations through their targeted refreshes
+	scanGeneration      uint64
+	scanActive          bool
+	scanPath            string
+	scanCancel          context.CancelFunc
+	scanStartedAt       time.Time
+	scanScanner         *Scanner
+	previewMu           sync.Mutex
+	scanPreview         *TreeInfo
+	scanPreviewAt       time.Time
+	scanRootPath        string
+	scanResultPublished bool
+	scanPrevious        *treeStoreSnapshot
 }
 
 func NewApp() *App {

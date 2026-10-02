@@ -12,6 +12,37 @@ let redrawGeneration = 0;
 let requestedHoverRectIndex = -1;
 let renderedHoverRectIndex = -1;
 let hoverAnimationFrame = null;
+let flashAnimationFrame = null;
+let previousLayoutScope = "";
+let previousLayoutSession;
+let previousVisibleNodes = new Set();
+
+function flashNewRects(rects) {
+  if (flashAnimationFrame != null) cancelAnimationFrame(flashAnimationFrame);
+  flashAnimationFrame = null;
+  const ctx = AppState.flashCtx;
+  ctx.clearRect(0, 0, AppState.flashCanvas.width, AppState.flashCanvas.height);
+  const scope = `${AppState.navSession}:${AppState.node_id}`;
+  const key = rect => rect.is_small_files ? `small:${rect.parent_id}` : rect.node_id;
+  const newScan = previousLayoutSession !== AppState.navSession;
+  const added = (previousLayoutScope === scope || newScan) && AppState.liveScanPreview
+    ? rects.filter((rect, index) => index > 0 && !rect.is_free_space && (newScan || !previousVisibleNodes.has(key(rect)))) : [];
+  previousLayoutScope = scope;
+  previousLayoutSession = AppState.navSession;
+  previousVisibleNodes = new Set(rects.map(key));
+  if (!added.length || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const started = performance.now();
+  const frame = now => {
+    flashAnimationFrame = null;
+    ctx.clearRect(0, 0, AppState.flashCanvas.width, AppState.flashCanvas.height);
+    if (AppState.rects !== rects || scope !== `${AppState.navSession}:${AppState.node_id}`) return;
+    const alpha = Math.max(0, 1 - (now - started) / 500);
+    if (alpha <= 0) return;
+    for (const rect of added) drawHoverRect(ctx, rect, alpha);
+    flashAnimationFrame = requestAnimationFrame(frame);
+  };
+  frame(started);
+}
 
 async function apiLayoutById(nodeId, w, h, scale) {
   const rects = await Layout(nodeId, w, h, scale);
@@ -48,6 +79,7 @@ export async function redraw() {
 
   const drawStartedAt = performance.now();
   drawTreemap(rects);
+  flashNewRects(rects);
   logDebug(`treemap draw: ${(performance.now() - drawStartedAt).toFixed(1)} ms`);
 
   updateNavButtons();
@@ -329,8 +361,8 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
-      {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
-      {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
+      {text:`${rect.scan_incomplete ? "Free / unscanned" : "Free Space"}: ${percent.toFixed(1)}%`, ellipsize:false},
+      {text:`${formatSize(rect.size || 0, 1)} ${rect.scan_incomplete ? "remaining" : "Free"}`, ellipsize:false},
       {text:`Files: ${fileCount}`, ellipsize:false},
       {text:`Folders: ${dirCount}`, ellipsize:false}
     ];
@@ -347,6 +379,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   else if (rect.is_folder) {
     if (rect.w > FOLDER_W_MIN && rect.h > FOLDER_H_MIN) {
       let display = `${anonymize ? "A folder" : rect.name} (${sizeStr})`;
+      if (rect.scan_incomplete) display += " · scanning…";
       if (isRoot && rect.disk_total > 0) {
         const used = Math.max(0, rect.disk_total - (rect.disk_free || 0));
         display = `${rect.name} (${formatSize(used)} / ${formatSize(rect.disk_total)})`;
@@ -416,7 +449,7 @@ export function resizeCanvas() {
   const height = containerRect.height;
   const dpr = window.devicePixelRatio || 1;
 
-  for (const c of [AppState.colorCanvas, AppState.hoverCanvas, AppState.idCanvas, AppState.tmpCanvas, AppState.maskCanvas]) {
+  for (const c of [AppState.colorCanvas, AppState.hoverCanvas, AppState.flashCanvas, AppState.idCanvas, AppState.tmpCanvas, AppState.maskCanvas]) {
     c.width  = Math.max(1, Math.floor(width  * dpr));
     c.height = Math.max(1, Math.floor(height * dpr));
     c.style.width  = `${width}px`;
@@ -468,12 +501,14 @@ function strokeRoundedRect(ctx, x, y, w, h) {
 export function initTreemapView() {
   AppState.colorCanvas = document.getElementById("colorCanvas");
   AppState.hoverCanvas = document.getElementById("hoverCanvas");
+  AppState.flashCanvas = document.getElementById("flashCanvas");
   AppState.idCanvas = document.getElementById("idCanvas");
   AppState.tmpCanvas = document.getElementById("tmpCanvas");
   AppState.maskCanvas = document.getElementById("maskCanvas");
 
   AppState.colorCtx = AppState.colorCanvas.getContext("2d");
   AppState.hoverCtx = AppState.hoverCanvas.getContext("2d", { alpha: true });
+  AppState.flashCtx = AppState.flashCanvas.getContext("2d", { alpha: true });
   AppState.idCtx = AppState.idCanvas.getContext("2d", { willReadFrequently: true });
   AppState.idCtx.imageSmoothingEnabled = false;
   AppState.tmpCtx = AppState.tmpCanvas.getContext("2d", { alpha: true });
@@ -481,23 +516,43 @@ export function initTreemapView() {
 
   resizeCanvas();
 
-  AppState.colorCanvas.addEventListener("click", event => {
+  let pointerTarget = null;
+  let firstClickNode = null;
+  let activationNode = null;
+  AppState.colorCanvas.addEventListener("pointerdown", event => {
     const { x, y } = getCanvasCoords(event);
+    pointerTarget = { id: AppState.rects[rectIndexAtPoint(x, y)]?.node_id,
+      view: AppState.node_id, session: AppState.navSession };
+  });
+  const clickIndex = event => {
+    if (pointerTarget) {
+      const target = pointerTarget;
+      pointerTarget = null;
+      if (target.view !== AppState.node_id || target.session !== AppState.navSession) return -1;
+      return AppState.rects.findIndex(rect => rect.node_id === target.id);
+    }
+    const { x, y } = getCanvasCoords(event);
+    return rectIndexAtPoint(x, y);
+  };
+  AppState.colorCanvas.addEventListener("click", event => {
+    const index = clickIndex(event);
+    const id = AppState.rects[index]?.node_id;
+    if (event.detail > 1 && firstClickNode !== id) { activationNode = null; return; }
+    if (!(event.detail > 1)) firstClickNode = id;
+    activationNode = id;
     const additive = event.ctrlKey || event.metaKey;
     // The second click belongs to activation; don't toggle its selection off.
-    selectRectByIndex(rectIndexAtPoint(x, y), { additive, preserve: !additive && event.detail > 1 });
+    selectRectByIndex(index, { additive, preserve: !additive && event.detail > 1 });
     hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("contextmenu", event => {
     event.preventDefault();
-    const { x, y } = getCanvasCoords(event);
-    selectRectByIndex(rectIndexAtPoint(x, y), { preserve: true });
+    selectRectByIndex(clickIndex(event), { preserve: true });
     if (getSelectedRects().length) showContextMenu(event.clientX, event.clientY);
     else hideContextMenu();
   });
   AppState.colorCanvas.addEventListener("dblclick", event => {
-    const { x, y } = getCanvasCoords(event);
-    const rectIndex = rectIndexAtPoint(x, y);
+    const rectIndex = AppState.rects.findIndex(rect => rect.node_id === activationNode);
     const rect = AppState.rects[rectIndex];
     if (!rect || isPassiveRect(rect)) return;
     if (event.ctrlKey || event.metaKey) return;

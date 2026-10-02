@@ -19,10 +19,14 @@ type TreeInfo struct {
 	FileCount  int             `json:"fileCount"`
 	DirCount   int             `json:"dirCount"`
 	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
+	Revision   uint64          `json:"revision,omitempty"`
 }
 
 type ScanProgress struct {
 	Active              bool    `json:"active"`
+	Generation          uint64  `json:"generation"`
+	RootPath            string  `json:"rootPath"`
+	LivePreview         bool    `json:"livePreview"`
 	Path                string  `json:"path"`
 	Processed           int64   `json:"processed"`
 	Discovered          int64   `json:"discovered"`
@@ -90,6 +94,7 @@ func (a *App) GetScanProgress() ScanProgress {
 	path := a.scanPath
 	startedAt := a.scanStartedAt
 	scanner := a.scanScanner
+	generation, rootPath := a.scanGeneration, a.scanRootPath
 	a.scanMu.RUnlock()
 
 	var processed, discovered int64
@@ -108,6 +113,7 @@ func (a *App) GetScanProgress() ScanProgress {
 	}
 
 	return ScanProgress{
+		Generation: generation, RootPath: rootPath, LivePreview: scanner != nil && scanner.preview != nil,
 		Active:              active,
 		Path:                path,
 		Processed:           processed,
@@ -140,10 +146,18 @@ func (a *App) beginScan(path string) (context.Context, uint64) {
 	if a.scanCancel != nil {
 		a.scanCancel()
 	}
+	if a.scanPreview != nil && !a.scanResultPublished {
+		a.store.restoreState(a.scanPrevious)
+	}
+	a.scanPrevious = a.store.snapshotState()
 	a.scanGeneration++
 	generation := a.scanGeneration
 	a.scanActive = true
 	a.scanPath = path
+	a.scanRootPath = path
+	a.scanPreview = nil
+	a.scanPreviewAt = time.Time{}
+	a.scanResultPublished = false
 	a.scanCancel = cancel
 	a.scanStartedAt = time.Now()
 	a.scanScanner = nil
@@ -171,6 +185,11 @@ func (a *App) updateScanPath(generation uint64, path string) {
 func (a *App) finishScan(generation uint64) {
 	a.scanMu.Lock()
 	if a.scanGeneration == generation {
+		if a.scanPreview != nil && !a.scanResultPublished {
+			a.store.restoreState(a.scanPrevious)
+		}
+		a.scanPrevious = nil
+		a.scanPreview = nil
 		a.scanActive = false
 		a.scanCancel = nil
 		a.scanScanner = nil
@@ -204,6 +223,7 @@ func (a *App) publishScanResult(
 	} else {
 		a.store.Replace(root, nodes, files, dirs)
 	}
+	a.scanResultPublished = true
 	a.scanMu.Unlock()
 	return persistReport(), nil
 }
@@ -218,6 +238,7 @@ func (a *App) publishCachedScanResult(ctx context.Context, generation uint64, ro
 		return nil, err
 	}
 	a.store.ReplaceShared(root, nodes, files, dirs)
+	a.scanResultPublished = true
 	return persistReport(), nil
 }
 
@@ -278,6 +299,10 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer observation.Close()
 	var files, dirs int64
 	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+	scanner.preview = newScanPreviewTree()
+	if volumeUsage != nil {
+		scanner.preview.diskTotal, scanner.preview.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
+	}
 	// Persisted scan reports need the complete error list independently of the
 	// terminal verbosity selected by the user.
 	scanner.ReportAllErrors(true)

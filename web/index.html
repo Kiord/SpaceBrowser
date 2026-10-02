@@ -22,6 +22,15 @@
 
         <input type="text" id="pathInput" placeholder="Select or paste a folder path…" />
         <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
+      </div>
+
+      <div class="scan-status-section">
+        <button id="compactScanStatus" class="compact-scan-status" type="button" aria-label="Show scan progress details" hidden>
+          <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
+          <span id="compactScanTime">0:00</span>
+          <span id="compactScanPercent">0%</span>
+        </button>
         <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
           <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -36,7 +45,6 @@
             <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
           </div>
         </div>
-        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
       </div>
 
       <div class="right-group" aria-label="Treemap navigation">
@@ -79,6 +87,7 @@
     <div class="treemap-canvas-stack">
       <canvas id="colorCanvas"></canvas>
       <canvas id="hoverCanvas" aria-hidden="true"></canvas>
+      <canvas id="flashCanvas" aria-hidden="true"></canvas>
       <canvas id="idCanvas" style="display: none"></canvas>
       <canvas id="tmpCanvas" style="display: none"></canvas>
       <canvas id="maskCanvas" style="display: none"></canvas>
@@ -500,6 +509,7 @@
   </dialog>
 
   <dialog id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
+    <button id="closeScanDetailsButton" class="scan-close-button" type="button" aria-label="Close scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
     <div class="scan-dialog-body">
       <div id="scanDialogTitle" class="scan-title">
         <span>Scanning&nbsp;</span><span id="scanQueryPath" class="scan-query-path"></span>

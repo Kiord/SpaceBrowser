@@ -4,9 +4,12 @@ import { deferred, eventTarget, loadUI, noop } from "./helpers/ui.mjs";
 
 async function harness() {
   const requests = [], painted = [], actions = [];
+  let time = 1000, frameId = 0;
+  const frames = new Map();
   const state = { node_id: 1, scale: 1, rects: [], selectedNodeIds: new Set() };
-  for (const name of ["color", "id", "hover", "tmp", "mask"]) {
+  for (const name of ["color", "id", "hover", "tmp", "mask", "flash"]) {
     state[`${name}Ctx`] = { clearRect: noop, strokeRect: noop, save: noop, restore: noop, drawImage: noop,
+      beginPath: noop, rect: noop, clip: noop,
       getImageData: x => ({ data: [0, 0, x + 1, 255] }),
       fillRect(...args) { painted.push({ name, args, fill: this.fillStyle }); } };
     state[`${name}Canvas`] = { ...eventTarget(), width: 800, height: 600, style: {},
@@ -21,9 +24,9 @@ async function harness() {
     "./notifications.js": { hideRectToast: noop, initNotifications: noop },
     "./logging.js": { logDebug: noop, logWarning: noop },
     "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => 1 },
-  }, { performance, cancelAnimationFrame: noop, requestAnimationFrame: () => 1,
+  }, { performance: { now: () => time }, cancelAnimationFrame: id => frames.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
     window: { ...eventTarget(), devicePixelRatio: 1 }, document: { getElementById: id => state[id] } });
-  return { ui, state, requests, painted, actions };
+  return { ui, state, requests, painted, actions, frames, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
 }
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
@@ -153,4 +156,74 @@ test("modifier double-click does not activate or clear the selection", async () 
     assert.deepEqual([...h.state.selectedNodeIds], [1, 2]);
   }
   assert.deepEqual(h.actions, []);
+});
+
+test('click stays bound to the pressed rectangle when a live layout reorders it', async () => {
+  const h = await harness();
+  h.ui.initTreemapView();
+  h.state.rects = [rect(1), rect(2)];
+  await h.state.colorCanvas.emit('pointerdown', { clientX: 0, clientY: 0 });
+  h.state.rects = [rect(2), rect(1)];
+  await h.state.colorCanvas.emit('click', { clientX: 0, clientY: 0, detail: 1 });
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+});
+
+test('double-click does not open a different item moved under the pointer', async () => {
+  const h = await harness();
+  h.ui.initTreemapView();
+  h.state.rects = [rect(1), rect(2)];
+  const event = { clientX: 0, clientY: 0 };
+  await h.state.colorCanvas.emit('pointerdown', event);
+  await h.state.colorCanvas.emit('click', { ...event, detail: 1 });
+  h.state.rects = [rect(2), rect(1)];
+  await h.state.colorCanvas.emit('pointerdown', event);
+  await h.state.colorCanvas.emit('click', { ...event, detail: 2 });
+  await h.state.colorCanvas.emit('dblclick', { ...event, detail: 2 });
+  assert.deepEqual(h.actions, []);
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+});
+
+test('new live rectangles flash white for half a second, existing rectangles do not', async () => {
+  const h = await harness();
+  h.state.liveScanPreview = true;
+  h.state.navSession = 1;
+  let draw = h.ui.redraw();
+  h.requests.at(-1).resolve([rect(1)]);
+  await draw;
+  draw = h.ui.redraw();
+  h.requests.at(-1).resolve([rect(1), rect(2), { ...rect(-1), is_free_space: true }]);
+  await draw;
+  const flashes = () => h.painted.filter(p => p.name === 'flash');
+  assert.equal(flashes().length, 1);
+  assert.equal(flashes()[0].args[0], 2);
+  assert.equal(flashes()[0].fill, 'rgba(255,255,255,1)');
+  h.advanceFrame(250);
+  assert.equal(flashes().at(-1).fill, 'rgba(255,255,255,0.5)');
+  h.advanceFrame(250);
+  assert.equal(h.frames.size, 0);
+  const count = flashes().length;
+  draw = h.ui.redraw();
+  h.requests.at(-1).resolve([rect(1), rect(2)]);
+  await draw;
+  assert.equal(flashes().length, count);
+  h.state.node_id = 2;
+  draw = h.ui.redraw();
+  h.requests.at(-1).resolve([rect(2), rect(3)]);
+  await draw;
+  assert.equal(flashes().length, count, 'navigation should not flash existing contents');
+});
+
+test('flash stops when a cancelled scan restores another session', async () => {
+  const h = await harness();
+  h.state.liveScanPreview = true;
+  h.state.navSession = 2;
+  const draw = h.ui.redraw();
+  h.requests.at(-1).resolve([rect(1), rect(2)]);
+  await draw;
+  assert.equal(h.frames.size, 1);
+  const paints = h.painted.length;
+  h.state.navSession = 1;
+  h.advanceFrame(100);
+  assert.equal(h.frames.size, 0);
+  assert.equal(h.painted.length, paints);
 });

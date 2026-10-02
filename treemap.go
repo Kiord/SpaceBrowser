@@ -36,6 +36,7 @@ type Rect struct {
 	Name           string `json:"name"`
 	Size           int64  `json:"size"`
 	IsFolder       bool   `json:"is_folder"`
+	ScanIncomplete bool   `json:"scan_incomplete,omitempty"`
 	IsTrashRoot    bool   `json:"is_trash_root,omitempty"`
 	IsInTrash      bool   `json:"is_in_trash,omitempty"`
 	IsFree         bool   `json:"is_free_space"`
@@ -158,6 +159,7 @@ func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
 		Name:           n.Name,
 		Size:           n.Size,
 		IsFolder:       n.IsFolder,
+		ScanIncomplete: n.ScanIncomplete,
 		IsFree:         n.IsFreeSpace,
 		IsSmallFiles:   n.IsSmallFiles,
 		SmallFileCount: n.SmallFileCount,

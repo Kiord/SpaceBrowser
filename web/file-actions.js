@@ -43,6 +43,7 @@ function showActionFailures(failures, multiple) {
 }
 
 function requestSelectedDeletion() {
+  if (AppState.scanInProgress) return;
   hideContextMenu();
   hideRectToast();
   const selected = getSelectedRects();
@@ -89,6 +90,7 @@ function requestSelectedDeletion() {
 }
 
 async function requestSelectedRestore() {
+  if (AppState.scanInProgress) return;
   hideContextMenu();
   hideRectToast();
   const rect = getSelectedRect();
@@ -126,6 +128,7 @@ function waitForNextPaint() {
 }
 
 async function confirmSelectedDeletion() {
+  if (AppState.scanInProgress) return;
   if (!pendingDeletion || deletionInProgress) return;
   const target = pendingDeletion;
   const confirmButton = byId("confirmDeleteButton");
@@ -215,6 +218,7 @@ export function showContextMenu(x, y) {
   if (goTo) goTo.classList.toggle("disabled", !rect?.is_folder);
   const refresh = menu.querySelector('[data-action="refresh"]');
   if (refresh) {
+    refresh.classList.toggle("disabled", !!AppState.scanInProgress);
     refresh.hidden = !selected.length || selected.some(item => !item.is_folder || isPassiveRect(item));
     const label = refresh.querySelector("span");
     if (label) label.textContent = multiple ? "Refresh selected folders" : "Refresh folder";
@@ -232,8 +236,9 @@ export function showContextMenu(x, y) {
   if (copyLabel) copyLabel.textContent = multiple ? "Copy paths" : "Copy path";
   const restoreAction = menu.querySelector('[data-action="restore"]');
   if (restoreAction) restoreAction.hidden = !trashItem;
+  if (restoreAction) restoreAction.classList.toggle("disabled", !!AppState.scanInProgress);
   if (deleteAction) {
-    deleteAction.classList.toggle("disabled", !selected.length || (multiple && selected.some(item => item.is_trash_root)));
+    deleteAction.classList.toggle("disabled", !!AppState.scanInProgress || !selected.length || (multiple && selected.some(item => item.is_trash_root)));
     deleteAction.classList.add("context-menu-delete");
   }
   if (deleteLabel) {

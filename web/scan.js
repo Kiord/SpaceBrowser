@@ -1,8 +1,8 @@
 import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
-import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath, RefreshFolders } from "./wailsjs/go/main/App.js";
+import { CancelScan, GetFullTree, GetScanProgress, GetScanPreview, OpenPath, ValidateScanPath, RefreshFolders } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatCount, formatDuration } from "./format.js";
-import { remapNavigation, replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
+import { remapNavigation, pushBrowserHistoryEntry, rollbackBrowserHistory, updateNavButtons } from "./navigation.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logDebug, logError } from "./logging.js";
@@ -30,18 +30,23 @@ function renderScanProgress(fraction) {
     ? 1
     : Math.floor(clamped * SCAN_PROGRESS_STEP_COUNT) / SCAN_PROGRESS_STEP_COUNT;
   const percentage = stepped * 100;
-  query(".scan-progress-bar").style.setProperty("--scan-progress", `${percentage}%`);
+  query("#scanDialog .scan-progress-bar").style.setProperty("--scan-progress", `${percentage}%`);
   query(".scan-progress").setAttribute("aria-valuenow", String(Math.round(percentage)));
+  byId("compactScanBar").style.setProperty("--scan-progress", `${percentage}%`);
+  byId("compactScanProgress").setAttribute("aria-valuenow", String(Math.round(percentage)));
+  byId("compactScanPercent").textContent = `${Math.round(percentage)}%`;
 }
 
 function setUIBusy(state) {
-  queryAll(".controls button").forEach(button => { button.disabled = state; });
+  AppState.scanInProgress = state;
+  queryAll("#analyzeButton, #triggerFolderSelectButton, #settingsButton").forEach(button => { button.disabled = state; });
+  byId("pathInput").disabled = state;
 }
 
 function clearTreemapForScan() {
   hideLocationSelector();
   hideRectToast();
-  for (const context of [AppState.colorCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx]) {
+  for (const context of [AppState.colorCtx, AppState.hoverCtx, AppState.idCtx, AppState.tmpCtx, AppState.maskCtx, AppState.flashCtx]) {
     if (context) context.clearRect(0, 0, context.canvas.width, context.canvas.height);
   }
   AppState.rects = [];
@@ -52,7 +57,6 @@ function clearTreemapForScan() {
   AppState.navHistory = [];
   AppState.navIndex = -1;
   AppState.navSession++;
-  replaceBrowserHistoryEntry(null, -1);
   clearSelection();
   hideContextMenu();
   updateNavButtons();
@@ -96,7 +100,7 @@ async function openScanReport() {
   }
 }
 
-function startScanProgress(path) {
+function startScanProgress(path, live = false) {
   const dialog = byId("scanDialog");
   const cancelButton = byId("cancelScanButton");
   const progressElement = query(".scan-progress");
@@ -121,9 +125,14 @@ function startScanProgress(path) {
     dotCount = dotCount % 3 + 1;
     dotsElement.textContent = ".".repeat(dotCount);
   }, 350);
-  if (!dialog.open) dialog.showModal();
+  byId("compactScanStatus").hidden = !live;
+  byId("compactScanTime").textContent = "0:00";
+  byId("closeScanDetailsButton").hidden = !live;
+  AppState.liveScanPreview = live;
+  if (!live && !dialog.open) dialog.showModal();
 
   const token = ++scanProgressToken;
+  let previewRevision = 0;
   const poll = async () => {
     if (token !== scanProgressToken) return;
     try {
@@ -141,6 +150,18 @@ function startScanProgress(path) {
       byId("scanElapsedTime").textContent = formatDuration(progress?.elapsedMilliseconds || 0);
       byId("scanFileCount").textContent = formatCount(progress?.fileCount);
       byId("scanFolderCount").textContent = formatCount(progress?.dirCount);
+      byId("compactScanTime").textContent = formatDuration(progress?.elapsedMilliseconds || 0);
+      if (live && !scanCancelledByUser && progress?.livePreview && progress.rootPath === path) {
+        const preview = await GetScanPreview(progress.generation);
+        if (token !== scanProgressToken || scanCancelledByUser) return;
+        if (preview && preview.revision !== previewRevision) {
+          previewRevision = preview.revision;
+          initializeScanView(preview.rootId);
+          AppState.fileCount = preview.fileCount;
+          AppState.dirCount = preview.dirCount;
+          await redraw();
+        }
+      }
     } catch (error) {
       logDebug("scan progress unavailable:", error);
     } finally {
@@ -162,6 +183,7 @@ async function completeScanProgress(fileCount, dirCount) {
   await new Promise(resolve => setTimeout(resolve, SCAN_COMPLETION_DELAY_MS));
   const dialog = byId("scanDialog");
   if (dialog.open) dialog.close();
+  byId("compactScanStatus").hidden = true;
 }
 
 function stopScanProgress() {
@@ -172,6 +194,7 @@ function stopScanProgress() {
   scanDotsTimer = null;
   const dialog = byId("scanDialog");
   if (dialog.open) dialog.close();
+  byId("compactScanStatus").hidden = true;
 }
 
 async function cancelActiveScan() {
@@ -187,6 +210,14 @@ async function cancelActiveScan() {
   }
 }
 
+function initializeScanView(rootId) {
+  if (AppState.node_id != null) return;
+  AppState.node_id = rootId;
+  AppState.navHistory = [rootId];
+  AppState.navIndex = 0;
+  pushBrowserHistoryEntry(rootId, 0);
+}
+
 export async function analyze() {
   const path = byId("pathInput").value?.trim();
   if (!path) return;
@@ -198,32 +229,42 @@ export async function analyze() {
   analyzeInFlight = true;
   scanCancelledByUser = false;
   let scanStarted = false;
+  let committed = false;
+  const previous = Object.fromEntries(["node_id", "rects", "scanRootPath", "fileCount", "dirCount", "navHistory", "navIndex", "navSession"].map(key => [key, AppState[key]]));
+  previous.selectedNodeIds = new Set(selectionIds());
+  const previousPosition = AppState.browserHistoryPosition;
+  const previousWarningHidden = byId("scanWarningIndicator").hidden;
   setUIBusy(true);
   try {
     const canonicalPath = await ValidateScanPath(path);
     byId("pathInput").value = canonicalPath;
-    clearScanWarning();
+    byId("scanWarningIndicator").hidden = true;
     clearTreemapForScan();
-    startScanProgress(canonicalPath);
+    AppState.scanRootPath = canonicalPath;
+    startScanProgress(canonicalPath, true);
     scanStarted = true;
 
     const { rootId, fileCount, dirCount, scanReport } = await GetFullTree(canonicalPath);
+    committed = true;
     await completeScanProgress(fileCount, dirCount);
     scanStarted = false;
 
-    AppState.node_id = rootId;
-    AppState.scanRootPath = canonicalPath;
-    AppState.navHistory = [rootId];
+    initializeScanView(rootId);
     AppState.fileCount = fileCount;
     AppState.dirCount = dirCount;
-    AppState.navIndex = 0;
-    replaceBrowserHistoryEntry(rootId, 0);
-    clearSelection();
     showScanWarning(scanReport);
     await redraw();
   } catch (error) {
     logError("analyze failed:", error);
     if (scanStarted) stopScanProgress();
+    if (scanStarted && !committed) {
+      AppState.liveScanPreview = false;
+      clearTreemapForScan();
+      Object.assign(AppState, previous);
+      rollbackBrowserHistory(previousPosition);
+      byId("scanWarningIndicator").hidden = previousWarningHidden;
+      if (AppState.node_id != null) await redraw();
+    }
     const wasCancelled = scanCancelledByUser || /scan cancelled/i.test(String(error));
     if (!wasCancelled) showErrorToast(error);
   } finally {
@@ -263,6 +304,7 @@ export async function refreshSelectedFolders() {
   } finally {
     stopScanProgress();
     analyzeInFlight = false;
+    AppState.liveScanPreview = false;
     setUIBusy(false);
     updateNavButtons();
   }
@@ -279,8 +321,14 @@ export function initScan(options) {
   byId("analyzeButton").addEventListener("click", analyze);
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   byId("cancelScanButton").addEventListener("click", cancelActiveScan);
+  byId("compactScanStatus").addEventListener("click", () => {
+    const dialog = byId("scanDialog");
+    if (!dialog.open) dialog.showModal();
+  });
+  byId("closeScanDetailsButton").addEventListener("click", () => byId("scanDialog").close());
   byId("scanDialog").addEventListener("cancel", event => {
     event.preventDefault();
-    cancelActiveScan();
+    if (!byId("compactScanStatus").hidden) byId("scanDialog").close();
+    else cancelActiveScan();
   });
 }

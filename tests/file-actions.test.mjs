@@ -248,3 +248,15 @@ test('folder refresh menu supports one or multiple folders only', async () => {
   h.ui.showContextMenu(0, 0);
   assert.equal(h.menuItem('refresh').hidden, true);
 });
+
+test('filesystem mutations stay disabled during live scanning', async () => {
+  const h = await harness();
+  h.state.scanInProgress = true;
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.menuItem('delete').classList.contains('disabled'), true);
+  await h.action('delete');
+  assert.equal(h.byId('deleteConfirmDialog').open, false);
+  h.select({ node_id: 1, full_path: '/trash/file', is_in_trash: true });
+  await h.action('restore');
+  assert.deepEqual(h.calls, []);
+});

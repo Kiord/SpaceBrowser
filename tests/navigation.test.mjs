@@ -170,3 +170,28 @@ test('refresh skips removed history entries and uses a surviving folder for the 
   assert.equal(h.calls.at(-1).name, 'go');
   assert.deepEqual(h.calls.at(-1).args, [-1]);
 });
+
+test('cancellation rolls browser history back to the pre-scan entry', async () => {
+  const h = await harness();
+  h.ui.visit(8);
+  const previous = h.calls.at(-1).args[0];
+  const previousPosition = h.state.browserHistoryPosition;
+  h.state.navSession = 2;
+  h.state.navHistory = [0]; h.state.navIndex = 0;
+  h.ui.pushBrowserHistoryEntry(0, 0);
+  h.ui.visit(3);
+  Object.assign(h.state, { node_id: 8, navSession: 1, navHistory: [0, 8], navIndex: 1 });
+  h.ui.rollbackBrowserHistory(previousPosition);
+  assert.equal(h.calls.at(-1).name, 'go');
+  assert.deepEqual(h.calls.at(-1).args, [-2]);
+  await h.window.emit('popstate', { state: previous });
+  assert.equal(h.state.node_id, 8);
+  assert.equal(h.state.navIndex, 1);
+});
+
+test('home has no enabled navigation after cancelling an initial scan', async () => {
+  const h = await harness();
+  Object.assign(h.state, { node_id: null, navHistory: [], navIndex: -1, rects: [] });
+  h.ui.updateNavButtons();
+  for (const id of ['rootButton', 'parentButton', 'backwardButton', 'forwardButton']) assert.equal(h.byId(id).disabled, true);
+});

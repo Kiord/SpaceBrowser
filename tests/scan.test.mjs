@@ -6,14 +6,14 @@ async function harness() {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
-      hidden: true, textContent: "", value: "test-folder", handlers: {},
+      hidden: true, open: false, textContent: "", value: "test-folder", handlers: {},
       style: { setProperty() {} }, setAttribute() {},
       addEventListener(name, fn) { this.handlers[name] = fn; },
       showModal() { this.open = true; }, close() { this.open = false; },
     });
     return elements.get(id);
   };
-  const state = { navSession: 0 };
+  const state = { node_id: null, rects: [], navSession: 0, browserHistoryPosition: 0, navHistory: [], navIndex: -1 };
   let resolveScan, rejectScan;
   const scan = new Promise((resolve, reject) => { resolveScan = resolve; rejectScan = reject; });
   let started;
@@ -30,13 +30,14 @@ async function harness() {
     GetFullTree: () => { scans++; started(); return scan; },
     RefreshFolders: () => { scans++; started(); return scan; },
     GetScanProgress: async () => ({}),
+    GetScanPreview: async () => null,
     OpenPath() {}, ValidateScanPath: async path => path,
   };
   const modules = {
     "./wailsjs/go/main/App.js": Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
     "./dom.js": { byId: element, query: element, queryAll: () => controls },
     "./format.js": { formatCount: String, formatDuration: String },
-    "./navigation.js": { replaceBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping) { state.node_id = mapping[state.node_id] ?? state.node_id; } },
+    "./navigation.js": { pushBrowserHistoryEntry() { state.browserHistoryPosition++; }, rollbackBrowserHistory(position) { state.browserHistoryPosition = position; }, updateNavButtons() {}, remapNavigation(mapping) { state.node_id = mapping[state.node_id] ?? state.node_id; } },
     "./controls.js": { addControlEventListeners: fn => shortcuts.push(fn), eventMatchesShortcut: (event, binding) => event.binding === binding, shortcutCanRun: event => !event.blocked },
     "./notifications.js": { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     "./logging.js": { logDebug() {}, logError() {} },
@@ -69,7 +70,7 @@ test("starting a scan clears previous results and publishes only the completed t
   const run = h.analyze();
   await h.scanning;
   assert.equal(h.state.node_id, null);
-  assert.equal(h.state.scanRootPath, null);
+  assert.equal(h.state.scanRootPath, "test-folder");
   assert.equal(h.state.fileCount, 0);
   assert.equal(h.state.dirCount, 0);
   assert.equal(h.redraws(), 0);
@@ -81,16 +82,16 @@ test("starting a scan clears previous results and publishes only the completed t
   assert.equal(h.redraws(), 1);
 });
 
-test("cancelled scans leave no stale tree and return to folder selection", async () => {
+test("cancelled scans restore the previous view", async () => {
   const h = await harness();
   h.state.node_id = 7;
   const run = h.analyze();
   await h.scanning;
   await h.element("cancelScanButton").handlers.click();
   await run;
-  assert.equal(h.state.node_id, null);
-  assert.equal(h.redraws(), 0);
-  assert.equal(h.locationPrompts(), 1);
+  assert.equal(h.state.node_id, 7);
+  assert.equal(h.redraws(), 1);
+  assert.equal(h.locationPrompts(), 0);
   assert.equal(h.errors.length, 0);
 });
 
@@ -263,4 +264,114 @@ test('refresh shortcut respects binding and editable/modal guards', async () => 
   // Wait for the async shortcut action to finish.
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.redraws(), 1);
+});
+
+test('live previews redraw at new revisions and preserve browsing through completion', async () => {
+  const h = await harness();
+  h.backend.GetScanProgress = async () => ({ livePreview: true, rootPath: 'test-folder', generation: 1, fileCount: 3, dirCount: 2 });
+  let revision = 1;
+  h.backend.GetScanPreview = async () => ({ rootId: 0, revision, fileCount: 3, dirCount: 2 });
+  const run = h.analyze();
+  await h.scanning;
+  assert.equal(h.element('scanDialog').open, false);
+  assert.equal(h.element('compactScanStatus').hidden, false);
+  await h.poll();
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.redraws(), 1);
+  h.state.node_id = 2;
+  h.state.navHistory = [0, 2];
+  h.state.navIndex = 1;
+  h.state.selectedNodeIds = new Set([3]);
+  await h.poll();
+  assert.equal(h.redraws(), 1);
+  revision++;
+  await h.poll();
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [3]);
+  assert.equal(h.redraws(), 2);
+  h.resolveScan({ rootId: 0, fileCount: 10, dirCount: 4 });
+  await run;
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [3]);
+  assert.deepEqual(h.state.navHistory, [0, 2]);
+  assert.equal(h.state.fileCount, 10);
+  assert.equal(h.element('compactScanStatus').hidden, true);
+  assert.equal(h.state.scanInProgress, false);
+});
+
+test('cancelled live preview restores pre-scan navigation, selection and counts', async () => {
+  const h = await harness();
+  Object.assign(h.state, { node_id: 8, navHistory: [5, 8, 9], navIndex: 1, navSession: 4,
+    browserHistoryPosition: 7, selectedNodeIds: new Set([11]), scanRootPath: 'old', fileCount: 100, dirCount: 8 });
+  h.backend.GetScanProgress = async () => ({ livePreview: true, rootPath: 'test-folder', generation: 1 });
+  h.backend.GetScanPreview = async () => ({ rootId: 0, revision: 1, fileCount: 1, dirCount: 1 });
+  const run = h.analyze();
+  await h.scanning;
+  await h.poll();
+  assert.equal(h.state.node_id, 0);
+  h.state.navHistory = [0, 1]; h.state.node_id = 1; h.state.navIndex = 1;
+  h.state.browserHistoryPosition++;
+  await h.element('cancelScanButton').handlers.click();
+  await run;
+  assert.equal(h.state.node_id, 8);
+  assert.equal(h.state.scanRootPath, 'old');
+  assert.equal(h.state.navSession, 4);
+  assert.equal(h.state.browserHistoryPosition, 7);
+  assert.deepEqual(h.state.navHistory, [5, 8, 9]);
+  assert.equal(h.state.navIndex, 1);
+  assert.deepEqual([...h.state.selectedNodeIds], [11]);
+  assert.equal(h.state.fileCount, 100);
+  assert.equal(h.locationPrompts(), 0);
+});
+
+test('cancelling the first live scan returns home', async () => {
+  const h = await harness();
+  h.backend.GetScanProgress = async () => ({ livePreview: true, rootPath: 'test-folder', generation: 1 });
+  h.backend.GetScanPreview = async () => ({ rootId: 0, revision: 1, fileCount: 1, dirCount: 1 });
+  const run = h.analyze();
+  await h.scanning;
+  await h.poll();
+  await h.element('cancelScanButton').handlers.click();
+  await run;
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.state.rects.length, 0);
+  assert.equal(h.locationPrompts(), 1);
+});
+
+for (const cancel of [false, true]) {
+  test(`late preview cannot overwrite ${cancel ? 'restored' : 'completed'} tree`, async () => {
+    const h = await harness();
+    const preview = deferred();
+    h.backend.GetScanProgress = async () => ({ livePreview: true, rootPath: 'test-folder', generation: 1 });
+    h.backend.GetScanPreview = () => preview.promise;
+    const run = h.analyze();
+    await h.scanning;
+    const poll = h.poll();
+    await Promise.resolve();
+    if (cancel) await h.element('cancelScanButton').handlers.click();
+    else h.resolveScan({ rootId: 4, fileCount: 80, dirCount: 10 });
+    await run;
+    const redraws = h.redraws();
+    preview.resolve({ rootId: 0, revision: 1, fileCount: 1, dirCount: 1 });
+    await poll;
+    assert.equal(h.state.node_id, cancel ? null : 4);
+    assert.equal(h.redraws(), redraws);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+test('details can expand and minimize without cancelling the scan', async () => {
+  const h = await harness();
+  const run = h.analyze();
+  await h.scanning;
+  h.element('compactScanStatus').handlers.click();
+  assert.equal(h.element('scanDialog').open, true);
+  h.element('closeScanDetailsButton').handlers.click();
+  assert.equal(h.element('scanDialog').open, false);
+  h.element('compactScanStatus').handlers.click();
+  h.element('scanDialog').handlers.cancel({ preventDefault() {} });
+  assert.equal(h.element('scanDialog').open, false);
+  assert.equal(h.cancellations(), 0);
+  h.resolveScan({ rootId: 0, fileCount: 1, dirCount: 1 });
+  await run;
 });

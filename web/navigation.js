@@ -61,6 +61,13 @@ export function goToParent() {
   if (rootRect?.parent_id != null) visit(rootRect.parent_id);
 }
 
+export function rollbackBrowserHistory(position) {
+  const delta = position - AppState.browserHistoryPosition;
+  AppState.browserHistoryPosition = position;
+  if (delta) window.history.go(delta);
+  else replaceBrowserHistoryEntry(AppState.node_id, AppState.navIndex);
+}
+
 export function visit(nodeId) {
   if (nodeId == null || nodeId < 0 || nodeId === AppState.node_id) return;
   AppState.navHistory = AppState.navHistory.slice(0, AppState.navIndex + 1);
@@ -95,7 +102,7 @@ export async function toggleFreeSpace(event) {
 }
 
 export function updateNavButtons() {
-  byId("rootButton").disabled = AppState.navIndex === 0;
+  byId("rootButton").disabled = AppState.navIndex <= 0 || !AppState.navHistory.length;
   byId("parentButton").disabled = !(AppState.rects?.length && AppState.rects[0].parent_id != null);
   byId("backwardButton").disabled = AppState.navIndex <= 0;
   byId("forwardButton").disabled = AppState.navIndex >= AppState.navHistory.length - 1;

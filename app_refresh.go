@@ -181,6 +181,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		}
 	}
 	totalSize := a.store.root.Size
+	a.scanResultPublished = true
 	if volumeUsage != nil {
 		a.store.diskTotal, a.store.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
 	}

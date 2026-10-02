@@ -36,10 +36,11 @@ type Node struct {
 	DiskTotal int64 `json:"disk_total,omitempty"`
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
-	ModTime    int64  `json:"-"`
-	LinkCount  uint64 `json:"-"` // maximum constituent link count for small-file aggregates
-	EntryFiles int    `json:"-"`
-	EntryDirs  int    `json:"-"`
+	ModTime        int64  `json:"-"`
+	LinkCount      uint64 `json:"-"` // maximum constituent link count for small-file aggregates
+	EntryFiles     int    `json:"-"`
+	EntryDirs      int    `json:"-"`
+	ScanIncomplete bool   `json:"scan_incomplete,omitempty"`
 }
 
 // ==============================
@@ -81,6 +82,7 @@ type Scanner struct {
 	reusedDirectories  int64
 	onDirectory        func(string)
 	requireLinkCounts  bool // partial refresh must detect links outside its scan boundary
+	preview            *scanPreviewTree
 }
 
 type untrustedIdentityCandidate struct {
@@ -355,6 +357,7 @@ func (s *Scanner) assignID(n *Node) int {
 	}
 	s.nodes[id] = n
 	s.nodesMu.Unlock()
+	s.preview.add(n)
 	return id
 }
 
@@ -587,6 +590,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			processedBatch++
 			if processedBatch >= 64 {
 				flushProcessed()
+				if smallFileCount > 0 {
+					s.preview.smallFiles(root.ID, smallFilesSize, smallFileCount, s.profile.MinFileSize, root.Depth+1)
+				}
 			}
 		}
 	}
@@ -596,6 +602,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		smallFiles.SmallFileCount = smallFileCount
 		root.Children = append(root.Children, smallFiles)
 		root.Size += smallFilesSize
+		s.preview.smallFiles(root.ID, smallFilesSize, smallFileCount, s.profile.MinFileSize, root.Depth+1)
 	}
 
 	// Second pass: scan subdirectories (bounded)
@@ -655,6 +662,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 
 	// Sort children by size desc (UI expects this)
 	sort.Slice(root.Children, func(i, j int) bool { return root.Children[i].Size > root.Children[j].Size })
+	s.preview.complete(root.ID)
 	return root, nil
 }
 
@@ -702,6 +710,7 @@ func (s *Scanner) cloneCachedSubtree(source *Node, depth, parentID int, fileCoun
 		node.Children = make([]*Node, 0, len(cached.Children))
 		if cached.IsSmallFiles {
 			node.ID = -1
+			s.preview.smallFiles(parent, node.Size, node.SmallFileCount, node.SmallFileLimit, currentDepth)
 		} else {
 			s.assignID(&node)
 		}
@@ -709,6 +718,9 @@ func (s *Scanner) cloneCachedSubtree(source *Node, depth, parentID int, fileCoun
 			if cloned := clone(child, node.ID, currentDepth+1); cloned != nil {
 				node.Children = append(node.Children, cloned)
 			}
+		}
+		if node.IsFolder {
+			s.preview.complete(node.ID)
 		}
 		return &node
 	}
