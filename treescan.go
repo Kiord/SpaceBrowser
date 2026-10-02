@@ -80,6 +80,7 @@ type Scanner struct {
 	mergedCacheReports sync.Map
 	reusedDirectories  int64
 	onDirectory        func(string)
+	requireLinkCounts  bool // partial refresh must detect links outside its scan boundary
 }
 
 type untrustedIdentityCandidate struct {
@@ -228,6 +229,14 @@ func (s *Scanner) recordNodeLinkCount(node *Node, count uint64) {
 }
 
 func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage platform.FileUsage, node *Node) (platform.FileUsage, bool) {
+	if s.requireLinkCounts && !usage.HasLinkCount {
+		usage = s.filesystem.UsageFor(path, info)
+		if !usage.HasLinkCount {
+			// Unknown sharing cannot safely be merged with the surrounding tree.
+			// Conservatively request the same root fallback as a shared file.
+			s.recordNodeLinkCount(node, 2)
+		}
+	}
 	s.updateNodeUsage(node, usage)
 	if !usage.HasIdentity {
 		return usage, false

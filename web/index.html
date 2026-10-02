@@ -113,6 +113,13 @@
     
   </div>
   <ul id="contextMenu" class="context-menu">
+    <li data-action="refresh">
+      <!-- Teenyicons refresh icon, MIT licensed; see THIRD_PARTY_NOTICES.md. -->
+      <svg viewBox="0 0 15 15" fill="none" aria-hidden="true" focusable="false">
+        <path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5" stroke="currentColor" stroke-width="1"/>
+      </svg>
+      <span>Refresh folder</span>
+    </li>
     <li data-action="goto">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="10.5" cy="10.5" r="5.5"></circle>
@@ -348,6 +355,13 @@
         </section>
         <section id="settingsControlsPanel" class="settings-panel controls-panel" role="tabpanel" aria-labelledby="settingsControlsTab" data-settings-panel="controls" hidden>
           <p class="controls-help">Click a binding, then press a keyboard key or mouse button.</p>
+          <div class="settings-row control-binding-row">
+            <label for="controlBindingRefresh">Refresh selected folders</label>
+            <div class="control-binding-field">
+            <button id="controlBindingRefresh" class="control-binding-button" type="button" data-control-binding="refresh"><span>Ctrl+R</span></button>
+            <button class="control-binding-clear" type="button" data-clear-control-binding="refresh" aria-label="Clear Refresh selected folder binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
+          </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingBack">Back</label>
             <div class="control-binding-field">

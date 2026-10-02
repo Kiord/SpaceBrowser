@@ -47,6 +47,7 @@ type ControlSettings struct {
 	Open          string `json:"open"`
 	OpenWith      string `json:"openWith"`
 	VisitSelected string `json:"visitSelected"`
+	Refresh       string `json:"refresh"`
 	Delete        string `json:"delete"`
 }
 
@@ -55,6 +56,7 @@ func defaultControlSettings() ControlSettings {
 		Open:          "Ctrl+O",
 		OpenWith:      "Ctrl+Shift+O",
 		VisitSelected: "Enter",
+		Refresh:       "Ctrl+R",
 		Delete:        "Delete",
 	}
 }

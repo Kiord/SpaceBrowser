@@ -270,6 +270,10 @@ func (s *TreeStore) deleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scannedDirs int) (DeleteResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.replaceSubtreeLocked(nodeID, scanned, scannedFiles, scannedDirs)
+}
+
+func (s *TreeStore) replaceSubtreeLocked(nodeID int, scanned *Node, scannedFiles, scannedDirs int) (DeleteResult, error) {
 
 	if scanned == nil || nodeID < 0 || nodeID >= len(s.nodes) || s.nodes[nodeID] == nil {
 		return DeleteResult{}, fmt.Errorf("the subtree to refresh is no longer available")
@@ -339,6 +343,10 @@ func (s *TreeStore) ReplaceSubtree(nodeID int, scanned *Node, scannedFiles, scan
 	}
 	for _, child := range scanned.Children {
 		target.Children = append(target.Children, adopt(child, target.ID, target.Depth+1))
+	}
+	if target == s.root && s.hasDiskUsage {
+		target.Children = append(target.Children, &Node{ID: -1, ParentID: target.ID, Depth: target.Depth + 1,
+			Name: "[Free Disk Space]", IsFreeSpace: true, Size: s.diskFree, DiskTotal: s.diskTotal})
 	}
 
 	if target.ParentID >= 0 && target.ParentID < len(s.nodes) {

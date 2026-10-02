@@ -15,7 +15,7 @@ import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "
 import { logError } from "./logging.js";
 import { trimInvalidForwardNavigation, updateNavButtons, visit } from "./navigation.js";
 import { hideRectToast, mousePosition, showErrorToast, showToastAt } from "./notifications.js";
-import { analyze } from "./scan.js";
+import { analyze, refreshSelectedFolders } from "./scan.js";
 import { AppState } from "./state.js";
 
 let redraw = async () => {};
@@ -213,6 +213,12 @@ export function showContextMenu(x, y) {
   const request = ++contextMenuRequest;
   const goTo = menu.querySelector('[data-action="goto"]');
   if (goTo) goTo.classList.toggle("disabled", !rect?.is_folder);
+  const refresh = menu.querySelector('[data-action="refresh"]');
+  if (refresh) {
+    refresh.hidden = !selected.length || selected.some(item => !item.is_folder || isPassiveRect(item));
+    const label = refresh.querySelector("span");
+    if (label) label.textContent = multiple ? "Refresh selected folders" : "Refresh folder";
+  }
   const properties = menu.querySelector('[data-action="properties"]');
   const chooser = menu.querySelector('[data-action="open-with"]');
   if (chooser) chooser.classList.toggle("disabled", multiple);
@@ -319,6 +325,8 @@ async function handleContextMenuAction(event) {
   if (!item || item.classList?.contains("disabled") || !getSelectedRects().length) return;
   if (item.dataset.action === "copy") {
     await copySelectedPathAt({ x: event.clientX, y: event.clientY });
+  } else if (item.dataset.action === "refresh") {
+    await refreshSelectedFolders();
   } else if (item.dataset.action === "delete") {
     requestSelectedDeletion();
   } else if (item.dataset.action === "restore") {

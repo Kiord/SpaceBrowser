@@ -143,3 +143,30 @@ for (const action of ["root", "visit"]) {
     assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
   });
 }
+
+test('refresh preserves browser history across repeated node ID remapping', async () => {
+  const h = await harness();
+  h.ui.visit(1);
+  const first = h.calls.at(-1).args[0];
+  h.ui.visit(2);
+  const second = h.calls.at(-1).args[0];
+  h.ui.remapNavigation({ 0: 0, 1: 11, 2: 12 }, 0);
+  h.ui.remapNavigation({ 0: 0, 11: 21, 12: 22 }, 0);
+  await h.window.emit('popstate', { state: first });
+  assert.equal(h.state.node_id, 21);
+  await h.window.emit('popstate', { state: second });
+  assert.equal(h.state.node_id, 22);
+});
+
+test('refresh skips removed history entries and uses a surviving folder for the current view', async () => {
+  const h = await harness();
+  h.ui.visit(1);
+  const removed = h.calls.at(-1).args[0];
+  h.ui.visit(2);
+  h.ui.remapNavigation({ 0: 0, 1: -1, 2: -1 }, 0);
+  assert.equal(h.state.node_id, 0);
+  await h.window.emit('popstate', { state: removed });
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.calls.at(-1).name, 'go');
+  assert.deepEqual(h.calls.at(-1).args, [-1]);
+});

@@ -34,7 +34,7 @@ async function harness(profile = {}) {
     "./logging.js": { logError: noop },
     "./navigation.js": { trimInvalidForwardNavigation: () => calls.push(["trim"]), updateNavButtons: noop, visit: id => calls.push(["visit", id]) },
     "./notifications.js": { hideRectToast: noop, mousePosition: { x: 0, y: 0 }, showErrorToast: error => errors.push(error), showToastAt: () => noop },
-    "./scan.js": { analyze: async () => calls.push(["scan", byId("pathInput").value]) },
+    "./scan.js": { analyze: async () => calls.push(["scan", byId("pathInput").value]), refreshSelectedFolders: async () => calls.push(["refresh"]) },
     "./state.js": { AppState: state },
   }, { window: { ...eventTarget(), innerWidth: 1024, innerHeight: 768 }, requestAnimationFrame: callback => queueMicrotask(callback),
     navigator: { clipboard: { writeText: async text => calls.push(["copy", text]) } } });
@@ -231,4 +231,20 @@ test("context menu disables single-item commands for a group", async () => {
   assert.match(h.byId("label-open-default").textContent, /2 selected/);
   assert.equal(h.byId("label-delete").textContent, "Delete permanently");
   assert.equal(h.byId("label-copy").textContent, "Copy paths");
+});
+
+test('folder refresh menu supports one or multiple folders only', async () => {
+  const h = await harness();
+  const folder = { node_id: 1, is_folder: true, full_path: 'D:\\a' };
+  h.select(folder);
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.menuItem('refresh').hidden, false);
+  await h.action('refresh');
+  assert.deepEqual(h.calls, [['refresh']]);
+  h.select([folder, { node_id: 2, is_folder: true, full_path: 'D:\\b' }]);
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.menuItem('refresh').hidden, false);
+  h.state.rects[1].is_folder = false;
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.menuItem('refresh').hidden, true);
 });

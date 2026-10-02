@@ -170,6 +170,7 @@ func normalizeControlSettings(controls ControlSettings) ControlSettings {
 	controls.Open = strings.TrimSpace(controls.Open)
 	controls.OpenWith = strings.TrimSpace(controls.OpenWith)
 	controls.VisitSelected = strings.TrimSpace(controls.VisitSelected)
+	controls.Refresh = strings.TrimSpace(controls.Refresh)
 	controls.Delete = strings.TrimSpace(controls.Delete)
 	return controls
 }

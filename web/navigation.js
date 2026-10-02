@@ -7,6 +7,25 @@ import { AppState } from "./state.js";
 
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
 let redraw = async () => {};
+let historyAliases = new Map();
+let aliasSession;
+
+export function remapNavigation(nodeIds, fallback) {
+  if (aliasSession !== AppState.navSession) historyAliases = new Map();
+  aliasSession = AppState.navSession;
+  AppState.navHistory = AppState.navHistory.map((id, index) => {
+    const aliases = historyAliases.get(index) || new Set();
+    aliases.add(id);
+    historyAliases.set(index, aliases);
+    return nodeIds[id] ?? id;
+  });
+  AppState.node_id = nodeIds[AppState.node_id] ?? AppState.node_id;
+  if (AppState.node_id < 0) {
+    AppState.node_id = fallback;
+    AppState.navHistory[AppState.navIndex] = fallback;
+  }
+  replaceBrowserHistoryEntry(AppState.node_id, AppState.navIndex);
+}
 
 function browserHistoryState(nodeId, navIndex) {
   return {
@@ -45,6 +64,7 @@ export function goToParent() {
 export function visit(nodeId) {
   if (nodeId == null || nodeId < 0 || nodeId === AppState.node_id) return;
   AppState.navHistory = AppState.navHistory.slice(0, AppState.navIndex + 1);
+  for (const index of historyAliases.keys()) if (index > AppState.navIndex) historyAliases.delete(index);
   AppState.navHistory.push(nodeId);
   AppState.navIndex = AppState.navHistory.length - 1;
   AppState.node_id = nodeId;
@@ -90,10 +110,17 @@ export function trimInvalidForwardNavigation() {
 
 function handlePopState(event) {
   const state = event.state;
+  if (state?.[HISTORY_STATE_KEY] && state.session === AppState.navSession
+    && Number.isInteger(state.navIndex) && AppState.navHistory[state.navIndex] === -1) {
+    window.history.go(state.position < AppState.browserHistoryPosition ? -1 : 1);
+    return;
+  }
   const isCurrentNavigation = state?.[HISTORY_STATE_KEY]
     && state.session === AppState.navSession
     && Number.isInteger(state.navIndex)
-    && AppState.navHistory[state.navIndex] === state.nodeId;
+    && AppState.navHistory[state.navIndex] >= 0
+    && (AppState.navHistory[state.navIndex] === state.nodeId
+      || (aliasSession === AppState.navSession && historyAliases.get(state.navIndex)?.has(state.nodeId)));
 
   if (!isCurrentNavigation) {
     const stalePosition = Number(state?.position);
@@ -102,7 +129,7 @@ function handlePopState(event) {
   }
   AppState.browserHistoryPosition = state.position;
   AppState.navIndex = state.navIndex;
-  AppState.node_id = state.nodeId;
+  AppState.node_id = AppState.navHistory[state.navIndex];
   redraw();
 }
 

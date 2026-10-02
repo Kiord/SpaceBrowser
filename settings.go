@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 13
+const settingsFileVersion = 14
 
 type persistedSettings struct {
 	Version           int                `json:"version"`
@@ -116,6 +116,9 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		deletePermanently = false
 	}
 	controls := saved.Controls
+	if saved.Version < 14 {
+		controls.Refresh = defaultControlSettings().Refresh
+	}
 	if saved.Version < 7 {
 		controls = defaultControlSettings()
 	}

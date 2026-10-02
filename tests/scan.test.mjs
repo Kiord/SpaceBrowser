@@ -19,6 +19,7 @@ async function harness() {
   let started;
   const scanning = new Promise(resolve => { started = resolve; });
   const errors = [];
+  const shortcuts = [];
   let redraws = 0;
   let locationPrompts = 0;
   let scans = 0, cancellations = 0, nextTimer = 0;
@@ -27,6 +28,7 @@ async function harness() {
   const backend = {
     CancelScan: async () => { cancellations++; rejectScan(new Error("scan cancelled")); },
     GetFullTree: () => { scans++; started(); return scan; },
+    RefreshFolders: () => { scans++; started(); return scan; },
     GetScanProgress: async () => ({}),
     OpenPath() {}, ValidateScanPath: async path => path,
   };
@@ -34,7 +36,8 @@ async function harness() {
     "./wailsjs/go/main/App.js": Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
     "./dom.js": { byId: element, query: element, queryAll: () => controls },
     "./format.js": { formatCount: String, formatDuration: String },
-    "./navigation.js": { replaceBrowserHistoryEntry() {}, updateNavButtons() {} },
+    "./navigation.js": { replaceBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping) { state.node_id = mapping[state.node_id] ?? state.node_id; } },
+    "./controls.js": { addControlEventListeners: fn => shortcuts.push(fn), eventMatchesShortcut: (event, binding) => event.binding === binding, shortcutCanRun: event => !event.blocked },
     "./notifications.js": { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     "./logging.js": { logDebug() {}, logError() {} },
     "./locations.js": { hideLocationSelector() {}, showLocationSelector() { locationPrompts++; } },
@@ -54,8 +57,8 @@ async function harness() {
     clearInterval: id => intervals.delete(id),
   });
   ui.initScan({ redraw: async () => { redraws++; }, hideContextMenu() {} });
-  return { element, state, errors, scanning, resolveScan, rejectScan,
-    analyze: ui.analyze, redraws: () => redraws, locationPrompts: () => locationPrompts, backend, controls, timers, intervals,
+  return { element, state, errors, scanning, resolveScan, rejectScan, shortcuts,
+    analyze: ui.analyze, refresh: ui.refreshSelectedFolders, redraws: () => redraws, locationPrompts: () => locationPrompts, backend, controls, timers, intervals,
     scans: () => scans, cancellations: () => cancellations,
     poll() { const [id, callback] = timers.entries().next().value; timers.delete(id); return callback(); } };
 }
@@ -171,4 +174,93 @@ test("a cancelled scan's pending progress cannot update the next scan", async ()
   assert.equal(displayedPath, "new-folder");
   assert.equal(displayedFiles, "0");
   assert.equal(h.timers.size, 0);
+});
+
+function selectRefreshFolders(h) {
+  Object.assign(h.state, {
+    node_id: 0, scanRootPath: '/root', navHistory: [0, 2], navIndex: 0,
+    fileCount: 10, dirCount: 4, selectedNodeIds: new Set([1, 2, 3]),
+    rects: [
+      { node_id: 1, full_path: '/root/a', is_folder: true },
+      { node_id: 2, full_path: '/root/a/child', is_folder: true },
+      { node_id: 3, full_path: '/root/b', is_folder: true },
+    ],
+  });
+}
+
+test('refresh batches folders, collapses descendants and remaps selection', async () => {
+  const h = await harness();
+  selectRefreshFolders(h);
+  const previous = h.state.rects;
+  const original = h.backend.RefreshFolders;
+  let request;
+  h.backend.RefreshFolders = (...args) => { request = args; return original(...args); };
+  const run = h.refresh();
+  await h.scanning;
+  assert.equal(h.state.rects, previous);
+  assert.equal(h.state.node_id, 0);
+  assert.deepEqual(Array.from(request[0], target => ({ ...target })), [{ nodeId: 1, path: '/root/a' }, { nodeId: 3, path: '/root/b' }]);
+  await h.refresh();
+  await h.analyze();
+  assert.equal(h.scans(), 1);
+  h.resolveScan({ fileCount: 12, dirCount: 5, nodeIds: { 0: 0, 1: 1, 2: 7, 3: 3 } });
+  await run;
+  assert.deepEqual([...h.state.selectedNodeIds], [1, 7, 3]);
+  assert.equal(h.state.scanRootPath, '/root');
+  assert.equal(h.state.fileCount, 12);
+  assert.equal(h.state.dirCount, 5);
+  assert.equal(h.redraws(), 1);
+  assert.equal(h.element('scanDialog').open, false);
+});
+
+for (const cancel of [true, false]) {
+  test(`${cancel ? 'cancelled' : 'failed'} refresh keeps the existing tree and selection`, async () => {
+    const h = await harness();
+    selectRefreshFolders(h);
+    const previous = h.state.rects;
+    const run = h.refresh();
+    await h.scanning;
+    if (cancel) await h.element('cancelScanButton').handlers.click();
+    else h.rejectScan(new Error('unavailable'));
+    await run;
+    assert.equal(h.state.rects, previous);
+    assert.equal(h.state.node_id, 0);
+    assert.equal(h.state.fileCount, 10);
+    assert.deepEqual([...h.state.selectedNodeIds], [1, 2, 3]);
+    assert.equal(h.redraws(), 0);
+    assert.equal(h.errors.length, cancel ? 0 : 1);
+    assert.equal(h.element('scanDialog').open, false);
+    assert.equal(h.timers.size, 0);
+    assert.equal(h.intervals.size, 0);
+  });
+}
+
+test('refresh ignores files, mixed selections, and empty selection', async () => {
+  const h = await harness();
+  selectRefreshFolders(h);
+  h.state.rects[1].is_folder = false;
+  await h.refresh();
+  h.state.selectedNodeIds = new Set([2]);
+  await h.refresh();
+  h.state.selectedNodeIds.clear();
+  await h.refresh();
+  assert.equal(h.scans(), 0);
+});
+
+test('refresh shortcut respects binding and editable/modal guards', async () => {
+  const h = await harness();
+  selectRefreshFolders(h);
+  h.state.profile = { controls: { refresh: 'Ctrl+R' } };
+  let prevented = 0;
+  const event = { binding: 'Ctrl+R', preventDefault() { prevented++; } };
+  h.shortcuts[0]({ ...event, blocked: true });
+  h.shortcuts[0]({ ...event, binding: 'Alt+R' });
+  assert.equal(h.scans(), 0);
+  h.shortcuts[0](event);
+  await h.scanning;
+  assert.equal(prevented, 1);
+  h.resolveScan({ fileCount: 10, dirCount: 4, nodeIds: {} });
+  // Wait for the async shortcut action to finish.
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.redraws(), 1);
 });

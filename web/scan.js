@@ -1,8 +1,9 @@
-import { clearSelection } from "./selection.js";
-import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
+import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
+import { CancelScan, GetFullTree, GetScanProgress, OpenPath, ValidateScanPath, RefreshFolders } from "./wailsjs/go/main/App.js";
 import { byId, query, queryAll } from "./dom.js";
 import { formatCount, formatDuration } from "./format.js";
-import { replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
+import { remapNavigation, replaceBrowserHistoryEntry, updateNavButtons } from "./navigation.js";
+import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logDebug, logError } from "./logging.js";
 import { hideLocationSelector, showLocationSelector } from "./locations.js";
@@ -234,9 +235,47 @@ export async function analyze() {
   }
 }
 
+export async function refreshSelectedFolders() {
+  const selected = getSelectedRects();
+  if (analyzeInFlight || !selected.length || selected.some(rect => !rect.is_folder || !rect.full_path || isPassiveRect(rect))) return;
+  const targets = reduceDeletionTargets(selected).map(rect => ({ nodeId: rect.node_id, path: rect.full_path }));
+  analyzeInFlight = true;
+  const session = AppState.navSession;
+  setUIBusy(true);
+  hideContextMenu();
+  hideRectToast();
+  startScanProgress(targets.length === 1 ? targets[0].path : `${targets.length} selected folders`);
+  try {
+    const tracked = [...new Set([...selectionIds(), ...AppState.navHistory, AppState.node_id])];
+    const result = await RefreshFolders(targets, tracked);
+    if (session !== AppState.navSession) return;
+    const mapping = result.nodeIds;
+    remapNavigation(mapping, mapping[targets[0].nodeId] ?? targets[0].nodeId);
+    AppState.selectedNodeIds = new Set([...selectionIds()].map(id => mapping[id] ?? id).filter(id => id >= 0));
+    AppState.fileCount = result.fileCount;
+    AppState.dirCount = result.dirCount;
+    showScanWarning(result.scanReport);
+    await redraw();
+    await completeScanProgress(result.fileCount, result.dirCount);
+  } catch (error) {
+    logError("folder refresh failed:", error);
+    if (!scanCancelledByUser && !/scan cancelled/i.test(String(error))) showErrorToast(error);
+  } finally {
+    stopScanProgress();
+    analyzeInFlight = false;
+    setUIBusy(false);
+    updateNavButtons();
+  }
+}
+
 export function initScan(options) {
   redraw = options.redraw;
   hideContextMenu = options.hideContextMenu;
+  addControlEventListeners(event => {
+    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.refresh)) return;
+    event.preventDefault();
+    refreshSelectedFolders();
+  });
   byId("analyzeButton").addEventListener("click", analyze);
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   byId("cancelScanButton").addEventListener("click", cancelActiveScan);

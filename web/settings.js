@@ -55,6 +55,7 @@ const CONTROL_BINDING_LABELS = Object.freeze({
   open: "Open",
   openWith: "Open with...",
   visitSelected: "Visit selected",
+  refresh: "Refresh selected folders",
   delete: "Delete",
 });
 
