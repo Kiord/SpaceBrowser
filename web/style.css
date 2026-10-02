@@ -367,6 +367,7 @@ html.keyboard-navigation button:focus {
 }
 
 .location-card-text {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1641,6 +1642,10 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 #flashCanvas { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 
 #compactScanBar { background: #8f9c8b; border-radius: 1px; }
+.location-disk-usage { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.location-disk-bar .scan-progress-bar { background: #527eaf; border-radius: 1px; }
+.location-disk-bar[data-level="warning"] .scan-progress-bar { background: #cf8b30; }
+.location-disk-bar[data-level="critical"] .scan-progress-bar { background: #c44c47; }
 .compact-scan-status[data-complete="true"] #compactScanBar { background: #527eaf; }
 
 /* Disabled controls are flat, including while hovered or pressed. */

@@ -33,4 +33,20 @@ func TestGetScanLocationsPreservesLocationsWhenIconsAreUnavailable(t *testing.T)
 	if locations[0].IconURL != "" {
 		t.Fatalf("unavailable icon URL = %q, want empty", locations[0].IconURL)
 	}
+	if locations[0].DiskTotal != 0 {
+		t.Fatal("missing volume should not report capacity")
+	}
+}
+
+func TestGetScanLocationsIncludesAvailableCapacity(t *testing.T) {
+	app := &App{locations: staticLocationProvider{locations: []platform.ScanLocation{
+		{Name: "Test volume", Path: t.TempDir(), Kind: "volume"},
+	}}}
+	locations, err := app.GetScanLocations()
+	if err != nil || len(locations) != 1 {
+		t.Fatalf("GetScanLocations() = %v, %v", locations, err)
+	}
+	if locations[0].DiskTotal == 0 || locations[0].DiskFree > locations[0].DiskTotal {
+		t.Fatalf("invalid capacity: %+v", locations[0])
+	}
 }

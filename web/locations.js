@@ -2,6 +2,7 @@ import { GetScanLocations } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { chooseFolder } from "./folder-picker.js";
 import { logError } from "./logging.js";
+import { formatSize } from "./format.js";
 
 let analyzeLocation = async () => {};
 let loadGeneration = 0;
@@ -37,6 +38,31 @@ function locationButton(location) {
   const path = document.createElement("span");
   path.textContent = location.path;
   text.append(name, path);
+  const total = location.diskTotal;
+  const free = location.diskFree;
+  if (Number.isFinite(total) && total > 0 && Number.isFinite(free) && free >= 0 && free <= total) {
+    const used = total - free;
+    const percent = used / total * 100;
+    const usage = document.createElement("span");
+    usage.className = "location-disk-usage";
+    const label = document.createElement("span");
+    label.textContent = `${formatSize(used, 1)} / ${formatSize(total, 1)} (${percent.toFixed(1)}%)`;
+    const bar = document.createElement("span");
+    bar.className = "compact-scan-progress location-disk-bar";
+    bar.dataset.level = percent >= 95 ? "critical" : percent >= 80 ? "warning" : "normal";
+    bar.setAttribute("role", "meter");
+    bar.setAttribute("aria-label", "Disk space used");
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    bar.setAttribute("aria-valuenow", String(percent));
+    bar.setAttribute("aria-valuetext", label.textContent);
+    const fill = document.createElement("span");
+    fill.className = "scan-progress-bar";
+    fill.style.setProperty("--scan-progress", `${percent}%`);
+    bar.append(fill);
+    usage.append(label, bar);
+    text.append(usage);
+  }
   button.append(icon, text);
 
   button.addEventListener("click", async () => {
