@@ -108,6 +108,7 @@ function startScanProgress(path, live = false) {
   if (dialog.open) dialog.close();
   scanStartedAt = performance.now();
   scanCompleted = false;
+  byId("scanDetailsButton").hidden = false;
   byId("compactScanStatus").setAttribute("data-complete", "false");
   byId("compactScanPercent").hidden = false;
   byId("scanPhase").textContent = "Scanning ";
@@ -126,7 +127,7 @@ function startScanProgress(path, live = false) {
   byId("scanFolderCount").textContent = "0";
   cancelButton.hidden = false;
   cancelButton.disabled = false;
-  cancelButton.textContent = "Cancel";
+  cancelButton.textContent = "Cancel Scan";
   scanCancelledByUser = false;
   let dotCount = 1;
   dotsElement.textContent = ".";
@@ -193,6 +194,7 @@ async function completeScanProgress(fileCount, dirCount) {
   byId("scanFolderCount").textContent = formatCount(dirCount);
   renderScanProgress(1);
   scanCompleted = true;
+  byId("scanDetailsButton").hidden = true;
   AppState.liveScanPreview = false;
   const elapsed = performance.now() - scanStartedAt;
   byId("scanElapsedTime").textContent = formatDuration(elapsed);

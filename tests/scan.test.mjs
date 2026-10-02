@@ -379,7 +379,7 @@ test('details can expand and minimize without cancelling the scan', async () => 
 });
 
 for (const partial of [false, true]) {
-  test(`${partial ? 'partial' : 'full'} scan starts compact and retains completed status and details`, async () => {
+  test(`${partial ? 'partial' : 'full'} scan starts compact and hides its details button on completion`, async () => {
     const h = await harness();
     if (partial) selectRefreshFolders(h);
     const run = partial ? h.refresh() : h.analyze();
@@ -388,6 +388,7 @@ for (const partial of [false, true]) {
     assert.equal(h.element('compactScanStatus').hidden, false);
     assert.equal(h.element('compactScanStatus').handlers.click, undefined);
     assert.equal(h.element('compactScanStatus').attributes['data-complete'], 'false');
+    assert.equal(h.element('scanDetailsButton').hidden, false);
     h.element('scanDetailsButton').handlers.click();
     assert.equal(h.element('scanDialog').open, true);
     h.element('closeScanDetailsButton').handlers.click();
@@ -400,8 +401,8 @@ for (const partial of [false, true]) {
     assert.equal(h.element('compactScanPercent').hidden, true);
     assert.equal(h.element('cancelScanButton').hidden, true);
     assert.equal(h.element('scanningDots').textContent, '');
-    h.element('scanDetailsButton').handlers.click();
-    assert.equal(h.element('scanDialog').open, true);
+    assert.equal(h.element('scanDetailsButton').hidden, true);
+    assert.equal(h.element('scanDialog').open, false);
     assert.equal(h.element('scanPhase').textContent, 'Scanned ');
     assert.equal(h.element('scanFileCount').textContent, '12');
     assert.equal(h.timers.size, 0);

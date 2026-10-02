@@ -27,10 +27,11 @@
 
       <div class="scan-status-section">
         <div id="compactScanStatus" class="compact-scan-status" hidden>
-          <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
-          <span id="compactScanTime">0:00</span>
-          <span id="compactScanPercent">0%</span>
-          <button id="scanDetailsButton" class="nav-button" type="button" aria-label="Show scan details" data-tooltip="Scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"></rect><path d="M7 8h10M7 12h10M7 16h6"></path></svg></button>
+          <div class="compact-scan-meter">
+            <div class="compact-scan-label"><span id="compactScanTime">0:00</span><span id="compactScanPercent">0%</span></div>
+            <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
+          </div>
+          <button id="scanDetailsButton" class="nav-button" type="button" aria-label="Open scan progress window" data-tooltip="Open scan progress window"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h16v-6M10 14 20 4M14 4h6v6"></path></svg></button>
         </div>
         <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
           <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
@@ -526,7 +527,7 @@
         <span>Folders: <strong id="scanFolderCount">0</strong></span>
       </div>
       <div class="scan-actions">
-        <button id="cancelScanButton" type="button">Cancel</button>
+        <button id="cancelScanButton" class="danger-button" type="button">Cancel Scan</button>
       </div>
     </div>
   </dialog>

@@ -1482,13 +1482,15 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   margin-top: 8px !important;
 }
 
-.settings-dialog .danger-button {
+.settings-dialog .danger-button,
+.scan-dialog .danger-button {
   color: #6f211e;
   background: #fff0ee;
   border-color: #d7aaa6;
 }
 
-.settings-dialog .danger-button:hover {
+.settings-dialog .danger-button:hover:not(:disabled),
+.scan-dialog .danger-button:hover:not(:disabled) {
   background: #f8deda;
   border-color: #c68f8a;
 }
@@ -1537,6 +1539,11 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
+}
+
+#scanPhase {
+  margin-inline-end: 0.3em;
+  flex-shrink: 0;
 }
 
 .scan-query-path {
@@ -1616,10 +1623,16 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   margin-top: 14px;
 }
 
-.scan-status-section { display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
-.controls .compact-scan-status { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.scan-status-section { display: grid; flex: 1; grid-template-columns: clamp(100px, 9vw, 140px) 29px 1fr; align-items: center; column-gap: 8px; min-width: max-content; margin-left: 12px; }
+.controls .compact-scan-status { display: grid; grid-area: 1 / 1 / 2 / 3; grid-template-columns: clamp(100px, 9vw, 140px) 29px; align-items: center; gap: 8px; font-size: 11px; }
 .controls .compact-scan-status[hidden] { display: none; }
-.compact-scan-progress { display: block; position: relative; width: clamp(50px, 9vw, 120px); height: 8px; border: 1px solid #858585; background: #f4f4f2; }
+.compact-scan-meter { flex: 0 0 clamp(100px, 9vw, 140px); width: clamp(100px, 9vw, 140px); padding-top: 2px; }
+.compact-scan-label { display: flex; justify-content: space-between; gap: 8px; line-height: 13px; margin-bottom: 2px; }
+.compact-scan-progress { display: block; position: relative; height: 8px; border: 1px solid #c9c9c9; border-radius: 2px; overflow: hidden; background: #f4f4f2; }
+/* Details and warnings share a fixed slot beside the meter. */
+.controls #scanDetailsButton[hidden] { display: grid; visibility: hidden; }
+.scan-status-section .scan-warning-indicator { grid-area: 1 / 2; justify-content: center; }
+.scan-status-section .scan-warning-indicator[hidden] { display: flex; visibility: hidden; }
 #compactScanTime, #compactScanPercent { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #compactScanPercent { min-width: 28px; text-align: right; }
 .scan-dialog .scan-close-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 23px; min-height: 23px; padding: 0; }
@@ -1627,5 +1640,18 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 .scan-dialog .scan-title { padding-right: 22px; }
 #flashCanvas { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 
-#compactScanBar { background: #527eaf; }
-.compact-scan-status[data-complete="true"] #compactScanBar { background: #568957; }
+#compactScanBar { background: #8f9c8b; border-radius: 1px; }
+.compact-scan-status[data-complete="true"] #compactScanBar { background: #527eaf; }
+
+/* Disabled controls are flat, including while hovered or pressed. */
+button:disabled,
+button:disabled:hover,
+.controls button:disabled,
+.settings-dialog button:disabled,
+.scan-dialog button:disabled {
+  background: #f2f2f2;
+  border-color: #d5d5d5;
+  color: #999;
+  box-shadow: none;
+  cursor: not-allowed;
+}
