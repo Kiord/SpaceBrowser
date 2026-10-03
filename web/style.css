@@ -1547,6 +1547,9 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   flex-shrink: 0;
 }
 
+.home-section { display: flex; padding-right: 7px; margin-right: 2px; border-right: 1px solid #ddd; }
+.scan-settings-note { margin: 0 0 10px; color: #888; font-size: 11px; text-align: left; }
+
 .scan-query-path {
   min-width: 0;
   overflow: hidden;
@@ -1624,14 +1627,14 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   margin-top: 14px;
 }
 
-.scan-status-section { display: grid; flex: 1; grid-template-columns: clamp(100px, 9vw, 140px) 29px 1fr; align-items: center; column-gap: 8px; min-width: max-content; margin-left: 12px; }
-.controls .compact-scan-status { display: grid; grid-area: 1 / 1 / 2 / 3; grid-template-columns: clamp(100px, 9vw, 140px) 29px; align-items: center; gap: 8px; font-size: 11px; }
+.scan-status-section { display: grid; flex: 1; grid-template-columns: clamp(160px, 14vw, 210px) 29px 1fr; align-items: center; column-gap: 8px; min-width: max-content; margin-left: 12px; }
+.controls .compact-scan-status { display: grid; grid-area: 1 / 1 / 2 / 3; grid-template-columns: clamp(160px, 14vw, 210px) 29px; align-items: center; gap: 8px; font-size: 11px; }
 .controls .compact-scan-status[hidden] { display: none; }
-.compact-scan-meter { flex: 0 0 clamp(100px, 9vw, 140px); width: clamp(100px, 9vw, 140px); padding-top: 2px; }
+.compact-scan-meter { flex: 0 0 clamp(160px, 14vw, 210px); width: clamp(160px, 14vw, 210px); padding-top: 2px; }
 .compact-scan-label { display: flex; justify-content: space-between; gap: 8px; line-height: 13px; margin-bottom: 2px; }
 .compact-scan-progress { display: block; position: relative; height: 8px; border: 1px solid #c9c9c9; border-radius: 2px; overflow: hidden; background: #f4f4f2; }
 /* Details and warnings share a fixed slot beside the meter. */
-.controls #scanDetailsButton[hidden] { display: grid; visibility: hidden; }
+
 .scan-status-section .scan-warning-indicator { grid-area: 1 / 2; justify-content: center; }
 .scan-status-section .scan-warning-indicator[hidden] { display: flex; visibility: hidden; }
 #compactScanTime, #compactScanPercent { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1660,3 +1663,14 @@ button:disabled:hover,
   box-shadow: none;
   cursor: not-allowed;
 }
+
+/* The old dialog is retained as legacy markup, never displayed. */
+#scanDialog { display: none; }
+.compact-scan-actions { display: flex; gap: 3px; margin-left: auto; }
+.compact-scan-actions[hidden] { display: none; }
+.controls .compact-scan-actions button { display: grid; place-items: center; width: 20px; min-height: 18px; height: 18px; padding: 0; }
+.compact-scan-actions svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; }
+.controls #compactCancelScanButton { color: #6f211e; background: #fff0ee; border-color: #d7aaa6; }
+.controls #compactCancelScanButton:hover:not(:disabled) { background: #f8deda; }
+.controls #compactCancelScanButton:disabled { color: #999; background: #f2f2f2; border-color: #d5d5d5; }
+.compact-scan-label { align-items: center; min-height: 18px; }

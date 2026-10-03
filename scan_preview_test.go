@@ -66,6 +66,32 @@ func previewFixture(t *testing.T) (*App, string) {
 	return a, root
 }
 
+func TestScanSettingsSavedDuringScanOnlyAffectNextScan(t *testing.T) {
+	a, root := previewFixture(t)
+	result, failure, release := startBlockedPreviewScan(t, a, root)
+	profile := a.GetProfile()
+	profile.MinFileSize = 1 << 30
+	if err := a.SetProfile(profile); err != nil {
+		release()
+		t.Fatal(err)
+	}
+	a.scanMu.RLock()
+	threshold := a.scanScanner.profile.MinFileSize
+	a.scanMu.RUnlock()
+	if threshold != 0 {
+		release()
+		t.Fatal("active scanner settings changed")
+	}
+	release()
+	if err := <-failure; err != nil {
+		t.Fatal(err)
+	}
+	<-result
+	if a.GetProfile().MinFileSize != 1<<30 {
+		t.Fatal("next scan settings were not saved")
+	}
+}
+
 func TestScanPreviewCanBeBrowsedAndKeepsIDsOnCompletion(t *testing.T) {
 	a, root := previewFixture(t)
 	result, failure, release := startBlockedPreviewScan(t, a, root)

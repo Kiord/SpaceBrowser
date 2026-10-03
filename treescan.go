@@ -83,6 +83,7 @@ type Scanner struct {
 	onDirectory        func(string)
 	requireLinkCounts  bool // partial refresh must detect links outside its scan boundary
 	preview            *scanPreviewTree
+	pause              *scanPause
 }
 
 type untrustedIdentityCandidate struct {
@@ -375,7 +376,7 @@ func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dir
 }
 
 func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fileCount, dirCount *int64, modTime int64) (*Node, error) {
-	if err := s.ctx.Err(); err != nil {
+	if err := s.pause.wait(s.ctx); err != nil {
 		return nil, err
 	}
 	if depth > 0 {
@@ -444,7 +445,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	defer flushProcessed()
 
 	for _, entry := range entries {
-		if err := s.ctx.Err(); err != nil {
+		if err := s.pause.wait(s.ctx); err != nil {
 			return nil, err
 		}
 		completeNow := func() bool {
@@ -646,7 +647,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		}
 
 		wg.Wait()
-		if err := s.ctx.Err(); err != nil {
+		if err := s.pause.wait(s.ctx); err != nil {
 			return nil, err
 		}
 		for _, n := range results {
@@ -656,7 +657,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			root.EntryDirs += n.EntryDirs
 		}
 	}
-	if err := s.ctx.Err(); err != nil {
+	if err := s.pause.wait(s.ctx); err != nil {
 		return nil, err
 	}
 

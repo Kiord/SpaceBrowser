@@ -6,6 +6,7 @@ import { formatSize } from "./format.js";
 
 let analyzeLocation = async () => {};
 let loadGeneration = 0;
+let visibilityChanged = () => {};
 
 const fallbackIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -67,7 +68,6 @@ function locationButton(location) {
 
   button.addEventListener("click", async () => {
     byId("pathInput").value = location.path;
-    hideLocationSelector();
     await analyzeLocation();
   });
   return button;
@@ -104,17 +104,20 @@ async function loadLocations() {
 
 export function hideLocationSelector() {
   byId("locationSelector").hidden = true;
+  visibilityChanged(false);
 }
 
 export function showLocationSelector({ refresh = false } = {}) {
   const selector = byId("locationSelector");
   const wasHidden = selector.hidden;
   selector.hidden = false;
+  visibilityChanged(true);
   if (refresh || (wasHidden && byId("locationList").childElementCount === 0)) loadLocations();
 }
 
 export function initLocationSelector(options) {
   analyzeLocation = options.analyze;
+  visibilityChanged = options.visibilityChanged || (() => {});
   byId("refreshLocationsButton").addEventListener("click", loadLocations);
   byId("chooseLocationFolderButton").addEventListener("click", async () => {
     const path = await chooseFolder({ focusInput: false });

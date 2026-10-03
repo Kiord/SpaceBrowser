@@ -13,6 +13,7 @@ export function isPassiveRect(rect) {
 }
 
 export function getSelectedRects() {
+  if (AppState.homeVisible) return [];
   const ids = selectionIds();
   return (AppState.rects || []).filter(rect => ids.has(rect.node_id) && !isPassiveRect(rect));
 }

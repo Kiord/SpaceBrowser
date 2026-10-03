@@ -7,6 +7,7 @@ import { AppState } from "./state.js";
 
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
 let redraw = async () => {};
+let hideHome = () => {};
 let historyAliases = new Map();
 let aliasSession;
 
@@ -53,10 +54,12 @@ export function navigateToSelected() {
 }
 
 export function goToRoot() {
+  if (AppState.homeVisible) return;
   if (AppState.navHistory.length) visit(AppState.navHistory[0]);
 }
 
 export function goToParent() {
+  if (AppState.homeVisible) return;
   const rootRect = AppState.rects?.[0];
   if (rootRect?.parent_id != null) visit(rootRect.parent_id);
 }
@@ -80,10 +83,12 @@ export function visit(nodeId) {
 }
 
 export function goBackward() {
+  if (AppState.homeVisible && AppState.node_id != null) { hideHome(); redraw(); return; }
   if (AppState.navIndex > 0) window.history.back();
 }
 
 export function goForward() {
+  if (AppState.homeVisible) return;
   if (AppState.navIndex < AppState.navHistory.length - 1) window.history.forward();
 }
 
@@ -102,6 +107,14 @@ export async function toggleFreeSpace(event) {
 }
 
 export function updateNavButtons() {
+  byId("homeButton").disabled = !!AppState.homeVisible;
+  if (AppState.homeVisible) {
+    byId("rootButton").disabled = true;
+    byId("parentButton").disabled = true;
+    byId("forwardButton").disabled = true;
+    byId("backwardButton").disabled = AppState.node_id == null;
+    return;
+  }
   byId("rootButton").disabled = AppState.navIndex <= 0 || !AppState.navHistory.length;
   byId("parentButton").disabled = !(AppState.rects?.length && AppState.rects[0].parent_id != null);
   byId("backwardButton").disabled = AppState.navIndex <= 0;
@@ -137,6 +150,7 @@ function handlePopState(event) {
   AppState.browserHistoryPosition = state.position;
   AppState.navIndex = state.navIndex;
   AppState.node_id = AppState.navHistory[state.navIndex];
+  hideHome();
   redraw();
 }
 
@@ -153,6 +167,7 @@ function handleNavigationShortcut(event) {
 
 export function initNavigation(options) {
   redraw = options.redraw;
+  hideHome = options.hideHome || (() => {});
   replaceBrowserHistoryEntry(null, -1);
   byId("rootButton").addEventListener("click", goToRoot);
   byId("parentButton").addEventListener("click", goToParent);

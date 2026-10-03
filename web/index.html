@@ -12,6 +12,11 @@
 <body>
   <div class="container">
     <div class="controls" id="topbar">
+      <div class="home-section" aria-label="Application navigation">
+        <button id="homeButton" class="nav-button" type="button" aria-label="Home" data-tooltip="Home" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 4l9 7.2M5.5 10.2V20h13v-9.8M9.5 20v-6h5v6"></path></svg>
+        </button>
+      </div>
       <div class="input-group" id="pathGroup">
         <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -28,10 +33,15 @@
       <div class="scan-status-section">
         <div id="compactScanStatus" class="compact-scan-status" hidden>
           <div class="compact-scan-meter">
-            <div class="compact-scan-label"><span id="compactScanTime">0:00</span><span id="compactScanPercent">0%</span></div>
+            <div class="compact-scan-label">
+              <span id="compactScanTime">0:00</span><span id="compactScanPercent">0%</span>
+              <span id="compactScanActions" class="compact-scan-actions">
+                <button id="pauseScanButton" type="button" aria-label="Pause scan" data-tooltip="Pause scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="pauseScanIcon" d="M8 5v14M16 5v14"></path></svg></button>
+                <button id="compactCancelScanButton" type="button" aria-label="Cancel scan" data-tooltip="Cancel scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button>
+              </span>
+            </div>
             <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
           </div>
-          <button id="scanDetailsButton" class="nav-button" type="button" aria-label="Open scan progress window" data-tooltip="Open scan progress window"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h16v-6M10 14 20 4M14 4h6v6"></path></svg></button>
         </div>
         <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
           <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
@@ -70,9 +80,7 @@
         </button>
         <button class="nav-button home-button" id="rootButton" type="button" aria-label="Go to scan root" data-tooltip="Go to scan root" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 11.2 12 4l9 7.2"></path>
-            <path d="M5.5 10.2V20h13v-9.8"></path>
-            <path d="M9.5 20v-6h5v6"></path>
+            <path d="M4 4h16M12 20V8m-5 5 5-5 5 5"></path>
           </svg>
         </button>
         <span class="control-separator" aria-hidden="true"></span>
@@ -224,6 +232,7 @@
 
       <div class="settings-body">
         <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general">
+          <p class="scan-settings-note">Changes to scan options below apply to the next scan.</p>
           <div class="settings-row">
             <label>Platform</label>
             <output id="settingsPlatform"></output>
@@ -510,7 +519,8 @@
     </div>
   </dialog>
 
-  <dialog id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
+  <!-- LEGACY: retained progress-window markup; no active UI entry point. -->
+  <dialog inert aria-hidden="true" data-legacy="scan-progress-window" id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
     <button id="closeScanDetailsButton" class="scan-close-button" type="button" aria-label="Close scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
     <div class="scan-dialog-body">
       <div id="scanDialogTitle" class="scan-title">

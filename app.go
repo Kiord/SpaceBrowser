@@ -40,6 +40,7 @@ type App struct {
 	scanCancel          context.CancelFunc
 	scanStartedAt       time.Time
 	scanScanner         *Scanner
+	scanPause           *scanPause
 	previewMu           sync.Mutex
 	scanPreview         *TreeInfo
 	scanPreviewAt       time.Time

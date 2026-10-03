@@ -23,6 +23,7 @@ type TreeInfo struct {
 }
 
 type ScanProgress struct {
+	Paused              bool    `json:"paused"`
 	Active              bool    `json:"active"`
 	Generation          uint64  `json:"generation"`
 	RootPath            string  `json:"rootPath"`
@@ -95,6 +96,8 @@ func (a *App) GetScanProgress() ScanProgress {
 	startedAt := a.scanStartedAt
 	scanner := a.scanScanner
 	generation, rootPath := a.scanGeneration, a.scanRootPath
+	paused := a.scanPause != nil && a.scanPause.paused.Load()
+	pause := a.scanPause
 	a.scanMu.RUnlock()
 
 	var processed, discovered int64
@@ -103,7 +106,7 @@ func (a *App) GetScanProgress() ScanProgress {
 		processed, discovered = scanner.WorkProgress()
 		files, dirs = scanner.LiveCounts()
 	}
-	elapsed := time.Since(startedAt)
+	elapsed := pause.elapsed(startedAt, time.Now())
 	if !active || startedAt.IsZero() {
 		elapsed = 0
 	}
@@ -113,6 +116,7 @@ func (a *App) GetScanProgress() ScanProgress {
 	}
 
 	return ScanProgress{
+		Paused:     paused,
 		Generation: generation, RootPath: rootPath, LivePreview: scanner != nil && scanner.preview != nil,
 		Active:              active,
 		Path:                path,
@@ -153,6 +157,7 @@ func (a *App) beginScan(path string) (context.Context, uint64) {
 	a.scanGeneration++
 	generation := a.scanGeneration
 	a.scanActive = true
+	a.scanPause = &scanPause{}
 	a.scanPath = path
 	a.scanRootPath = path
 	a.scanPreview = nil
@@ -168,6 +173,7 @@ func (a *App) beginScan(path string) (context.Context, uint64) {
 func (a *App) attachScanner(generation uint64, scanner *Scanner) {
 	a.scanMu.Lock()
 	if a.scanGeneration == generation && a.scanActive {
+		scanner.pause = a.scanPause
 		a.scanScanner = scanner
 	}
 	a.scanMu.Unlock()
@@ -240,6 +246,28 @@ func (a *App) publishCachedScanResult(ctx context.Context, generation uint64, ro
 	a.store.ReplaceShared(root, nodes, files, dirs)
 	a.scanResultPublished = true
 	return persistReport(), nil
+}
+
+// OpenScanSnapshot reopens an existing in-memory tree without filesystem enumeration.
+// A nil result means the caller must scan; dirty trees remain valid snapshots.
+func (a *App) OpenScanSnapshot(path string) *TreeInfo {
+	a.filesystemMu.Lock()
+	defer a.filesystemMu.Unlock()
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+	if a.scanActive || a.scanCache == nil {
+		return nil
+	}
+	_, profileKey := scanProfileCacheKey(a.GetProfile())
+	a.scanCache.mu.Lock()
+	defer a.scanCache.mu.Unlock()
+	entry := a.scanCache.entries[scanMemoryCacheKey(path, profileKey)]
+	if entry == nil || entry.root == nil {
+		return nil
+	}
+	a.scanCache.touchLocked(entry)
+	a.store.ReplaceShared(entry.root, entry.nodes, entry.fileCount, entry.dirCount)
+	return &TreeInfo{RootID: entry.root.ID, FileCount: entry.fileCount, DirCount: entry.dirCount}
 }
 
 func (a *App) GetFullTree(path string) (*TreeInfo, error) {

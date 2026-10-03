@@ -377,7 +377,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
       ...(AppState.liveScanPreview ? [
-        {text:`Scan in progress ${AppState.scanDots || "."}`, layoutText:"Scan in progress ...", ellipsize:false},
+        {text:AppState.scanPaused ? "Scan paused" : `Scan in progress ${AppState.scanDots || "."}`, layoutText:"Scan in progress ...", ellipsize:false},
       ] : [
         {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
         {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},

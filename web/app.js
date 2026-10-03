@@ -4,9 +4,9 @@ import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-ac
 import { initFolderPicker } from "./folder-picker.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
-import { initLocationSelector } from "./locations.js";
-import { initNavigation, navigateToSelected } from "./navigation.js";
-import { analyze, initScan } from "./scan.js";
+import { initLocationSelector, showLocationSelector, hideLocationSelector } from "./locations.js";
+import { initNavigation, navigateToSelected, updateNavButtons } from "./navigation.js";
+import { analyze, openLocation, initScan } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
 import { initTreemapView, redraw, resizeCanvas, repaintScanLabels } from "./treemap-view.js";
 import { getSelectedRects } from "./selection.js";
@@ -31,11 +31,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   analyzeButton.dataset.tooltip = "Scan folder";
 
   initTreemapView();
-  initNavigation({ redraw });
+  initNavigation({ redraw, hideHome: hideLocationSelector });
   initSettings({ redraw });
   initFileActions({ redraw });
   initScan({ redraw, hideContextMenu, repaintScanLabels });
-  initLocationSelector({ analyze });
+  initLocationSelector({ analyze: openLocation, visibilityChanged(homeVisible) {
+    AppState.homeVisible = homeVisible;
+    updateNavButtons();
+  } });
+  byId("homeButton").addEventListener("click", () => {
+    hideContextMenu();
+    showLocationSelector({ refresh: true });
+  });
   initFolderPicker();
   initZoom({ redraw });
 

@@ -3,6 +3,7 @@ import test from "node:test";
 import { deferred, loadUI } from "./helpers/ui.mjs";
 
 async function harness() {
+  let now = 1500;
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -24,28 +25,30 @@ async function harness() {
   let locationPrompts = 0;
   let scans = 0, cancellations = 0, nextTimer = 0;
   const timers = new Map(), intervals = new Set();
-  const controls = [{ disabled: false }, { disabled: false }];
+  const controls = [element("analyzeButton"), element("triggerFolderSelectButton")];
   const backend = {
     CancelScan: async () => { cancellations++; rejectScan(new Error("scan cancelled")); },
     GetFullTree: () => { scans++; started(); return scan; },
     RefreshFolders: () => { scans++; started(); return scan; },
     GetScanProgress: async () => ({}),
     GetScanPreview: async () => null,
+    OpenScanSnapshot: async () => null,
+    SetScanPaused: async (generation, paused) => paused,
     OpenPath() {}, ValidateScanPath: async path => path,
   };
   const modules = {
     "./wailsjs/go/main/App.js": Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
-    "./dom.js": { byId: element, query: element, queryAll: () => controls },
+    "./dom.js": { byId: element, query: element, queryAll: selector => selector.split(", ").map(id => element(id.slice(1))) },
     "./format.js": { formatCount: String, formatDuration: String },
     "./navigation.js": { pushBrowserHistoryEntry() { state.browserHistoryPosition++; }, rollbackBrowserHistory(position) { state.browserHistoryPosition = position; }, updateNavButtons() {}, remapNavigation(mapping) { state.node_id = mapping[state.node_id] ?? state.node_id; } },
     "./controls.js": { addControlEventListeners: fn => shortcuts.push(fn), eventMatchesShortcut: (event, binding) => event.binding === binding, shortcutCanRun: event => !event.blocked },
     "./notifications.js": { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     "./logging.js": { logDebug() {}, logError() {} },
-    "./locations.js": { hideLocationSelector() {}, showLocationSelector() { locationPrompts++; } },
+    "./locations.js": { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; locationPrompts++; } },
     "./state.js": { AppState: state },
   };
   const ui = await loadUI("scan.js", modules, {
-    performance: { now: () => 1500 },
+    performance: { now: () => now },
     // Tests explicitly trigger progress polls; the completion paint delay
     // resolves on a microtask, avoiding wall-clock sleeps.
     setTimeout(fn, delay) {
@@ -59,8 +62,8 @@ async function harness() {
     clearInterval: id => intervals.delete(id),
   });
   ui.initScan({ redraw: async () => { redraws++; }, hideContextMenu() {} });
-  return { element, state, errors, scanning, resolveScan, rejectScan, shortcuts,
-    analyze: ui.analyze, refresh: ui.refreshSelectedFolders, redraws: () => redraws, locationPrompts: () => locationPrompts, backend, controls, timers, intervals,
+  return { advance: ms => { now += ms; }, element, state, errors, scanning, resolveScan, rejectScan, shortcuts,
+    analyze: ui.analyze, openLocation: ui.openLocation, refresh: ui.refreshSelectedFolders, redraws: () => redraws, locationPrompts: () => locationPrompts, backend, controls, timers, intervals,
     scans: () => scans, cancellations: () => cancellations,
     poll() { const [id, callback] = timers.entries().next().value; timers.delete(id); return callback(); } };
 }
@@ -88,7 +91,7 @@ test("cancelled scans restore the previous view", async () => {
   h.state.node_id = 7;
   const run = h.analyze();
   await h.scanning;
-  await h.element("cancelScanButton").handlers.click();
+  await h.element("compactCancelScanButton").handlers.click();
   await run;
   assert.equal(h.state.node_id, 7);
   assert.equal(h.redraws(), 1);
@@ -115,7 +118,7 @@ test("duplicate scan requests are ignored and cancellation cleans up timers and 
   assert.ok(h.controls.every(button => button.disabled));
   await h.analyze();
   assert.equal(h.scans(), 1);
-  const cancel = h.element("cancelScanButton").handlers.click;
+  const cancel = h.element("compactCancelScanButton").handlers.click;
   await Promise.all([cancel(), cancel()]);
   await run;
   assert.equal(h.cancellations(), 1);
@@ -159,7 +162,7 @@ test("a cancelled scan's pending progress cannot update the next scan", async ()
   const first = h.analyze();
   await h.scanning;
   const poll = h.poll();
-  await h.element("cancelScanButton").handlers.click();
+  await h.element("compactCancelScanButton").handlers.click();
   await first;
 
   const nextScan = deferred(), nextStarted = deferred();
@@ -222,7 +225,7 @@ for (const cancel of [true, false]) {
     const previous = h.state.rects;
     const run = h.refresh();
     await h.scanning;
-    if (cancel) await h.element('cancelScanButton').handlers.click();
+    if (cancel) await h.element('compactCancelScanButton').handlers.click();
     else h.rejectScan(new Error('unavailable'));
     await run;
     assert.equal(h.state.rects, previous);
@@ -313,7 +316,7 @@ test('cancelled live preview restores pre-scan navigation, selection and counts'
   assert.equal(h.state.node_id, 0);
   h.state.navHistory = [0, 1]; h.state.node_id = 1; h.state.navIndex = 1;
   h.state.browserHistoryPosition++;
-  await h.element('cancelScanButton').handlers.click();
+  await h.element('compactCancelScanButton').handlers.click();
   await run;
   assert.equal(h.state.node_id, 8);
   assert.equal(h.state.scanRootPath, 'old');
@@ -333,7 +336,7 @@ test('cancelling the first live scan returns home', async () => {
   const run = h.analyze();
   await h.scanning;
   await h.poll();
-  await h.element('cancelScanButton').handlers.click();
+  await h.element('compactCancelScanButton').handlers.click();
   await run;
   assert.equal(h.state.node_id, null);
   assert.equal(h.state.rects.length, 0);
@@ -350,7 +353,7 @@ for (const cancel of [false, true]) {
     await h.scanning;
     const poll = h.poll();
     await Promise.resolve();
-    if (cancel) await h.element('cancelScanButton').handlers.click();
+    if (cancel) await h.element('compactCancelScanButton').handlers.click();
     else h.resolveScan({ rootId: 4, fileCount: 80, dirCount: 10 });
     await run;
     const redraws = h.redraws();
@@ -362,21 +365,6 @@ for (const cancel of [false, true]) {
   });
 }
 
-test('details can expand and minimize without cancelling the scan', async () => {
-  const h = await harness();
-  const run = h.analyze();
-  await h.scanning;
-  h.element('scanDetailsButton').handlers.click();
-  assert.equal(h.element('scanDialog').open, true);
-  h.element('closeScanDetailsButton').handlers.click();
-  assert.equal(h.element('scanDialog').open, false);
-  h.element('scanDetailsButton').handlers.click();
-  h.element('scanDialog').handlers.cancel({ preventDefault() {} });
-  assert.equal(h.element('scanDialog').open, false);
-  assert.equal(h.cancellations(), 0);
-  h.resolveScan({ rootId: 0, fileCount: 1, dirCount: 1 });
-  await run;
-});
 
 for (const partial of [false, true]) {
   test(`${partial ? 'partial' : 'full'} scan starts compact and hides its details button on completion`, async () => {
@@ -388,10 +376,8 @@ for (const partial of [false, true]) {
     assert.equal(h.element('compactScanStatus').hidden, false);
     assert.equal(h.element('compactScanStatus').handlers.click, undefined);
     assert.equal(h.element('compactScanStatus').attributes['data-complete'], 'false');
-    assert.equal(h.element('scanDetailsButton').hidden, false);
-    h.element('scanDetailsButton').handlers.click();
-    assert.equal(h.element('scanDialog').open, true);
-    h.element('closeScanDetailsButton').handlers.click();
+    assert.equal(h.element('compactScanActions').hidden, false);
+    assert.equal(h.element('scanDialog').open, false);
     assert.equal(h.cancellations(), 0);
     h.resolveScan({ rootId: 0, fileCount: 12, dirCount: 5, nodeIds: {} });
     await run;
@@ -401,7 +387,7 @@ for (const partial of [false, true]) {
     assert.equal(h.element('compactScanPercent').hidden, true);
     assert.equal(h.element('cancelScanButton').hidden, true);
     assert.equal(h.element('scanningDots').textContent, '');
-    assert.equal(h.element('scanDetailsButton').hidden, true);
+    assert.equal(h.element('compactScanActions').hidden, true);
     assert.equal(h.element('scanDialog').open, false);
     assert.equal(h.element('scanPhase').textContent, 'Scanned ');
     assert.equal(h.element('scanFileCount').textContent, '12');
@@ -409,3 +395,136 @@ for (const partial of [false, true]) {
     assert.equal(h.intervals.size, 0);
   });
 }
+
+
+test('opening the current snapshot preserves view and selection without scanning', async () => {
+  const h = await harness();
+  Object.assign(h.state, { scanRootPath: 'test-folder', node_id: 7, selectedNodeIds: new Set([9]), navHistory: [0, 7] });
+  await h.openLocation();
+  assert.equal(h.scans(), 0);
+  assert.equal(h.state.node_id, 7);
+  assert.deepEqual([...h.state.selectedNodeIds], [9]);
+  assert.equal(h.redraws(), 1);
+});
+
+test('opening another cached path publishes its snapshot without scanning', async () => {
+  const h = await harness();
+  h.backend.OpenScanSnapshot = async () => ({ rootId: 0, fileCount: 12, dirCount: 3 });
+  await h.openLocation();
+  assert.equal(h.scans(), 0);
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.state.fileCount, 12);
+  assert.equal(h.redraws(), 1);
+});
+
+test('opening a path without a retained snapshot scans it', async () => {
+  const h = await harness();
+  const run = h.openLocation();
+  await h.scanning;
+  h.resolveScan({ rootId: 0, fileCount: 1, dirCount: 1 });
+  await run;
+  assert.equal(h.scans(), 1);
+});
+
+
+test('live counts advance even when the preview revision is unchanged', async () => {
+  const h = await harness();
+  let count = 3;
+  h.backend.GetScanProgress = async () => ({ active: true, generation: 1, livePreview: true, rootPath: 'test-folder', fileCount: count, dirCount: count });
+  h.backend.GetScanPreview = async () => ({ rootId: 0, revision: 1, fileCount: 1, dirCount: 1 });
+  const run = h.analyze();
+  await h.scanning;
+  await h.poll();
+  count = 20;
+  await h.poll();
+  assert.equal(h.state.fileCount, 20);
+  assert.equal(h.state.dirCount, 20);
+  assert.equal(h.redraws(), 1);
+  await h.element('compactCancelScanButton').handlers.click();
+  await run;
+});
+
+for (const partial of [false, true]) {
+  test(`${partial ? 'partial' : 'full'} scan pauses, continues and cancels from the toolbar`, async () => {
+    const h = await harness();
+    if (partial) selectRefreshFolders(h);
+    const calls = [];
+    h.backend.GetScanProgress = async () => ({ active: true, generation: 7 });
+    h.backend.SetScanPaused = async (generation, paused) => { calls.push([generation, paused]); return paused; };
+    const run = partial ? h.refresh() : h.analyze();
+    await h.scanning;
+    await h.poll();
+    await h.element('pauseScanButton').handlers.click();
+    assert.equal(h.state.scanPaused, true);
+    assert.equal(h.element('pauseScanButton').attributes['aria-label'], 'Continue scan');
+    await h.element('pauseScanButton').handlers.click();
+    assert.equal(h.state.scanPaused, false);
+    assert.deepEqual(calls, [[7, true], [7, false]]);
+    await h.element('pauseScanButton').handlers.click();
+    await h.element('compactCancelScanButton').handlers.click();
+    await run;
+    assert.equal(h.state.scanPaused, false);
+    assert.equal(h.element('scanDialog').open, false);
+    assert.equal(h.element('compactScanActions').hidden, true);
+  });
+}
+
+
+test('a progress response sent before pausing cannot revert the pause button', async () => {
+  const h = await harness();
+  h.backend.GetScanProgress = async () => ({ active: true, generation: 1, paused: false });
+  const run = h.analyze();
+  await h.scanning;
+  await h.poll();
+  const pending = deferred();
+  h.backend.GetScanProgress = () => pending.promise;
+  const poll = h.poll();
+  await h.element('pauseScanButton').handlers.click();
+  pending.resolve({ active: true, generation: 1, paused: false });
+  await poll;
+  assert.equal(h.state.scanPaused, true);
+  assert.equal(h.element('pauseScanButton').attributes['aria-label'], 'Continue scan');
+  await h.element('compactCancelScanButton').handlers.click();
+  await run;
+});
+
+
+test('paused time is excluded from the completed scan duration', async () => {
+  const h = await harness();
+  h.backend.GetScanProgress = async () => ({ active: true, generation: 1, elapsedMilliseconds: 1000 });
+  const run = h.analyze();
+  await h.scanning;
+  h.advance(1000);
+  await h.poll();
+  await h.element('pauseScanButton').handlers.click();
+  h.advance(10000);
+  await h.element('pauseScanButton').handlers.click();
+  h.advance(1000);
+  h.resolveScan({ rootId: 0, fileCount: 1, dirCount: 1 });
+  await run;
+  assert.equal(h.element('compactScanTime').textContent, 'Done in 2.0s');
+});
+
+test('scan keeps publishing behind Home or Settings and the active tile reopens its preview', async () => {
+  const h = await harness();
+  for (const id of ['homeButton', 'settingsButton', 'toggleFreeSpaceButton']) h.element(id).disabled = false;
+  let revision = 1;
+  h.backend.GetScanProgress = async () => ({ active: true, generation: 1, livePreview: true, rootPath: 'test-folder', fileCount: revision, dirCount: 1 });
+  h.backend.GetScanPreview = async () => ({ rootId: 0, revision });
+  const run = h.analyze();
+  await h.scanning;
+  h.state.homeVisible = true;
+  h.element('settingsDialog').open = true;
+  await h.poll();
+  revision++;
+  await h.poll();
+  assert.equal(h.state.homeVisible, true);
+  assert.equal(h.state.fileCount, 2);
+  assert.equal(h.redraws(), 2);
+  for (const id of ['homeButton', 'settingsButton', 'toggleFreeSpaceButton']) assert.equal(h.element(id).disabled, false);
+  await h.openLocation();
+  assert.equal(h.state.homeVisible, false);
+  assert.equal(h.scans(), 1);
+  h.resolveScan({ rootId: 0, fileCount: 2, dirCount: 1 });
+  await run;
+});

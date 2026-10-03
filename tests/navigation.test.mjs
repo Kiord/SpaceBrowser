@@ -19,7 +19,7 @@ async function harness() {
     "./controls.js": { addControlEventListeners: noop, eventMatchesShortcut: noop, shortcutCanRun: noop },
     "./logging.js": { logError: noop }, "./state.js": { AppState: state },
   }, { window });
-  ui.initNavigation({ redraw: () => { redraws++; } });
+  ui.initNavigation({ redraw: () => { redraws++; }, hideHome: () => { state.homeVisible = false; } });
   return { ui, byId, window, state, calls, redraws: () => redraws,
     select: rect => { state.rects = rect == null ? [] : Array.isArray(rect) ? rect : [rect]; state.selectedNodeIds = new Set(state.rects.map(item => item.node_id)); }, failToggle: () => { setFreeSpace = async () => { throw new Error("failed"); }; } };
 }
@@ -194,4 +194,19 @@ test('home has no enabled navigation after cancelling an initial scan', async ()
   Object.assign(h.state, { node_id: null, navHistory: [], navIndex: -1, rects: [] });
   h.ui.updateNavButtons();
   for (const id of ['rootButton', 'parentButton', 'backwardButton', 'forwardButton']) assert.equal(h.byId(id).disabled, true);
+});
+
+
+test('Back from Home restores the current scan view without changing selection or history', async () => {
+  const h = await harness();
+  Object.assign(h.state, { homeVisible: true, node_id: 7, navHistory: [0, 7], navIndex: 1, selectedNodeIds: new Set([9]) });
+  h.ui.updateNavButtons();
+  assert.equal(h.byId('homeButton').disabled, true);
+  assert.equal(h.byId('backwardButton').disabled, false);
+  assert.equal(h.byId('rootButton').disabled, true);
+  h.ui.goBackward();
+  assert.equal(h.state.homeVisible, false);
+  assert.equal(h.state.node_id, 7);
+  assert.deepEqual([...h.state.selectedNodeIds], [9]);
+  assert.equal(h.redraws(), 1);
 });

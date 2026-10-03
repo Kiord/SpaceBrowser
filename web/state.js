@@ -4,6 +4,7 @@ export function getScale() {
 
 export const AppState = {
   node_id: null,
+  homeVisible: true,
   navHistory: [],
   navIndex: -1,
   navSession: 0,
