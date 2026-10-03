@@ -335,13 +335,26 @@ function selectedCustomThemeIndex() {
   return Number.isInteger(index) && index >= 0 && index < draftCustomThemes.length ? index : -1;
 }
 
-function previewDraftPalette(paletteName = byId("settingsPalette").value) {
-  if (AppState.node_id == null) return;
-  void applyAppearance({
-    ...(AppState.profile?.appearance || defaultAppearance()),
+export function draftAppearance(paletteName = byId("settingsPalette").value) {
+  const base = AppState.profile?.appearance || defaultAppearance();
+  const read = (id, fallback) => {
+    const value = Number(byId(id).value);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  return {
+    ...base,
     palette: paletteName,
     customThemes: draftCustomThemes,
-  });
+    zoomFactor: read("settingsZoomFactor", base.zoomFactor),
+    cornerRadius: read("settingsCornerRadius", base.cornerRadius),
+    reliefStrength: read("settingsReliefStrength", base.reliefStrength),
+    hoverBrightness: read("settingsHoverBrightness", base.hoverBrightness),
+  };
+}
+
+export function previewDraftPalette(paletteName = byId("settingsPalette").value) {
+  if (AppState.node_id == null) return;
+  void applyAppearance(draftAppearance(paletteName));
 }
 
 function renderCustomPaletteEditor() {
@@ -833,8 +846,12 @@ export function initSettings(options) {
   byId("settingsDeletePalette").addEventListener("click", deleteCustomTheme);
   byId("settingsAddPaletteColor").addEventListener("click", addCustomThemeColor);
   byId("settingsCustomPaletteName").addEventListener("input", renameCustomTheme);
-  byId("settingsZoomFactor").addEventListener("input", updateAppearanceFormOutputs);
-  byId("settingsCornerRadius").addEventListener("input", updateAppearanceFormOutputs);
-  byId("settingsReliefStrength").addEventListener("input", updateAppearanceFormOutputs);
-  byId("settingsHoverBrightness").addEventListener("input", updateAppearanceFormOutputs);
+  for (const id of ["settingsZoomFactor", "settingsCornerRadius", "settingsReliefStrength", "settingsHoverBrightness"]) {
+    const slider = byId(id);
+    slider.addEventListener("input", () => {
+      updateAppearanceFormOutputs();
+      previewDraftPalette();
+    });
+    slider.addEventListener("change", () => previewDraftPalette());
+  }
 }
