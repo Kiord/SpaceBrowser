@@ -64,6 +64,8 @@ func TestNewScanPausesCurrentJobAndKeepsSnapshotsIsolated(t *testing.T) {
 		t.Fatal("second job did not take priority")
 	}
 	waitJob(t, a, second.ID, "completed")
+	waitJob(t, a, first.ID, "running")
+	a.SetScanJobPaused(first.ID, true)
 	release()
 	waitJob(t, a, first.ID, "paused")
 	a.SelectScanJob(first.ID)
@@ -134,5 +136,54 @@ func TestContinuePausedJobPreemptsRunningJob(t *testing.T) {
 	a.SetScanJobPaused(1, false)
 	if second.info.State != "paused" || first.info.State != "running" || q.running != 1 {
 		t.Fatal("switching back did not pause the other scan")
+	}
+}
+
+func TestInterruptedScansResumeInReverseOrder(t *testing.T) {
+	for _, terminal := range []string{"completed", "cancelled", "failed"} {
+		t.Run(terminal, func(t *testing.T) {
+			a := &App{}
+			q := a.jobQueue()
+			makeJob := func(id uint64) *scanJob {
+				job := &scanJob{info: ScanJobInfo{ID: id, State: "paused"}, pause: &scanPause{}, started: true}
+				job.pause.set(true)
+				return job
+			}
+			first, second, third, manual := makeJob(1), makeJob(2), makeJob(3), makeJob(4)
+			q.jobs = []*scanJob{first, second, third, manual}
+			q.activateLocked(first)
+			q.activateLocked(second)
+			q.activateLocked(third)
+			third.info.State, q.running = terminal, 0
+			q.scheduleLocked()
+			if q.running != second.info.ID || second.pause.paused.Load() || first.info.State != "paused" {
+				t.Fatal("most recently interrupted scan did not resume first")
+			}
+			second.info.State, q.running = "completed", 0
+			q.scheduleLocked()
+			if q.running != first.info.ID || first.pause.paused.Load() {
+				t.Fatal("original scan did not resume")
+			}
+			first.info.State, q.running = "completed", 0
+			q.scheduleLocked()
+			if q.running != 0 || manual.info.State != "paused" || !manual.pause.paused.Load() {
+				t.Fatal("manually paused scan resumed automatically")
+			}
+		})
+	}
+}
+
+func TestManualPauseClearsAutomaticResume(t *testing.T) {
+	a := &App{}
+	q := a.jobQueue()
+	first := &scanJob{info: ScanJobInfo{ID: 1, State: "running"}, pause: &scanPause{}, started: true}
+	second := &scanJob{info: ScanJobInfo{ID: 2, State: "paused"}, pause: &scanPause{}, started: true}
+	q.jobs, q.running = []*scanJob{first, second}, 1
+	q.activateLocked(second)
+	a.SetScanJobPaused(first.info.ID, true)
+	second.info.State, q.running = "completed", 0
+	q.scheduleLocked()
+	if q.running != 0 || first.autoResume || first.info.State != "paused" {
+		t.Fatal("explicit pause did not override automatic resume")
 	}
 }

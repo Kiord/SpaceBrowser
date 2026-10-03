@@ -39,6 +39,7 @@ type scanJob struct {
 	tracked    []int
 	nodeIDs    map[int]int
 	queueOrder uint64
+	autoResume bool
 }
 
 type scanJobQueue struct {
@@ -129,15 +130,19 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	return &info
 }
 
-// An explicit scan request takes priority. Interrupted jobs remain paused
-// until the user chooses to continue them.
+// An explicit scan request takes priority. Remember interrupted jobs so they
+// resume in reverse interruption order, without resuming manually paused work.
 func (q *scanJobQueue) activateLocked(target *scanJob) {
 	for _, job := range q.jobs {
 		if job != target && (job.info.State == "running" || job.info.State == "queued") {
 			job.pause.set(true)
 			job.info.State = "paused"
+			job.autoResume = true
+			q.queueClock++
+			job.queueOrder = q.queueClock
 		}
 	}
+	target.autoResume = false
 	if target.info.State != "running" {
 		target.info.State = "queued"
 		q.running = 0
@@ -156,7 +161,15 @@ func (q *scanJobQueue) scheduleLocked() {
 				next = job
 			}
 		}
+		if next == nil {
+			for _, job := range q.jobs {
+				if job.info.State == "paused" && job.autoResume && (next == nil || job.queueOrder > next.queueOrder) {
+					next = job
+				}
+			}
+		}
 		if job := next; job != nil {
+			job.autoResume = false
 			q.running = job.info.ID
 			job.info.State = "running"
 			if !job.started {
@@ -245,7 +258,8 @@ func (a *App) SetScanJobPaused(id uint64, paused bool) {
 		if job.info.ID != id || !pendingJob(job.info.State) {
 			continue
 		}
-		if paused && job.info.State != "paused" {
+		if paused {
+			job.autoResume = false
 			job.pause.set(true)
 			job.info.State = "paused"
 			if q.running == id {
