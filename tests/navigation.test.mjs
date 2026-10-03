@@ -24,6 +24,26 @@ async function harness() {
     select: rect => { state.rects = rect == null ? [] : Array.isArray(rect) ? rect : [rect]; state.selectedNodeIds = new Set(state.rects.map(item => item.node_id)); }, failToggle: () => { setFreeSpace = async () => { throw new Error("failed"); }; } };
 }
 
+test("home ignores tree navigation but Back can reopen the current tree", async () => {
+  const h = await harness();
+  h.ui.visit(1);
+  h.state.homeVisible = true;
+  h.state.rects = [{ parent_id: 0 }];
+  const before = h.calls.length;
+  h.ui.goToRoot();
+  h.ui.goToParent();
+  h.ui.goForward();
+  assert.equal(h.calls.length, before);
+  assert.equal(h.state.node_id, 1);
+  h.ui.goBackward();
+  assert.equal(h.state.homeVisible, false);
+  h.state.homeVisible = true;
+  h.state.node_id = null;
+  h.ui.goBackward();
+  assert.equal(h.calls.length, before);
+  assert.equal(h.state.homeVisible, true);
+});
+
 test("back and forward restore matching history entries", async () => {
   const h = await harness();
   h.ui.visit(1);

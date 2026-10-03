@@ -83,7 +83,10 @@ export function visit(nodeId) {
 }
 
 export function goBackward() {
-  if (AppState.homeVisible && AppState.node_id != null) { hideHome(); redraw(); return; }
+  if (AppState.homeVisible) {
+    if (AppState.node_id != null) { hideHome(); redraw(); }
+    return;
+  }
   if (AppState.navIndex > 0) window.history.back();
 }
 
