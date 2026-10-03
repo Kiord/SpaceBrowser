@@ -47,6 +47,9 @@ type App struct {
 	scanRootPath        string
 	scanResultPublished bool
 	scanPrevious        *treeStoreSnapshot
+	jobsMu              sync.Mutex
+	jobs                *scanJobQueue
+	initialPause        *scanPause // isolated queued worker's shared pause gate
 }
 
 func NewApp() *App {
@@ -114,6 +117,11 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) Shutdown(context.Context) {
+	a.jobsMu.Lock()
+	if a.jobs != nil {
+		a.jobs.close()
+	}
+	a.jobsMu.Unlock()
 	if a.scanCache != nil {
 		a.scanCache.Close()
 	}

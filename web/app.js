@@ -6,7 +6,7 @@ import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "
 import { logError } from "./logging.js";
 import { initLocationSelector, showLocationSelector, hideLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected, updateNavButtons } from "./navigation.js";
-import { analyze, openLocation, initScan } from "./scan.js";
+import { analyze, openLocation, initScan, updateScanVisibility } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
 import { initTreemapView, redraw, resizeCanvas, repaintScanLabels } from "./treemap-view.js";
 import { getSelectedRects } from "./selection.js";
@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initLocationSelector({ analyze: openLocation, visibilityChanged(homeVisible) {
     AppState.homeVisible = homeVisible;
     updateNavButtons();
+    updateScanVisibility();
   } });
   byId("homeButton").addEventListener("click", () => {
     hideContextMenu();

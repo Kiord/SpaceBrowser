@@ -252,12 +252,13 @@ func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
 }
 
 type ScanLocation struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Kind      string `json:"kind"`
-	IconURL   string `json:"iconUrl"`
-	DiskTotal uint64 `json:"diskTotal,omitempty"`
-	DiskFree  uint64 `json:"diskFree"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Kind       string `json:"kind"`
+	IconURL    string `json:"iconUrl"`
+	DiskTotal  uint64 `json:"diskTotal,omitempty"`
+	DiskFree   uint64 `json:"diskFree"`
+	Filesystem string `json:"filesystem,omitempty"`
 }
 
 func (a *App) GetScanLocations() ([]ScanLocation, error) {
@@ -271,6 +272,7 @@ func (a *App) GetScanLocations() ([]ScanLocation, error) {
 		if usage, usageErr := disk.Usage(location.Path); usageErr == nil && usage.Total > 0 && usage.Free <= usage.Total {
 			entry.DiskTotal = usage.Total
 			entry.DiskFree = usage.Free
+			entry.Filesystem = usage.Fstype
 		}
 		if iconURL, iconErr := a.GetAssociatedIcon(location.Path, true); iconErr == nil {
 			entry.IconURL = iconURL

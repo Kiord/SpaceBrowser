@@ -7,6 +7,49 @@ import { formatSize } from "./format.js";
 let analyzeLocation = async () => {};
 let loadGeneration = 0;
 let visibilityChanged = () => {};
+const tiles = new Map();
+const knownLocations = new Map();
+let scanJobs = [];
+let createStatus;
+const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
+
+function addLocation(location) {
+  const key = pathKey(location.path);
+  if (tiles.has(key)) return;
+  const tile = document.createElement("div");
+  tile.className = "location-tile";
+  tile.append(locationButton(location));
+  tile.addEventListener("click", event => {
+    // Buttons handle their own clicks, including the scan controls.
+    if (event.target.closest("button")) return;
+    return openLocation(location);
+  });
+  byId("locationList").append(tile);
+  tiles.set(key, { element: tile });
+}
+
+export function setLocationScanJobs(jobs, statusFactory) {
+  scanJobs = jobs;
+  createStatus = statusFactory;
+  renderScanJobs();
+}
+
+function renderScanJobs() {
+  for (const job of scanJobs) {
+    const key = pathKey(job.path);
+    if (!tiles.has(key)) {
+      const location = knownLocations.get(key) || { path: job.path, name: job.path.split(/[\\/]/).filter(Boolean).at(-1) || job.path, kind: "folder" };
+      addLocation(location);
+    }
+    const tile = tiles.get(key);
+    if (!tile.status && createStatus) {
+      tile.status = createStatus();
+      tile.element.append(tile.status.element);
+    }
+    tile.status?.update(job);
+  }
+  if (tiles.size) byId("locationStatus").hidden = true;
+}
 
 const fallbackIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -14,12 +57,17 @@ const fallbackIcon = `
     <path d="M4 14h16M8 17h.01M11 17h.01"></path>
   </svg>`;
 
+async function openLocation(location) {
+  byId("pathInput").value = location.path;
+  await analyzeLocation();
+}
+
 function locationButton(location) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "location-card";
   button.dataset.path = location.path;
-  button.dataset.tooltip = `Scan ${location.path}`;
+  button.dataset.tooltip = `Open ${location.path}`;
 
   const icon = document.createElement("span");
   icon.className = "location-card-icon";
@@ -29,7 +77,7 @@ function locationButton(location) {
     image.alt = "";
     icon.append(image);
   } else {
-    icon.innerHTML = fallbackIcon;
+    icon.innerHTML = location.kind === "folder" ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 3h9v12H3z"></path><path d="M3 9h18"></path></svg>' : fallbackIcon;
   }
 
   const text = document.createElement("span");
@@ -37,7 +85,7 @@ function locationButton(location) {
   const name = document.createElement("strong");
   name.textContent = location.name || location.path;
   const path = document.createElement("span");
-  path.textContent = location.path;
+  path.textContent = location.filesystem ? `${location.path} · ${location.filesystem}` : location.path;
   text.append(name, path);
   const total = location.diskTotal;
   const free = location.diskFree;
@@ -66,10 +114,7 @@ function locationButton(location) {
   }
   button.append(icon, text);
 
-  button.addEventListener("click", async () => {
-    byId("pathInput").value = location.path;
-    await analyzeLocation();
-  });
+  button.addEventListener("click", () => openLocation(location));
   return button;
 }
 
@@ -78,6 +123,7 @@ async function loadLocations() {
   const list = byId("locationList");
   const status = byId("locationStatus");
   list.replaceChildren();
+  tiles.clear();
   status.hidden = false;
   status.textContent = "Finding available locations...";
   byId("refreshLocationsButton").disabled = true;
@@ -87,15 +133,18 @@ async function loadLocations() {
     const usable = Array.isArray(locations)
       ? locations.filter(location => location?.path)
       : [];
-    for (const location of usable) list.append(locationButton(location));
-    status.hidden = usable.length > 0;
-    status.textContent = usable.length > 0
+    knownLocations.clear();
+    for (const location of usable) { knownLocations.set(pathKey(location.path), location); addLocation(location); }
+    renderScanJobs();
+    status.hidden = tiles.size > 0;
+    status.textContent = tiles.size > 0
       ? ""
       : "No available locations were found. You can still choose a folder above.";
   } catch (error) {
     if (generation !== loadGeneration) return;
     logError("loading scan locations failed:", error);
-    status.hidden = false;
+    renderScanJobs();
+    status.hidden = tiles.size > 0;
     status.textContent = "Locations could not be loaded. You can still choose a folder above.";
   } finally {
     if (generation === loadGeneration) byId("refreshLocationsButton").disabled = false;

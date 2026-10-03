@@ -158,6 +158,9 @@ func (a *App) beginScan(path string) (context.Context, uint64) {
 	generation := a.scanGeneration
 	a.scanActive = true
 	a.scanPause = &scanPause{}
+	if a.initialPause != nil {
+		a.scanPause = a.initialPause
+	}
 	a.scanPath = path
 	a.scanRootPath = path
 	a.scanPreview = nil

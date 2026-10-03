@@ -656,6 +656,7 @@ button:disabled:hover {
 /* Path input */
 .input-group #pathInput {
   flex: 1;
+  min-width: 0;
   height: 28px;
   box-sizing: border-box;
   padding: 4px 8px;
@@ -1674,3 +1675,32 @@ button:disabled:hover,
 .controls #compactCancelScanButton:hover:not(:disabled) { background: #f8deda; }
 .controls #compactCancelScanButton:disabled { color: #999; background: #f2f2f2; border-color: #d5d5d5; }
 .compact-scan-label { align-items: center; min-height: 18px; }
+
+/* Home owns per-location controls; the toolbar shows only the selected job. */
+.location-tile { min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
+.location-tile .location-card { width: 100%; border: 0; box-shadow: none; background: transparent; }
+.location-tile:hover { background: #fff; }
+.tile-scan-status { padding: 0 10px 10px; }
+.tile-scan-status .scan-progress-bar { background: #8f9c8b; border-radius: 1px; }
+.tile-scan-status[data-complete="true"] .scan-progress-bar { background: #527eaf; }
+.tile-scan-status .compact-scan-label { font-size: 11px; }
+.tile-scan-status button { display: grid; place-items: center; width: 20px; height: 18px; padding: 0; border: 1px solid #c9c9c9; border-radius: 2px; background: #f6f6f6; color: #333; cursor: pointer; }
+.tile-scan-status .scan-cancel-button { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
+.tile-scan-status button:hover { background: #fff; }
+
+.controls { height: 43px; min-height: 43px; }
+.controls > .input-group > button, .controls .right-group > button, .controls .home-section > button { height: 28px; box-sizing: border-box; }
+.tile-scan-status { padding-left: 54px; }
+.tile-scan-title { color: #666; font-size: 11px; margin-bottom: 2px; }
+.tile-scan-status[data-state="paused"] .scan-progress-bar,
+.compact-scan-status[data-state="paused"] #compactScanBar { background: #999; }
+.tile-scan-status[hidden] { display: none; }
+
+.controls button { white-space: nowrap; }
+.controls[data-home="true"] .scan-status-section { display: none; }
+@media (max-width: 900px) {
+  .input-group { min-width: 150px; }
+  .scan-status-section { margin-left: 4px; grid-template-columns: 145px 22px 1fr; }
+  .controls .compact-scan-status { grid-template-columns: 145px 22px; }
+  .compact-scan-meter { width: 145px; }
+}

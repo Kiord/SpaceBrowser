@@ -23,8 +23,8 @@ async function renderLocation(capacity) {
   let scans = 0;
   ui.initLocationSelector({ analyze: async () => { scans++; } });
   await new Promise(resolve => setImmediate(resolve));
-  const tile = byId("locationList").children[0];
-  return { tile, usage: tile.children[1].children[2], byId, scans: () => scans };
+  const tile = byId("locationList").children[0].children[0];
+  return { ui, element, tile, usage: tile.children[1].children[2], byId, scans: () => scans };
 }
 
 for (const [used, level] of [[0, "normal"], [79.9, "normal"], [80, "warning"], [94.9, "warning"], [95, "critical"], [100, "critical"]]) {
@@ -48,3 +48,49 @@ for (const capacity of [{}, { diskTotal: 0, diskFree: 0 }, { diskTotal: 10 }, { 
     assert.equal(h.tile.children[1].children[0].textContent, 'Disk');
   });
 }
+
+
+test('filesystem type is shown on a volume tile', async () => {
+  const h = await renderLocation({ filesystem: 'NTFS' });
+  assert.equal(h.tile.children[1].children[1].textContent, '/volume · NTFS');
+});
+
+test('tile background and scan progress area open the location', async () => {
+  const h = await renderLocation({});
+  const progress = h.element();
+  h.ui.setLocationScanJobs([{ id: 1, path: '/volume', state: 'paused' }], () => ({ element: progress, update() {} }));
+  const tile = h.byId('locationList').children[0];
+  for (const target of [tile, progress]) {
+    target.closest = () => null;
+    await tile.emit('click', { target });
+    assert.equal(h.byId('pathInput').value, '/volume');
+  }
+  assert.equal(h.scans(), 2);
+});
+
+test('bubbling button clicks do not open a tile again or activate it from scan controls', async () => {
+  const h = await renderLocation({});
+  const tile = h.byId('locationList').children[0];
+  await h.tile.emit('click');
+  await tile.emit('click', { target: { closest: () => h.tile } });
+  assert.equal(h.scans(), 1);
+  for (const control of ['pause', 'cancel']) {
+    await tile.emit('click', { target: { closest: () => ({ control }) } });
+  }
+  assert.equal(h.scans(), 1);
+});
+
+test('folder jobs get a separate tile with progress but no disk usage bar', async () => {
+  const h = await renderLocation({ diskTotal: 100, diskFree: 50 });
+  const updates = [];
+  const factory = () => ({ element: h.element(), update: job => updates.push(job.state) });
+  h.ui.setLocationScanJobs([{ id: 1, path: '/volume/folder', state: 'running' }], factory);
+  const tiles = h.byId('locationList').children;
+  assert.equal(tiles.length, 2);
+  const folder = tiles[1];
+  assert.equal(folder.children[0].children[1].children.length, 2);
+  assert.equal(folder.children[0].dataset.path, '/volume/folder');
+  h.ui.setLocationScanJobs([{ id: 1, path: '/volume/folder', state: 'paused' }], factory);
+  assert.equal(tiles.length, 2);
+  assert.deepEqual(updates, ['running', 'paused']);
+});

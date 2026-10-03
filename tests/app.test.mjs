@@ -22,7 +22,7 @@ async function harness(rects) {
     "./logging.js": { logError: noop },
     "./locations.js": { initLocationSelector: noop, showLocationSelector: noop, hideLocationSelector: noop },
     "./navigation.js": { initNavigation: noop, updateNavButtons: noop, navigateToSelected: () => calls.push(["visit"]) },
-    "./scan.js": { analyze: noop, openLocation: noop, initScan: noop },
+    "./scan.js": { analyze: noop, openLocation: noop, initScan: noop, updateScanVisibility: noop },
     "./settings.js": { initSettings: noop, loadSettingsState: async () => {} },
     "./treemap-view.js": { initTreemapView: noop, redraw: noop, resizeCanvas: noop, repaintScanLabels: noop },
     "./zoom.js": { initZoom: noop },
