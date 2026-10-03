@@ -29,6 +29,7 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		Appearance: AppearanceSettings{
 			Palette:         "ocean",
 			ZoomFactor:      1.4,
+			BoxPadding:      2.5,
 			CornerRadius:    6,
 			ReliefStrength:  0.18,
 			HoverBrightness: 0.12,
@@ -171,6 +172,17 @@ func TestVersionSixSettingsGainDefaultInput(t *testing.T) {
 	}
 	if !profile.UseCache {
 		t.Fatal("legacy settings did not gain the default cache setting")
+	}
+}
+
+func TestBoxPaddingOutsideRangeIsRejected(t *testing.T) {
+	for _, padding := range []float64{-1, 2.49, 10.01} {
+		app := newApp(filepath.Join(t.TempDir(), "settings.json"))
+		profile := app.GetProfile()
+		profile.Appearance.BoxPadding = padding
+		if err := app.SetProfile(profile); err == nil {
+			t.Fatalf("box padding %g was accepted", padding)
+		}
 	}
 }
 

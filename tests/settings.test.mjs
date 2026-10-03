@@ -6,6 +6,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const values = new Map([
     ["settingsPalette", "ocean"],
     ["settingsZoomFactor", "1.8"],
+    ["settingsBoxPadding", "3"],
     ["settingsCornerRadius", "6"],
     ["settingsReliefStrength", "0.24"],
     ["settingsHoverBrightness", "0.17"],
@@ -19,7 +20,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
     });
     return elements.get(id);
   };
-  const appearance = { palette: "default", customThemes: [], zoomFactor: 1, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
+  const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
   const appState = { node_id: 0, profile: { appearance }, defaultProfile: { appearance } };
   const ui = await loadUI("settings.js", {
     "./wailsjs/go/main/App.js": { GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SetProfile() {}, SetSettingsPath() {} },
@@ -34,6 +35,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const draft = ui.draftAppearance();
   assert.equal(draft.palette, "ocean");
   assert.equal(draft.zoomFactor, 1.8);
+  assert.equal(draft.boxPadding, 3);
   assert.equal(draft.cornerRadius, 6);
   assert.equal(draft.reliefStrength, .24);
   assert.equal(draft.hoverBrightness, .17);

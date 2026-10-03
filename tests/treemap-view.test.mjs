@@ -19,13 +19,13 @@ async function harness() {
       getBoundingClientRect: () => ({ left: 0, top: 0 }), getContext: () => state[`${name}Ctx`] };
   }
   const ui = await loadUI("treemap-view.js", {
-    "./wailsjs/go/main/App.js": { Layout: (...args) => { const request = deferred(); requests.push({ ...request, args }); return request.promise; } },
+    "./wailsjs/go/main/App.js": { LayoutWithBoxPadding: (...args) => { const request = deferred(); requests.push({ ...request, args }); return request.promise; } },
     "./file-actions.js": { hideContextMenu: noop, openRectWithDefault: rect => actions.push(["open", rect.node_id]), showContextMenu: () => actions.push(["menu"]) },
     "./format.js": { debounce: fn => fn, formatCompactSize: String, formatCount: String, formatModTime: String, formatSize: String },
     "./navigation.js": { navigateToSelected: () => actions.push(["visit"]), updateNavButtons: noop },
     "./notifications.js": { hideRectToast: noop, initNotifications: noop },
     "./logging.js": { logDebug: noop, logWarning: noop },
-    "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => 1 },
+    "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0, boxPadding: 5 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => 1 },
   }, { performance: { now: () => time }, cancelAnimationFrame: id => frames.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
     window: { ...eventTarget(), devicePixelRatio: 1 }, document: { getElementById: id => state[id] } });
   return { ui, state, requests, painted, actions, frames, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
@@ -39,6 +39,7 @@ test("an older layout response cannot overwrite or paint over the latest redraw"
   const latest = [rect(2)];
   h.requests[1].resolve(latest);
   await second;
+  assert.equal(h.requests[1].args.at(-1), 5);
   const paints = h.painted.length;
   h.requests[0].resolve([rect(1)]);
   await first;

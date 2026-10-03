@@ -160,6 +160,10 @@ func (s *TreeStore) UpdateDiskUsage(total, free int64) bool {
 }
 
 func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpace bool) ([]Rect, error) {
+	return s.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, treemapPad)
+}
+
+func (s *TreeStore) LayoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace bool, boxPadding float64) ([]Rect, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -196,7 +200,7 @@ func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpa
 			sort.Slice(viewRoot.Children, func(i, j int) bool { return viewRoot.Children[i].Size > viewRoot.Children[j].Size })
 		}
 	}
-	return ComputeTreemapRects(&viewRoot, float64(width), float64(height), scale), nil
+	return ComputeTreemapRectsWithBoxPadding(&viewRoot, float64(width), float64(height), scale, boxPadding), nil
 }
 
 func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {

@@ -28,6 +28,7 @@ type AppearanceSettings struct {
 	Palette         string       `json:"palette"`
 	CustomThemes    []ColorTheme `json:"customThemes,omitempty"`
 	ZoomFactor      float64      `json:"zoomFactor"`
+	BoxPadding      float64      `json:"boxPadding"`
 	CornerRadius    int          `json:"cornerRadius"`
 	ReliefStrength  float64      `json:"reliefStrength"`
 	HoverBrightness float64      `json:"hoverBrightness"`
@@ -65,6 +66,7 @@ func defaultAppearanceSettings() AppearanceSettings {
 	return AppearanceSettings{
 		Palette:         "default",
 		ZoomFactor:      1,
+		BoxPadding:      5,
 		CornerRadius:    0,
 		ReliefStrength:  0.30,
 		HoverBrightness: 0.12,

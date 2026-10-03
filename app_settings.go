@@ -176,10 +176,13 @@ func normalizeControlSettings(controls ControlSettings) ControlSettings {
 }
 
 func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, error) {
-	if appearance.Palette == "" && appearance.ZoomFactor == 0 && appearance.CornerRadius == 0 &&
+	if appearance.Palette == "" && appearance.ZoomFactor == 0 && appearance.BoxPadding == 0 && appearance.CornerRadius == 0 &&
 		appearance.ReliefStrength == 0 && appearance.HoverBrightness == 0 &&
 		!appearance.RollOverBoxes && len(appearance.CustomThemes) == 0 {
 		return defaultAppearanceSettings(), nil
+	}
+	if appearance.BoxPadding == 0 {
+		appearance.BoxPadding = defaultAppearanceSettings().BoxPadding
 	}
 	appearance.CustomThemes = cloneColorThemes(appearance.CustomThemes)
 	const (
@@ -237,6 +240,9 @@ func normalizeAppearance(appearance AppearanceSettings) (AppearanceSettings, err
 	}
 	if appearance.CornerRadius < 0 || appearance.CornerRadius > 10 {
 		return AppearanceSettings{}, fmt.Errorf("corner radius must be between 0 and 10")
+	}
+	if math.IsNaN(appearance.BoxPadding) || math.IsInf(appearance.BoxPadding, 0) || appearance.BoxPadding < treemapPad/2 || appearance.BoxPadding > treemapPad*2 {
+		return AppearanceSettings{}, fmt.Errorf("box padding must be between 50%% and 200%% of the default")
 	}
 	if math.IsNaN(appearance.ReliefStrength) || math.IsInf(appearance.ReliefStrength, 0) || appearance.ReliefStrength < 0 || appearance.ReliefStrength > 0.5 {
 		return AppearanceSettings{}, fmt.Errorf("relief strength must be between 0 and 0.5")

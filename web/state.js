@@ -51,6 +51,7 @@ export const AppearanceState = {
   palette: "default",
   customThemes: [],
   zoomFactor: 1,
+  boxPadding: 5,
   cornerRadius: 0,
   reliefStrength: 0,
   hoverBrightness: 0,

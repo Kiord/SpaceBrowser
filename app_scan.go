@@ -436,8 +436,25 @@ func (a *App) logScanReport(report ScanReportSnapshot) {
 func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	a.settingsMu.RLock()
 	showFreeSpace := a.showFreeSpace
+	boxPadding := float64(a.profile.Appearance.BoxPadding)
 	a.settingsMu.RUnlock()
-	rects, err := a.store.Layout(nodeID, width, height, scale, showFreeSpace)
+	if boxPadding < 1 {
+		boxPadding = treemapPad
+	}
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
+}
+
+// LayoutWithBoxPadding previews an unsaved appearance setting without
+// changing the persisted profile.
+func (a *App) LayoutWithBoxPadding(nodeID, width, height int, scale float64, boxPadding float64) ([]Rect, error) {
+	a.settingsMu.RLock()
+	showFreeSpace := a.showFreeSpace
+	a.settingsMu.RUnlock()
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, float64(boxPadding))
+}
+
+func (a *App) layoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace bool, boxPadding float64) ([]Rect, error) {
+	rects, err := a.store.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
 	if err != nil {
 		return nil, err
 	}

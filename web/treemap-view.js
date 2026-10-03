@@ -1,6 +1,6 @@
 import { getSelectedRect, getSelectedRects, isPassiveRect, selectRect, selectionIds } from "./selection.js";
 export { getSelectedRect, getSelectedRects, isPassiveRect } from "./selection.js";
-import { Layout } from "./wailsjs/go/main/App.js";
+import { LayoutWithBoxPadding } from "./wailsjs/go/main/App.js";
 import { hideContextMenu, openRectWithDefault, showContextMenu } from "./file-actions.js";
 import { debounce, formatCompactSize, formatCount, formatModTime, formatSize } from "./format.js";
 import { navigateToSelected, updateNavButtons } from "./navigation.js";
@@ -45,7 +45,7 @@ function flashNewRects(rects) {
 }
 
 async function apiLayoutById(nodeId, w, h, scale) {
-  const rects = await Layout(nodeId, w, h, scale);
+  const rects = await LayoutWithBoxPadding(nodeId, w, h, scale, AppearanceState.boxPadding);
   return { rects };
 }
 

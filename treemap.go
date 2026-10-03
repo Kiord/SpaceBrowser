@@ -59,9 +59,21 @@ type Rect struct {
 //   - BUT a child is only EMITTED if its FINAL ROUNDED width AND height are >= treemapMinSidePx,
 //   - Rows whose thickness would render < 4 px are skipped entirely, leaving a blank band.
 func ComputeTreemapRects(root *Node, W, H, scale float64) []Rect {
+	return ComputeTreemapRectsWithBoxPadding(root, W, H, scale, treemapPad)
+}
+
+// ComputeTreemapRectsWithBoxPadding lays out children using an inner padding
+// expressed in pixels at 100% zoom, retaining visible color between borders.
+func ComputeTreemapRectsWithBoxPadding(root *Node, W, H, scale, boxPadding float64) []Rect {
 	if root == nil || W <= 0 || H <= 0 {
 		return nil
 	}
+	boxPadding = math.Max(treemapPad/2, math.Min(treemapPad*2, boxPadding))
+	// Match the canvas stroke width. Reserve one full colored pixel, plus
+	// two pixels for child overlap, edge rounding and antialiased stroke edges.
+	strokeWidth := math.Max(0.5, scale)
+	scaledPad := math.Max(math.Ceil(strokeWidth)+3, boxPadding*scale)
+	scaledMinSidePx := treemapMinSidePx * scale
 
 	out := make([]Rect, 0, 4096)
 	st := make([]frame, 0, 128)
@@ -84,9 +96,7 @@ func ComputeTreemapRects(root *Node, W, H, scale float64) []Rect {
 		}
 
 		// Compute interior area for children (padding + label strip)
-		scaledPad := treemapPad * scale
 		scaledlabelH := treemapLabelH * scale
-		scaledMinSidePx := treemapMinSidePx * scale
 
 		ax := f.x + scaledPad
 		ay := f.y + scaledPad + scaledlabelH
@@ -189,7 +199,6 @@ func squarifyInto(nodes []*Node, areas []float64, x, y, w, h float64, depth int,
 	if len(nodes) == 0 || w <= 0 || h <= 0 {
 		return
 	}
-
 	i := 0
 	cx, cy, cw, ch := x, y, w, h
 

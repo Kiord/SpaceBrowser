@@ -76,12 +76,14 @@ export function normalizedAppearance(appearance) {
     ? source.palette
     : defaults.palette;
   const zoom = Number(source.zoomFactor);
+  const boxPadding = Number(source.boxPadding);
   const relief = Number(source.reliefStrength);
   const hoverBrightness = Number(source.hoverBrightness);
   return {
     palette,
     customThemes,
     zoomFactor: Math.max(SCALE_MIN, Math.min(SCALE_MAX, Number.isFinite(zoom) ? zoom : defaults.zoomFactor)),
+    boxPadding: Math.max(2.5, Math.min(10, Number.isFinite(boxPadding) && boxPadding > 0 ? boxPadding : (defaults.boxPadding || 5))),
     cornerRadius: Math.max(0, Math.min(10, Math.round(Number(source.cornerRadius) || 0))),
     reliefStrength: Math.max(0, Math.min(0.5, Number.isFinite(relief) ? relief : defaults.reliefStrength)),
     hoverBrightness: Math.max(0, Math.min(0.3, Number.isFinite(hoverBrightness) ? hoverBrightness : defaults.hoverBrightness)),
@@ -346,6 +348,7 @@ export function draftAppearance(paletteName = byId("settingsPalette").value) {
     palette: paletteName,
     customThemes: draftCustomThemes,
     zoomFactor: read("settingsZoomFactor", base.zoomFactor),
+    boxPadding: read("settingsBoxPadding", base.boxPadding || 5),
     cornerRadius: read("settingsCornerRadius", base.cornerRadius),
     reliefStrength: read("settingsReliefStrength", base.reliefStrength),
     hoverBrightness: read("settingsHoverBrightness", base.hoverBrightness),
@@ -540,6 +543,8 @@ function updateAppearanceFormOutputs() {
   updatePalettePreview(palette);
   renderCustomPaletteEditor();
   byId("settingsZoomFactorValue").textContent = `${zoom.toFixed(1)}×`;
+  const boxPadding = Number(byId("settingsBoxPadding").value);
+  byId("settingsBoxPaddingValue").textContent = `${Math.round(boxPadding / 5 * 100)}%`;
   byId("settingsCornerRadiusValue").textContent = `${radius.toFixed(0)} px`;
   byId("settingsReliefStrengthValue").textContent = `${(1 + relief).toFixed(2)}×`;
   byId("settingsHoverBrightnessValue").textContent = `${(1 + hoverBrightness).toFixed(2)}×`;
@@ -550,6 +555,7 @@ function populateAppearanceForm(appearance, useCurrentZoom = true) {
   draftCustomThemes = values.customThemes.map(theme => ({ name: theme.name, colors: [...theme.colors] }));
   populatePaletteSelect(values.palette);
   byId("settingsZoomFactor").value = String(useCurrentZoom ? (AppState.zoomFactor || values.zoomFactor) : values.zoomFactor);
+  byId("settingsBoxPadding").value = String(values.boxPadding);
   byId("settingsCornerRadius").value = String(values.cornerRadius);
   byId("settingsReliefStrength").value = String(values.reliefStrength);
   byId("settingsHoverBrightness").value = String(values.hoverBrightness);
@@ -744,6 +750,7 @@ async function saveSettings(event) {
       palette: selectedPalette,
       customThemes: draftCustomThemes.map(theme => ({ name: theme.name, colors: [...theme.colors] })),
       zoomFactor: Number(byId("settingsZoomFactor").value),
+      boxPadding: Number(byId("settingsBoxPadding").value),
       cornerRadius: Number(byId("settingsCornerRadius").value),
       reliefStrength: Number(byId("settingsReliefStrength").value),
       hoverBrightness: Number(byId("settingsHoverBrightness").value),
@@ -846,7 +853,7 @@ export function initSettings(options) {
   byId("settingsDeletePalette").addEventListener("click", deleteCustomTheme);
   byId("settingsAddPaletteColor").addEventListener("click", addCustomThemeColor);
   byId("settingsCustomPaletteName").addEventListener("input", renameCustomTheme);
-  for (const id of ["settingsZoomFactor", "settingsCornerRadius", "settingsReliefStrength", "settingsHoverBrightness"]) {
+  for (const id of ["settingsZoomFactor", "settingsBoxPadding", "settingsCornerRadius", "settingsReliefStrength", "settingsHoverBrightness"]) {
     const slider = byId(id);
     slider.addEventListener("input", () => {
       updateAppearanceFormOutputs();

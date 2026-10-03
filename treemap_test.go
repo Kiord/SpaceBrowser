@@ -125,3 +125,50 @@ func TestTreemapLayoutRejectsInvalidInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestTreemapBoxPaddingIsConfigurable(t *testing.T) {
+	node := &Node{ID: 1, Name: "child", Size: 1}
+	root := &Node{ID: 0, Name: "root", IsFolder: true, Children: []*Node{node}}
+	withOne := ComputeTreemapRectsWithBoxPadding(root, 100, 100, 1, 1)
+	withSix := ComputeTreemapRectsWithBoxPadding(root, 100, 100, 1, 6)
+	if len(withOne) != 2 || len(withSix) != 2 {
+		t.Fatalf("box padding should retain the child rectangle: got %d and %d rectangles", len(withOne), len(withSix))
+	}
+	if withOne[1].X >= withSix[1].X || withOne[1].Y >= withSix[1].Y {
+		t.Fatalf("box padding positions = (%v,%v) and (%v,%v), want larger inset for padding 6", withOne[1].X, withOne[1].Y, withSix[1].X, withSix[1].Y)
+	}
+	clamped := ComputeTreemapRectsWithBoxPadding(root, 100, 100, .5, 1)
+	if len(clamped) != 2 || clamped[1].X < 1 || clamped[1].Y < 1 {
+		t.Fatal("box padding below one scaled pixel did not retain a one-pixel inset")
+	}
+}
+
+func TestBoxPaddingLeavesColorBetweenBordersAtEveryScale(t *testing.T) {
+	root := &Node{ID: 0, IsFolder: true, Size: 1}
+	parent := root
+	for id := 1; id <= 8; id++ {
+		child := &Node{ID: id, IsFolder: true, Size: 1}
+		parent.Children = []*Node{child}
+		parent = child
+	}
+	for _, padding := range []float64{2.5, 5, 10} {
+		// Include fractional device scales and zoom values to exercise rounding.
+		for scale := 0.5; scale <= 15; scale += 0.125 {
+			rects := ComputeTreemapRectsWithBoxPadding(root, 4000, 4000, scale, padding)
+			for _, outer := range rects {
+				for _, index := range outer.Children {
+					inner := rects[index]
+					stroke := math.Max(0.5, scale)
+					for _, gap := range []float64{inner.X - outer.X, inner.Y - outer.Y,
+						outer.X + outer.W - inner.X - inner.W, outer.Y + outer.H - inner.Y - inner.H} {
+						// Both borders together consume one stroke width. Allow a
+						// further pixel for antialiasing before the full color pixel.
+						if gap-stroke < 2 {
+							t.Fatalf("padding %g, scale %g, node %d: gap %g leaves insufficient color", padding, scale, inner.NodeID, gap)
+						}
+					}
+				}
+			}
+		}
+	}
+}
