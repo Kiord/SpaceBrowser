@@ -1669,6 +1669,7 @@ button:disabled:hover,
 #scanDialog { display: none; }
 .compact-scan-actions { display: flex; gap: 3px; margin-left: auto; }
 .compact-scan-actions[hidden] { display: none; }
+.compact-scan-actions button[hidden] { display: none; }
 .controls .compact-scan-actions button { display: grid; place-items: center; width: 20px; min-height: 18px; height: 18px; padding: 0; }
 .compact-scan-actions svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; }
 .controls #compactCancelScanButton { color: #6f211e; background: #fff0ee; border-color: #d7aaa6; }

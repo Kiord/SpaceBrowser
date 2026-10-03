@@ -40,7 +40,7 @@ func queuedFixture(t *testing.T) (*App, string, func()) {
 	return a, root, release
 }
 
-func TestQueuePauseAdvancesNextJobAndKeepsSnapshotsIsolated(t *testing.T) {
+func TestNewScanPausesCurrentJobAndKeepsSnapshotsIsolated(t *testing.T) {
 	a, firstPath, release := queuedFixture(t)
 	first, err := a.QueueScan(firstPath)
 	if err != nil {
@@ -60,14 +60,9 @@ func TestQueuePauseAdvancesNextJobAndKeepsSnapshotsIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.State != "queued" {
-		t.Fatal("second job did not queue")
+	if second.State != "running" {
+		t.Fatal("second job did not take priority")
 	}
-	duplicate, _ := a.QueueScan(secondPath)
-	if duplicate.ID != second.ID {
-		t.Fatal("duplicate active path queued twice")
-	}
-	a.SetScanJobPaused(first.ID, true)
 	waitJob(t, a, second.ID, "completed")
 	release()
 	waitJob(t, a, first.ID, "paused")
@@ -93,7 +88,7 @@ func TestQueuePauseAdvancesNextJobAndKeepsSnapshotsIsolated(t *testing.T) {
 	}
 }
 
-func TestQueueCancellationRestoresBeforeTreeAndSkipsCancelledQueueEntry(t *testing.T) {
+func TestQueueCancellationRestoresBeforeTreeAndAllowsNextScan(t *testing.T) {
 	a, path, release := queuedFixture(t)
 	baseline := &Node{ID: 0, FullPath: "previous", IsFolder: true}
 	a.store.Replace(baseline, []*Node{baseline}, 0, 1)
@@ -103,12 +98,14 @@ func TestQueueCancellationRestoresBeforeTreeAndSkipsCancelledQueueEntry(t *testi
 	case <-time.After(5 * time.Second):
 		t.Fatal("not started")
 	}
-	second, _ := a.QueueScan(t.TempDir())
+	second, _ := a.QueueScan(path)
+	if second.ID != first.ID {
+		t.Fatal("duplicate active path created another scan")
+	}
 	a.CancelScanJob(second.ID)
 	waitJob(t, a, second.ID, "cancelled")
 	third, _ := a.QueueScan(t.TempDir())
 	a.SelectScanJob(first.ID)
-	a.CancelScanJob(first.ID)
 	view, err := a.GetScanJobView(first.ID)
 	if err != nil || !view.Restored || a.store.root != baseline {
 		t.Fatalf("cancel did not restore baseline: %+v %v", view, err)
@@ -120,21 +117,22 @@ func TestQueueCancellationRestoresBeforeTreeAndSkipsCancelledQueueEntry(t *testi
 	release()
 }
 
-func TestContinuePausedJobWaitsForRunningJob(t *testing.T) {
-	a, path, release := queuedFixture(t)
-	first, _ := a.QueueScan(path)
-	select {
-	case <-a.filesystem.(*blockingReadDirPlatform).entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("not started")
+func TestContinuePausedJobPreemptsRunningJob(t *testing.T) {
+	a := &App{}
+	q := a.jobQueue()
+	first := &scanJob{info: ScanJobInfo{ID: 1, State: "running"}, pause: &scanPause{}, started: true}
+	second := &scanJob{info: ScanJobInfo{ID: 2, State: "paused"}, pause: &scanPause{}, started: true}
+	second.pause.set(true)
+	q.jobs, q.running = []*scanJob{first, second}, 1
+	a.SetScanJobPaused(2, false)
+	if first.info.State != "paused" || second.info.State != "running" || q.running != 2 {
+		t.Fatalf("resume did not take priority: %s, %s", first.info.State, second.info.State)
 	}
-	second, _ := a.QueueScan(t.TempDir())
-	a.SetScanJobPaused(second.ID, true)
-	a.SetScanJobPaused(second.ID, false)
-	if jobs := a.GetScanJobs(); jobs[1].State != "queued" || jobs[0].State != "running" {
-		t.Fatalf("bad states: %+v", jobs)
+	if !first.pause.paused.Load() || second.pause.paused.Load() {
+		t.Fatal("worker pause gates did not follow the priority switch")
 	}
-	release()
-	waitJob(t, a, first.ID, "completed")
-	waitJob(t, a, second.ID, "completed")
+	a.SetScanJobPaused(1, false)
+	if second.info.State != "paused" || first.info.State != "running" || q.running != 1 {
+		t.Fatal("switching back did not pause the other scan")
+	}
 }

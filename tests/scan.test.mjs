@@ -12,7 +12,7 @@ async function harness() {
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
   const jobs = [], calls = [], errors = [], timers = new Map();
-  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [];
+  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile;
   const view = id => {
     const job = jobs.find(job => job.id === id);
     return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds };
@@ -20,7 +20,8 @@ async function harness() {
   const backend = {
     QueueScan: async path => {
       calls.push(['queue', path]);
-      const job = { id: jobs.length + 1, path, state: jobs.some(job => job.state === 'running') ? 'queued' : 'running', progress: {}, revision: 0 };
+      for (const job of jobs) if (job.state === 'running') job.state = 'paused';
+      const job = { id: jobs.length + 1, path, state: 'running', progress: {}, revision: 0 };
       jobs.push(job); return job;
     },
     QueueFolderRefresh: async (targets, tracked) => { calls.push(['refresh', targets, tracked]); const job = await backend.QueueScan(state.scanRootPath); job.partial = true; return job; },
@@ -39,25 +40,26 @@ async function harness() {
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './logging.js': { logError: (...args) => errors.push(args) },
-    './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value) { tileJobs = value; } },
-    './scan-status.js': { pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus() {} },
+    './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory) { tileJobs = value; factory(); } },
+    './scan-status.js': { pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
   return { ui, jobs, state, element, calls, errors, backend, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
+    refreshTile: job => refreshTile(job),
     async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); await fn(); },
     preview(index, count = 3) { Object.assign(jobs[index], { tree: { rootId: 0, fileCount: count, dirCount: 1 }, revision: jobs[index].revision + 1, progress: { fileCount: count, dirCount: 1 } }); },
     complete(index) { this.preview(index); jobs[index].state = 'completed'; },
   };
 }
 
-test('a second scan is queued without cancelling the first', async () => {
+test('a second scan takes priority without cancelling the first', async () => {
   const h = await harness();
   await h.ui.analyze();
   h.element('pathInput').value = '/two';
   await h.ui.analyze();
-  assert.deepEqual(h.jobs.map(job => job.state), ['running', 'queued']);
+  assert.deepEqual(h.jobs.map(job => job.state), ['paused', 'running']);
   assert.equal(h.calls.some(call => call[0] === 'cancel'), false);
   assert.equal(h.state.scanRootPath, '/two');
 });
@@ -109,6 +111,17 @@ test('cancelling from Home hides progress and clicking the tile starts a fresh s
   assert.equal(h.jobs[0].state, 'cancelled');
   assert.equal(h.jobs[1].state, 'running');
   assert.equal(h.state.homeVisible, false);
+  assert.deepEqual(h.errors, []);
+});
+
+test('Home refresh rescans the completed tile path and pauses another active scan', async () => {
+  const h = await harness(); await h.ui.analyze(); h.complete(0); await h.poll();
+  h.element('pathInput').value = '/two'; await h.ui.analyze();
+  h.state.homeVisible = true;
+  await h.refreshTile(h.jobs[0]);
+  assert.deepEqual(h.jobs.map(job => [job.path, job.state]),
+    [['/one', 'completed'], ['/two', 'paused'], ['/one', 'running']]);
+  assert.equal(h.state.homeVisible, true);
   assert.deepEqual(h.errors, []);
 });
 

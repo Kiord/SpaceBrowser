@@ -74,7 +74,8 @@ async function cancelJob(job) {
 
 function presentJobs() {
   AppState.scanInProgress = jobs.some(pendingScan);
-  setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob));
+  setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
+    job => enqueue(() => QueueScan(job.path))));
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();

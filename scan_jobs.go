@@ -97,6 +97,7 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	defer q.mu.Unlock()
 	for _, job := range q.jobs {
 		if canonicalCachePath(job.info.Path) == canonicalCachePath(path) && pendingJob(job.info.State) {
+			q.activateLocked(job)
 			info := q.infoLocked(job)
 			return &info
 		}
@@ -123,9 +124,25 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	q.jobs = append(q.jobs, job)
 	q.queueClock++
 	job.queueOrder = q.queueClock
-	q.scheduleLocked()
+	q.activateLocked(job)
 	info := q.infoLocked(job)
 	return &info
+}
+
+// An explicit scan request takes priority. Interrupted jobs remain paused
+// until the user chooses to continue them.
+func (q *scanJobQueue) activateLocked(target *scanJob) {
+	for _, job := range q.jobs {
+		if job != target && (job.info.State == "running" || job.info.State == "queued") {
+			job.pause.set(true)
+			job.info.State = "paused"
+		}
+	}
+	if target.info.State != "running" {
+		target.info.State = "queued"
+		q.running = 0
+	}
+	q.scheduleLocked()
 }
 
 func (q *scanJobQueue) scheduleLocked() {
@@ -234,10 +251,9 @@ func (a *App) SetScanJobPaused(id uint64, paused bool) {
 			if q.running == id {
 				q.running = 0
 			}
-		} else if !paused && job.info.State == "paused" {
-			job.info.State = "queued"
-			q.queueClock++
-			job.queueOrder = q.queueClock
+		} else if !paused {
+			q.activateLocked(job)
+			return
 		}
 		q.scheduleLocked()
 		return
