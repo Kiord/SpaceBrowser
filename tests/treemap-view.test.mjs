@@ -10,6 +10,8 @@ async function harness() {
   for (const name of ["color", "id", "hover", "tmp", "mask", "flash"]) {
     state[`${name}Ctx`] = { clearRect: noop, strokeRect: noop, save: noop, restore: noop, drawImage: noop,
       beginPath: noop, rect: noop, clip: noop,
+      measureText: text => ({ width: text.length * 6, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+      fillText(text, x, y) { painted.push({ name, text, x, y }); },
       getImageData: x => ({ data: [0, 0, x + 1, 255] }),
       fillRect(...args) { painted.push({ name, args, fill: this.fillStyle }); } };
     state[`${name}Canvas`] = { ...eventTarget(), width: 800, height: 600, style: {},
@@ -245,4 +247,22 @@ test('scan markers show animated dots for pending nodes and ticks for ready node
   assert.equal(h.ui.scanStatusMarker(small), ' \u2713');
   h.state.liveScanPreview = false;
   for (const node of h.state.rects) assert.equal(h.ui.scanStatusMarker(node), '');
+});
+
+
+test('free-space scan message retains counts and returns to normal after completion', async () => {
+  const h = await harness();
+  Object.assign(h.state, { liveScanPreview: true, scanDots: '..', fileCount: 12, dirCount: 3 });
+  const free = { ...rect(1), w: 400, h: 200, is_free_space: true, scan_incomplete: true, size: 50, disk_total: 100 };
+  async function labels() {
+    h.painted.length = 0;
+    const draw = h.ui.redraw();
+    h.requests.at(-1).resolve([free]);
+    await draw;
+    return h.painted.filter(paint => paint.text).map(paint => paint.text);
+  }
+  assert.deepEqual(await labels(), ['Scan in progress ..', 'Files: 12', 'Folders: 3']);
+  h.state.liveScanPreview = false;
+  free.scan_incomplete = false;
+  assert.deepEqual(await labels(), ['Free Space: 50.0%', '50 Free', 'Files: 12', 'Folders: 3']);
 });

@@ -376,10 +376,12 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);
     const lines = [
-      {text:`Free Space: ${percent.toFixed(1)}%${scanStatusMarker(rect)}`,
-        layoutText: AppState.liveScanPreview && rect.scan_incomplete ? `Free Space: ${percent.toFixed(1)}% ...` : undefined,
-        ellipsize:false},
-      {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
+      ...(AppState.liveScanPreview ? [
+        {text:`Scan in progress ${AppState.scanDots || "."}`, layoutText:"Scan in progress ...", ellipsize:false},
+      ] : [
+        {text:`Free Space: ${percent.toFixed(1)}%`, ellipsize:false},
+        {text:`${formatSize(rect.size || 0, 1)} Free`, ellipsize:false},
+      ]),
       {text:`Files: ${fileCount}`, ellipsize:false},
       {text:`Folders: ${dirCount}`, ellipsize:false}
     ];
