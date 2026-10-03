@@ -76,7 +76,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const initialPath = await GetInitialScanPath();
     const startPath = initialPath || await DefaultPath();
     if (startPath) byId("pathInput").value = startPath;
-    if (initialPath) await analyze();
+    if (initialPath) {
+      hideLocationSelector();
+      await analyze();
+    }
   } catch (error) {
     logError("loading initial path failed:", error);
   }

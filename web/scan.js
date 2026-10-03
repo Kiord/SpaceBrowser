@@ -7,7 +7,7 @@ import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logError } from "./logging.js";
 import { hideLocationSelector, showLocationSelector, setLocationScanJobs } from "./locations.js";
-import { pendingScan, updateScanStatus, createTileScanStatus } from "./scan-status.js";
+import { pendingScan, updateScanStatus, createTileScanStatus, refreshScanIcon } from "./scan-status.js";
 
 let redraw = async () => {};
 let repaintScanLabels = () => {};
@@ -257,7 +257,13 @@ export function initScan(options) {
   hideContextMenu = options.hideContextMenu;
   toolbar = { container: byId("compactScanStatus"), time: byId("compactScanTime"), percent: byId("compactScanPercent"),
     bar: byId("compactScanBar"), progress: byId("compactScanProgress"), actions: byId("compactScanActions"),
-    pause: byId("pauseScanButton"), icon: byId("pauseScanIcon") };
+    pause: byId("pauseScanButton"), icon: byId("pauseScanIcon"),
+    refresh: byId("compactRefreshScanButton"), cancel: byId("compactCancelScanButton") };
+  toolbar.refresh.innerHTML = refreshScanIcon;
+  toolbar.refresh.addEventListener("click", () => {
+    const job = jobs.find(item => item.id === selectedID);
+    if (job?.state === "completed") return enqueue(() => QueueScan(job.path));
+  });
   byId("analyzeButton").addEventListener("click", analyze);
   byId("pauseScanButton").addEventListener("click", () => {
     const job = jobs.find(item => item.id === selectedID); if (job) return changePause(job);

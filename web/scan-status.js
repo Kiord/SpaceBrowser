@@ -1,5 +1,7 @@
 import { formatDuration } from "./format.js";
 
+export const refreshScanIcon = '<svg viewBox="0 0 15 15" aria-hidden="true"><path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5"></path></svg>';
+
 export const pendingScan = job => ["queued", "running", "paused"].includes(job?.state);
 
 export function updateScanStatus(refs, job) {
@@ -45,7 +47,8 @@ export function createTileScanStatus(onPause, onCancel, onRefresh) {
   refs.refresh.hidden = true;
   refs.refresh.setAttribute("aria-label", "Rescan location");
   refs.refresh.setAttribute("data-tooltip", "Rescan location");
-  refs.refresh.innerHTML = '<svg viewBox="0 0 15 15" aria-hidden="true"><path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5"></path></svg>';
+  refs.refresh.innerHTML = refreshScanIcon;
+  refs.refresh.className = "scan-refresh-button";
   refs.actions.append(refs.refresh);
   let current;
   refs.refresh.addEventListener("click", () => current?.state === "completed" && onRefresh(current));

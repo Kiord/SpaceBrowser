@@ -41,7 +41,7 @@ async function harness() {
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './logging.js': { logError: (...args) => errors.push(args) },
     './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory) { tileJobs = value; factory(); } },
-    './scan-status.js': { pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; } },
+    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
@@ -123,6 +123,16 @@ test('Home refresh rescans the completed tile path and pauses another active sca
     [['/one', 'completed'], ['/two', 'paused'], ['/one', 'running']]);
   assert.equal(h.state.homeVisible, true);
   assert.deepEqual(h.errors, []);
+});
+
+test('toolbar refresh uses the completed scan path and keeps the treemap visible', async () => {
+  const h = await harness(); await h.ui.analyze(); h.complete(0); await h.poll();
+  h.element('pathInput').value = '/unrelated-input';
+  await h.element('compactRefreshScanButton').handlers.click();
+  assert.deepEqual(h.jobs.map(job => [job.path, job.state]), [['/one', 'completed'], ['/one', 'running']]);
+  assert.equal(h.state.homeVisible, false);
+  await h.element('compactRefreshScanButton').handlers.click();
+  assert.equal(h.jobs.length, 2);
 });
 
 test('opening a cancelled rescan tile reuses its earlier completed scan', async () => {
