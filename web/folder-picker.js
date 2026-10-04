@@ -6,7 +6,7 @@ import { AppState } from "./state.js";
 
 export async function chooseFolder({ focusInput = true } = {}) {
   if (AppState.pickingFolderDialogIsOpen) return "";
-  const buttons = [byId("triggerFolderSelectButton"), document.getElementById("chooseLocationFolderButton")].filter(Boolean);
+  const buttons = [byId("triggerFolderSelectButton")];
   const previousDisabledStates = buttons.map(button => button.disabled);
   try {
     buttons.forEach(button => { button.disabled = true; });

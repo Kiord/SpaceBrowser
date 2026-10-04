@@ -6,25 +6,27 @@ async function harness() {
   const { byId } = dom();
   const window = eventTarget();
   const calls = [];
+  let created = 0;
   // History methods record browser requests; popstate is delivered explicitly
   // by tests, just as the browser delivers it after a traversal.
   window.history = Object.fromEntries(["replaceState", "pushState", "back", "forward", "go"].map(name =>
     [name, (...args) => calls.push({ name, args })]));
   const state = { node_id: 0, navHistory: [0], navIndex: 0, navSession: 1, browserHistoryPosition: 0, rects: [{}] };
+  const appearance = { cornerRadius: 2, boxPadding: 5, reliefStrength: .2, hoverBrightness: .1 };
   let redraws = 0;
   let setFreeSpace = async () => {};
   const ui = await loadUI("navigation.js", {
     "./wailsjs/go/main/App.js": { SetShowFreeSpace: value => setFreeSpace(value) },
     "./dom.js": { byId },
     "./controls.js": { addControlEventListeners: noop, eventMatchesShortcut: noop, shortcutCanRun: noop },
-    "./logging.js": { logError: noop }, "./state.js": { AppState: state },
-  }, { window });
+    "./logging.js": { logError: noop }, "./state.js": { AppState: state, AppearanceState: appearance, activePalette: () => ["#ffffff", "#70d6ff"] },
+  }, { window, document: { createElement: () => byId(`created-${++created}`) } });
   ui.initNavigation({ redraw: () => { redraws++; }, hideHome: () => { state.homeVisible = false; } });
-  return { ui, byId, window, state, calls, redraws: () => redraws,
+  return { ui, byId, window, state, calls, appearance, redraws: () => redraws,
     select: rect => { state.rects = rect == null ? [] : Array.isArray(rect) ? rect : [rect]; state.selectedNodeIds = new Set(state.rects.map(item => item.node_id)); }, failToggle: () => { setFreeSpace = async () => { throw new Error("failed"); }; } };
 }
 
-test("home ignores tree navigation but Back can reopen the current tree", async () => {
+test("home ignores all tree navigation, including Back", async () => {
   const h = await harness();
   h.ui.visit(1);
   h.state.homeVisible = true;
@@ -36,12 +38,86 @@ test("home ignores tree navigation but Back can reopen the current tree", async 
   assert.equal(h.calls.length, before);
   assert.equal(h.state.node_id, 1);
   h.ui.goBackward();
-  assert.equal(h.state.homeVisible, false);
+  assert.equal(h.state.homeVisible, true);
   h.state.homeVisible = true;
   h.state.node_id = null;
   h.ui.goBackward();
   assert.equal(h.calls.length, before);
   assert.equal(h.state.homeVisible, true);
+});
+
+test("breadcrumbs visit actual ancestors and survive live redraws without losing focus", async () => {
+  const h = await harness();
+  h.state.node_id = 5;
+  h.state.navHistory = [0, 5];
+  h.state.navIndex = 1;
+  h.state.rects = [{ node_id: 5, parent_id: 2, breadcrumbs: [
+    { node_id: 0, name: "scan", full_path: "C:\\scan" },
+    { node_id: 2, name: "parent", full_path: "C:\\scan\\parent" },
+    { node_id: 5, name: "child", full_path: "C:\\scan\\parent\\child" },
+  ] }];
+  h.ui.updateNavButtons();
+  const bar = h.byId("pathBreadcrumbs");
+  assert.deepEqual(bar.children.map(item => item.textContent), ["C:\\scan", "/", "parent", "/", "child"]);
+  assert.equal(bar.children[4].getAttribute("aria-current"), "location");
+  const parent = bar.children[2];
+  h.ui.updateNavButtons();
+  assert.equal(bar.children[2], parent);
+  assert.equal(parent.style["--crumb-color"], "#70d6ff");
+  h.appearance.cornerRadius = 6;
+  h.ui.updateNavButtons();
+  assert.equal(bar.children[2].style["--crumb-radius"], "6px");
+  await bar.children[2].emit("click");
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual(Array.from(h.state.navHistory), [0, 5, 2]);
+  h.state.homeVisible = true;
+  h.ui.updateNavButtons();
+  assert.equal(bar.hidden, true);
+  assert.equal(bar.children.length, 0);
+});
+
+test("breadcrumbs collapse to initials then boxes, and expand again when space returns", async () => {
+  const h = await harness();
+  const bar = h.byId("pathBreadcrumbs");
+  bar.hidden = false;
+  bar.clientWidth = 500;
+  for (const label of ["First directory", "Second directory", "Current folder"]) {
+    const item = h.byId(label);
+    item.className = "breadcrumb-item";
+    item.setAttribute("data-full-label", label);
+    item.setAttribute("aria-label", label);
+    bar.append(item);
+  }
+  Object.defineProperty(bar, "scrollWidth", { get: () => bar.children.reduce((sum, item) =>
+    sum + (item.getAttribute("data-compact") === "box" ? 8 : item.textContent.length * 8 + 10), 0) });
+  h.ui.fitBreadcrumbs(bar);
+  assert.equal(bar.children[0].textContent, "First directory");
+  bar.clientWidth = 80;
+  h.ui.fitBreadcrumbs(bar);
+  assert.deepEqual(bar.children.map(item => item.textContent), ["F", "S", "C"]);
+  bar.clientWidth = 30;
+  h.ui.fitBreadcrumbs(bar);
+  assert.deepEqual(bar.children.map(item => item.textContent), ["", "", ""]);
+  assert.ok(bar.scrollWidth <= bar.clientWidth);
+  assert.equal(bar.children[0].getAttribute("aria-label"), "First directory");
+  bar.clientWidth = 15;
+  h.ui.fitBreadcrumbs(bar);
+  assert.ok(bar.scrollWidth > bar.clientWidth);
+  bar.clientWidth = 500;
+  h.ui.fitBreadcrumbs(bar);
+  assert.equal(bar.children[0].textContent, "First directory");
+});
+
+test("scan root button is disabled after returning to root through a new history entry", async () => {
+  const h = await harness();
+  h.ui.visit(2);
+  h.ui.updateNavButtons();
+  assert.equal(h.byId("rootButton").disabled, false);
+  h.ui.goToRoot();
+  h.ui.updateNavButtons();
+  assert.equal(h.state.navIndex, 2);
+  assert.equal(h.byId("rootButton").disabled, true);
+  assert.equal(h.byId("backwardButton").disabled, false);
 });
 
 test("back and forward restore matching history entries", async () => {
@@ -217,16 +293,16 @@ test('home has no enabled navigation after cancelling an initial scan', async ()
 });
 
 
-test('Back from Home restores the current scan view without changing selection or history', async () => {
+test('Back on Home leaves the current scan, selection and history untouched', async () => {
   const h = await harness();
   Object.assign(h.state, { homeVisible: true, node_id: 7, navHistory: [0, 7], navIndex: 1, selectedNodeIds: new Set([9]) });
   h.ui.updateNavButtons();
   assert.equal(h.byId('homeButton').disabled, true);
-  assert.equal(h.byId('backwardButton').disabled, false);
+  assert.equal(h.byId('backwardButton').disabled, true);
   assert.equal(h.byId('rootButton').disabled, true);
   h.ui.goBackward();
-  assert.equal(h.state.homeVisible, false);
+  assert.equal(h.state.homeVisible, true);
   assert.equal(h.state.node_id, 7);
   assert.deepEqual([...h.state.selectedNodeIds], [9]);
-  assert.equal(h.redraws(), 1);
+  assert.equal(h.redraws(), 0);
 });

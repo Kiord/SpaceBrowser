@@ -1,6 +1,5 @@
 import { GetScanLocations } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
-import { chooseFolder } from "./folder-picker.js";
 import { logError } from "./logging.js";
 import { formatSize } from "./format.js";
 
@@ -139,13 +138,13 @@ async function loadLocations() {
     status.hidden = tiles.size > 0;
     status.textContent = tiles.size > 0
       ? ""
-      : "No available locations were found. You can still choose a folder above.";
+      : "No available locations were found. You can still choose a folder below.";
   } catch (error) {
     if (generation !== loadGeneration) return;
     logError("loading scan locations failed:", error);
     renderScanJobs();
     status.hidden = tiles.size > 0;
-    status.textContent = "Locations could not be loaded. You can still choose a folder above.";
+    status.textContent = "Locations could not be loaded. You can still choose a folder below.";
   } finally {
     if (generation === loadGeneration) byId("refreshLocationsButton").disabled = false;
   }
@@ -168,11 +167,5 @@ export function initLocationSelector(options) {
   analyzeLocation = options.analyze;
   visibilityChanged = options.visibilityChanged || (() => {});
   byId("refreshLocationsButton").addEventListener("click", loadLocations);
-  byId("chooseLocationFolderButton").addEventListener("click", async () => {
-    const path = await chooseFolder({ focusInput: false });
-    if (!path) return;
-    hideLocationSelector();
-    await analyzeLocation();
-  });
   showLocationSelector({ refresh: true });
 }

@@ -114,7 +114,8 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 		profile.UseCache = false
 	}
 	worker := &App{ctx: ctx, logger: q.app.logger, filesystem: q.app.filesystem, desktop: q.app.desktop,
-		locations: q.app.locations, scanCache: q.app.scanCache, profile: profile, initialPause: pause}
+		locations: q.app.locations, scanCache: q.app.scanCache, profile: profile, initialPause: pause,
+		defaultSettingsPath: q.app.GetDefaultSettingsPath()}
 	previous := q.app.store.sharedSnapshot()
 	if len(targets) > 0 {
 		worker.store.restoreState(previous)

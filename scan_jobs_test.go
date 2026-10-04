@@ -40,6 +40,34 @@ func queuedFixture(t *testing.T) (*App, string, func()) {
 	return a, root, release
 }
 
+func TestQueuedWorkerCanSaveReportsInDefaultConfigLocation(t *testing.T) {
+	defaultPath := filepath.Join(t.TempDir(), "settings.json")
+	a := newAppWithPaths(filepath.Join(t.TempDir(), "custom.json"), defaultPath)
+	t.Cleanup(func() { a.Shutdown(nil) })
+	path := t.TempDir()
+	job, err := a.QueueScan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, a, job.ID, "completed")
+	q := a.jobQueue()
+	q.mu.Lock()
+	worker := q.jobs[0].worker
+	q.mu.Unlock()
+	details := testScanReportDetails(time.Now())
+	info := worker.persistScanReport(path, details.StartedAt, details.Duration, details.Profile,
+		details.Report, details.Files, details.Folders, details.Bytes)
+	if info == nil || info.SaveError != "" {
+		t.Fatalf("queued worker could not save report: %+v", info)
+	}
+	if filepath.Dir(info.ReportPath) != filepath.Join(filepath.Dir(defaultPath), "logs") {
+		t.Fatalf("report saved outside default config location: %s", info.ReportPath)
+	}
+	if _, err := os.Stat(info.ReportPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNewScanPausesCurrentJobAndKeepsSnapshotsIsolated(t *testing.T) {
 	a, firstPath, release := queuedFixture(t)
 	first, err := a.QueueScan(firstPath)

@@ -232,8 +232,8 @@ function showScanWarning(report) {
   saveError.hidden = !report?.saveError;
   saveError.textContent = report?.saveError
     ? scanReportPath
-      ? "The report was saved, but old-report cleanup was incomplete."
-      : "The scan report could not be saved."
+      ? `The report was saved, but a follow-up operation failed: ${report.saveError}`
+      : `The scan report could not be saved: ${report.saveError}`
     : "";
   const reportButton = byId("viewScanReportButton");
   reportButton.hidden = !scanReportPath;

@@ -60,7 +60,10 @@ export function dom() {
       const classes = new Set();
       elements.set(id, {
         ...eventTarget(), hidden: true, open: false, disabled: false, textContent: "", value: "",
-        style: { setProperty: noop },
+        children: [],
+        replaceChildren(...children) { this.children = children; },
+        append(...children) { this.children.push(...children); },
+        style: { setProperty(name, value) { this[name] = value; } },
         classList: { add: value => classes.add(value), remove: value => classes.delete(value), contains: value => classes.has(value),
           toggle(value, force = !classes.has(value)) { if (force) classes.add(value); else classes.delete(value); return force; } },
         setAttribute: (key, value) => attributes.set(key, String(value)),
