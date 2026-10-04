@@ -54,6 +54,8 @@ type ControlSettings struct {
 
 func defaultControlSettings() ControlSettings {
 	return ControlSettings{
+		Parent:        "Alt+ArrowUp",
+		Root:          "Ctrl+Alt+ArrowUp",
 		Open:          "Ctrl+O",
 		OpenWith:      "Ctrl+Shift+O",
 		VisitSelected: "Enter",
