@@ -21,13 +21,15 @@ export function updateScanStatus(refs, job) {
   refs.percent.hidden = !active || queued;
   refs.bar.style.setProperty("--scan-progress", `${fraction * 100}%`);
   refs.progress.setAttribute("aria-valuenow", String(Math.floor(fraction * 100)));
-  refs.actions.hidden = !active && !(done && refs.refresh);
+  refs.actions.hidden = false;
   if (refs.refresh) {
-    refs.refresh.hidden = !done;
-    refs.pause.hidden = !active;
-    refs.cancel.hidden = !active;
+    refs.refresh.hidden = false;
+    refs.refresh.disabled = !done;
   }
-  refs.pause.disabled = false;
+  refs.pause.hidden = false;
+  refs.pause.disabled = !active;
+  refs.cancel.hidden = false;
+  refs.cancel.disabled = !active;
   const label = paused ? "Continue scan" : "Pause scan";
   refs.pause.setAttribute("aria-label", label);
   refs.pause.setAttribute("data-tooltip", label);
@@ -44,7 +46,7 @@ export function createTileScanStatus(onPause, onCancel, onRefresh) {
   refs.cancel = container.querySelector('[data-scan="cancel"]');
   refs.refresh = document.createElement("button");
   refs.refresh.type = "button";
-  refs.refresh.hidden = true;
+  refs.refresh.disabled = true;
   refs.refresh.setAttribute("aria-label", "Rescan location");
   refs.refresh.setAttribute("data-tooltip", "Rescan location");
   refs.refresh.innerHTML = refreshScanIcon;
@@ -52,7 +54,7 @@ export function createTileScanStatus(onPause, onCancel, onRefresh) {
   refs.actions.append(refs.refresh);
   let current;
   refs.refresh.addEventListener("click", () => current?.state === "completed" && onRefresh(current));
-  refs.pause.addEventListener("click", () => current && onPause(current));
-  container.querySelector('[data-scan="cancel"]').addEventListener("click", () => current && onCancel(current));
+  refs.pause.addEventListener("click", () => pendingScan(current) && onPause(current));
+  refs.cancel.addEventListener("click", () => pendingScan(current) && onCancel(current));
   return { element: container, update(job) { current = job; updateScanStatus(refs, job); } };
 }
