@@ -10,6 +10,7 @@ const tiles = new Map();
 const knownLocations = new Map();
 let scanJobs = [];
 let createStatus;
+let selectedPath = "";
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
 
 function addLocation(location) {
@@ -25,9 +26,12 @@ function addLocation(location) {
   });
   byId("locationList").append(tile);
   tiles.set(key, { element: tile });
+  tile.setAttribute("data-selected", String(key === pathKey(selectedPath)));
 }
 
-export function setLocationScanJobs(jobs, statusFactory) {
+export function setLocationScanJobs(jobs, statusFactory, path = selectedPath) {
+  selectedPath = path;
+  for (const [key, tile] of tiles) tile.element.setAttribute("data-selected", String(key === pathKey(path)));
   scanJobs = jobs;
   createStatus = statusFactory;
   renderScanJobs();
@@ -57,8 +61,7 @@ const fallbackIcon = `
   </svg>`;
 
 async function openLocation(location) {
-  byId("pathInput").value = location.path;
-  await analyzeLocation();
+  await analyzeLocation(location.path);
 }
 
 function locationButton(location) {
@@ -138,29 +141,27 @@ async function loadLocations() {
     status.hidden = tiles.size > 0;
     status.textContent = tiles.size > 0
       ? ""
-      : "No available locations were found. You can still choose a folder below.";
+      : "No available locations were found. You can still enter a folder path above.";
   } catch (error) {
     if (generation !== loadGeneration) return;
     logError("loading scan locations failed:", error);
     renderScanJobs();
     status.hidden = tiles.size > 0;
-    status.textContent = "Locations could not be loaded. You can still choose a folder below.";
+    status.textContent = "Locations could not be loaded. You can still enter a folder path above.";
   } finally {
     if (generation === loadGeneration) byId("refreshLocationsButton").disabled = false;
   }
 }
 
 export function hideLocationSelector() {
-  byId("locationSelector").hidden = true;
+  byId("emptyLocation").hidden = true;
   visibilityChanged(false);
 }
 
 export function showLocationSelector({ refresh = false } = {}) {
-  const selector = byId("locationSelector");
-  const wasHidden = selector.hidden;
-  selector.hidden = false;
+  byId("emptyLocation").hidden = false;
   visibilityChanged(true);
-  if (refresh || (wasHidden && byId("locationList").childElementCount === 0)) loadLocations();
+  if (refresh) loadLocations();
 }
 
 export function initLocationSelector(options) {

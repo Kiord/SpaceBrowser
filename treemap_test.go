@@ -5,33 +5,6 @@ import (
 	"testing"
 )
 
-func TestLayoutBreadcrumbsFollowTreeParents(t *testing.T) {
-	root := &Node{ID: 0, ParentID: -1, Name: "scan", FullPath: "/scan", IsFolder: true, Size: 10}
-	parent := &Node{ID: 1, ParentID: 0, Name: "a", FullPath: "/scan/a", IsFolder: true, Size: 10}
-	child := &Node{ID: 2, ParentID: 1, Name: "b", FullPath: "/scan/a/b", IsFolder: true, Size: 10}
-	root.Children, parent.Children = []*Node{parent}, []*Node{child}
-	store := &TreeStore{}
-	store.Replace(root, []*Node{root, parent, child}, 0, 3)
-	for _, target := range []int{2, 0, 1} {
-		rects, err := store.Layout(target, 800, 600, 1, true)
-		if err != nil || len(rects) == 0 {
-			t.Fatalf("layout: %v", err)
-		}
-		crumbs := rects[0].Breadcrumbs
-		if len(crumbs) != target+1 {
-			t.Fatalf("target %d has %d breadcrumbs", target, len(crumbs))
-		}
-		for i, node := range []*Node{root, parent, child} {
-			if i > target {
-				break
-			}
-			if crumbs[i].NodeID != node.ID || crumbs[i].FullPath != node.FullPath || crumbs[i].Name != node.Name {
-				t.Fatalf("incorrect ancestor: %+v", crumbs[i])
-			}
-		}
-	}
-}
-
 func TestLayoutRowPlacesFreeSpaceAtOuterEdge(t *testing.T) {
 	regular := &Node{ID: 1, Name: "regular", Size: 50}
 	free := &Node{ID: -1, Name: "free", Size: 50, IsFreeSpace: true}

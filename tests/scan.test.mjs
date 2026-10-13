@@ -12,7 +12,7 @@ async function harness() {
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
   const jobs = [], calls = [], errors = [], timers = new Map();
-  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile;
+  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile;
   const view = id => {
     const job = jobs.find(job => job.id === id);
     return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds };
@@ -41,18 +41,46 @@ async function harness() {
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './logging.js': { logError: (...args) => errors.push(args) },
     './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory) { tileJobs = value; factory(); } },
-    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; } },
+    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
   return { ui, jobs, state, element, calls, errors, backend, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
+    pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
+    cancelTile: () => cancelTile(jobs.find(job => job.id === selected)),
     async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); await fn(); },
     preview(index, count = 3) { Object.assign(jobs[index], { tree: { rootId: 0, fileCount: count, dirCount: 1 }, revision: jobs[index].revision + 1, progress: { fileCount: count, dirCount: 1 } }); },
     complete(index) { this.preview(index); jobs[index].state = 'completed'; },
   };
 }
+
+test('selecting an unscanned location preserves the running scan and query input', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.preview(0); await h.poll();
+  h.state.node_id = 7;
+  h.element('pathInput').value = '/draft';
+  await h.ui.openLocation('/unscanned');
+  assert.equal(h.jobs.length, 1);
+  assert.equal(h.jobs[0].state, 'running');
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.element('pathInput').value, '/draft');
+  await h.ui.openLocation('/one');
+  assert.equal(h.state.node_id, 7);
+  assert.equal(h.element('pathInput').value, '/draft');
+});
+
+test('late location validation cannot replace the latest sidebar selection', async () => {
+  const h = await harness();
+  const slow = deferred();
+  h.backend.ValidateScanPath = path => path === '/slow' ? slow.promise : path;
+  const first = h.ui.openLocation('/slow');
+  await h.ui.openLocation('/latest');
+  slow.resolve('/slow'); await first;
+  assert.equal(h.state.scanRootPath, '/latest');
+  assert.equal(h.jobs.length, 0);
+});
 
 test('a second scan takes priority without cancelling the first', async () => {
   const h = await harness();
@@ -64,20 +92,20 @@ test('a second scan takes priority without cancelling the first', async () => {
   assert.equal(h.state.scanRootPath, '/two');
 });
 
-test('Home receives per-tile progress while the toolbar stays hidden', async () => {
+test('explicit scan opens its view and leaves progress on the sidebar', async () => {
   const h = await harness(); h.state.homeVisible = true;
   await h.ui.analyze();
-  assert.equal(h.state.homeVisible, true);
+  assert.equal(h.state.homeVisible, false);
   assert.equal(h.element('compactScanStatus').hidden, true);
   assert.equal(h.tileJobs().length, 1);
   h.preview(0); await h.poll();
   assert.equal(h.state.fileCount, 3);
-  assert.equal(h.state.homeVisible, true);
+  assert.equal(h.state.homeVisible, false);
 });
 
 test('opening a paused tile shows its snapshot without resuming or enqueueing', async () => {
   const h = await harness(); await h.ui.analyze(); h.preview(0); await h.poll();
-  await h.element('pauseScanButton').handlers.click();
+  await h.pauseTile();
   h.state.homeVisible = true;
   const queues = h.calls.filter(call => call[0] === 'queue').length;
   await h.ui.openLocation();
@@ -92,21 +120,24 @@ test('cancelling a live rescan restores the previous completed view and selectio
   const h = await harness(); await h.ui.analyze(); h.complete(0); await h.poll();
   Object.assign(h.state, { node_id: 7, navHistory: [0, 7], navIndex: 1, selectedNodeIds: new Set([9]) });
   h.element('pathInput').value = '/two'; await h.ui.analyze(); h.preview(1); await h.poll();
-  await h.element('compactCancelScanButton').handlers.click();
+  await h.cancelTile();
   assert.equal(h.state.scanRootPath, '/one');
   assert.equal(h.state.node_id, 7);
   assert.deepEqual([...h.state.selectedNodeIds], [9]);
   assert.equal(h.state.homeVisible, false);
 });
 
-test('cancelling from Home hides progress and clicking the tile starts a fresh scan', async () => {
+test('cancelled location requires an explicit scan action', async () => {
   const h = await harness(); await h.ui.analyze(); h.preview(0); await h.poll();
   h.state.homeVisible = true;
-  await h.element('compactCancelScanButton').handlers.click();
+  await h.cancelTile();
   assert.equal(h.state.homeVisible, true);
   assert.equal(h.element('compactScanStatus').hidden, true);
   assert.equal(h.jobs.length, 1);
   await h.ui.openLocation();
+  assert.equal(h.jobs.length, 1);
+  assert.equal(h.state.homeVisible, true);
+  await h.element("scanLocationButton").handlers.click();
   assert.equal(h.jobs.length, 2);
   assert.equal(h.jobs[0].state, 'cancelled');
   assert.equal(h.jobs[1].state, 'running');
@@ -121,25 +152,15 @@ test('Home refresh rescans the completed tile path and pauses another active sca
   await h.refreshTile(h.jobs[0]);
   assert.deepEqual(h.jobs.map(job => [job.path, job.state]),
     [['/one', 'completed'], ['/two', 'paused'], ['/one', 'running']]);
-  assert.equal(h.state.homeVisible, true);
-  assert.deepEqual(h.errors, []);
-});
-
-test('toolbar refresh uses the completed scan path and keeps the treemap visible', async () => {
-  const h = await harness(); await h.ui.analyze(); h.complete(0); await h.poll();
-  h.element('pathInput').value = '/unrelated-input';
-  await h.element('compactRefreshScanButton').handlers.click();
-  assert.deepEqual(h.jobs.map(job => [job.path, job.state]), [['/one', 'completed'], ['/one', 'running']]);
   assert.equal(h.state.homeVisible, false);
-  await h.element('compactRefreshScanButton').handlers.click();
-  assert.equal(h.jobs.length, 2);
+  assert.deepEqual(h.errors, []);
 });
 
 test('opening a cancelled rescan tile reuses its earlier completed scan', async () => {
   const h = await harness(); await h.ui.analyze(); h.complete(0); await h.poll();
   await h.ui.analyze(); h.preview(1); await h.poll();
   h.state.homeVisible = true;
-  await h.element('compactCancelScanButton').handlers.click();
+  await h.cancelTile();
   await h.ui.openLocation();
   assert.equal(h.jobs.length, 2);
   assert.deepEqual(h.calls.filter(call => call[0] === 'select').at(-1), ['select', 1]);
@@ -183,8 +204,10 @@ test('partial refresh requests collapse children and carry navigation and select
   assert.deepEqual(Array.from(request[2]), [1,2,0]);
 });
 
-test('opening a never-scanned tile queues its first scan', async () => {
+test('opening a never-scanned tile does not scan until explicitly requested', async () => {
   const h = await harness(); h.state.homeVisible = true;
   await h.ui.openLocation();
+  assert.equal(h.jobs.length, 0); assert.equal(h.state.homeVisible, true);
+  await h.element("scanLocationButton").handlers.click();
   assert.equal(h.jobs.length, 1); assert.equal(h.state.homeVisible, false);
 });

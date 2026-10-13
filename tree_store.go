@@ -200,22 +200,7 @@ func (s *TreeStore) LayoutWithBoxPadding(nodeID, width, height int, scale float6
 			sort.Slice(viewRoot.Children, func(i, j int) bool { return viewRoot.Children[i].Size > viewRoot.Children[j].Size })
 		}
 	}
-	rects := ComputeTreemapRectsWithBoxPadding(&viewRoot, float64(width), float64(height), scale, boxPadding)
-	if len(rects) > 0 {
-		var ancestors []Breadcrumb
-		for current := node; current != nil; {
-			ancestors = append(ancestors, Breadcrumb{NodeID: current.ID, Name: current.Name, FullPath: current.FullPath})
-			if current == s.root || current.ParentID < 0 || current.ParentID >= len(s.nodes) || len(ancestors) >= len(s.nodes) {
-				break
-			}
-			current = s.nodes[current.ParentID]
-		}
-		for i, j := 0, len(ancestors)-1; i < j; i, j = i+1, j-1 {
-			ancestors[i], ancestors[j] = ancestors[j], ancestors[i]
-		}
-		rects[0].Breadcrumbs = ancestors
-	}
-	return rects, nil
+	return ComputeTreemapRectsWithBoxPadding(&viewRoot, float64(width), float64(height), scale, boxPadding), nil
 }
 
 func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {

@@ -10,46 +10,22 @@
 </head>
 
 <body>
-  <div class="container">
-    <div class="controls" id="topbar" data-home="true">
-      <div class="home-scan-section">
-        <div class="home-section" aria-label="Application navigation">
-          <button id="homeButton" class="nav-button" type="button" aria-label="Home" data-tooltip="Home" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.2 12 4l9 7.2M5.5 10.2V20h13v-9.8M9.5 20v-6h5v6"></path></svg>
-          </button>
-        </div>
+  <div class="container workspace" id="workspace">
+    <div class="controls query-toolbar" id="topbar">
+      <button id="toggleLocationsButton" class="nav-button" type="button" aria-label="Hide locations" aria-expanded="true" aria-controls="locationSelector" data-tooltip="Hide locations">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"></rect><path d="M9 4v16M5 8h2M5 12h2"></path></svg>
+      </button>
+            <div class="input-group" id="pathGroup">
+              <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 8V5h7l2 3h9v11H3z"></path>
+                  <path d="M3 9h18"></path>
+                </svg>
+              </button>
 
-        <div class="scan-status-section">
-          <div id="compactScanStatus" class="compact-scan-status" hidden>
-            <div class="compact-scan-meter">
-              <div class="compact-scan-label">
-                <span id="compactScanTime">0:00</span><span id="compactScanPercent">0%</span>
-                <span id="compactScanActions" class="compact-scan-actions">
-                  <button id="pauseScanButton" type="button" aria-label="Pause scan" data-tooltip="Pause scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="pauseScanIcon" d="M8 5v14M16 5v14"></path></svg></button>
-                  <button id="compactCancelScanButton" type="button" aria-label="Cancel scan" data-tooltip="Cancel scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button>
-                  <button id="compactRefreshScanButton" class="scan-refresh-button" type="button" aria-label="Rescan location" data-tooltip="Rescan location" hidden></button>
-                </span>
-              </div>
-              <span id="compactScanProgress" class="compact-scan-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span id="compactScanBar" class="scan-progress-bar"></span></span>
+              <input type="text" id="pathInput" aria-label="Folder to scan" placeholder="Select or paste a folder path…" />
+              <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
             </div>
-          </div>
-          <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
-            <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3 22 21H2z"></path>
-                <path d="M12 9v6M12 18h.01"></path>
-              </svg>
-            </span>
-            <div class="scan-warning-popover" role="tooltip">
-              <strong>Scan completed with issues</strong>
-              <span id="scanWarningSummary"></span>
-              <span id="scanReportSaveError" class="scan-report-save-error" hidden></span>
-              <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <span class="control-separator" aria-hidden="true"></span>
       <div class="navigation-section" aria-label="Treemap navigation">
         <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Mouse Back" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -74,10 +50,7 @@
             <path d="M4 4h16M12 20V8m-5 5 5-5 5 5"></path>
           </svg>
         </button>
-        <nav id="pathBreadcrumbs" class="path-breadcrumbs" aria-label="Current folder" hidden></nav>
       </div>
-      <span class="control-separator" aria-hidden="true"></span>
-      <div class="right-group" aria-label="View controls">
         <button class="toggle-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" data-tooltip="Show or hide available disk space">Free space</button>
         <button class="nav-button" id="settingsButton" type="button" aria-label="Scan settings" data-tooltip="Scan settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
@@ -85,22 +58,28 @@
             <circle cx="12" cy="12" r="3"></circle>
           </svg>
         </button>
-      </div>
+          <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
+            <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3 22 21H2z"></path>
+                <path d="M12 9v6M12 18h.01"></path>
+              </svg>
+            </span>
+            <div class="scan-warning-popover" role="tooltip">
+              <strong>Scan completed with issues</strong>
+              <span id="scanWarningSummary"></span>
+              <span id="scanReportSaveError" class="scan-report-save-error" hidden></span>
+              <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
+            </div>
+          </div>
+
     </div>
-    
-    <div class="treemap-canvas-stack">
-      <canvas id="colorCanvas"></canvas>
-      <canvas id="hoverCanvas" aria-hidden="true"></canvas>
-      <canvas id="flashCanvas" aria-hidden="true"></canvas>
-      <canvas id="idCanvas" style="display: none"></canvas>
-      <canvas id="tmpCanvas" style="display: none"></canvas>
-      <canvas id="maskCanvas" style="display: none"></canvas>
       <section id="locationSelector" class="location-selector" aria-labelledby="locationSelectorTitle">
         <div class="location-selector-panel">
           <header class="location-selector-header">
             <div>
-              <h1 id="locationSelectorTitle">Select a location</h1>
-              <p>Choose a drive or mounted volume to scan.</p>
+              <h1 id="locationSelectorTitle">Locations</h1>
+              <p>Select to view. Scan when ready.</p>
             </div>
             <button id="refreshLocationsButton" class="location-refresh-button" type="button" aria-label="Refresh locations" data-tooltip="Refresh locations">
               <!-- Teenyicons refresh icon, MIT licensed; see THIRD_PARTY_NOTICES.md. -->
@@ -111,24 +90,24 @@
           </header>
           <div id="locationList" class="location-list"></div>
           <p id="locationStatus" class="location-status" role="status">Finding available locations...</p>
-          <div class="location-selector-actions">
-            <div class="input-group" id="pathGroup">
-              <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 8V5h7l2 3h9v11H3z"></path>
-                  <path d="M3 9h18"></path>
-                </svg>
-              </button>
-
-              <input type="text" id="pathInput" aria-label="Folder to scan" placeholder="Select or paste a folder path…" />
-              <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
-              <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none" />
-            </div>
-          </div>
         </div>
       </section>
-    </div>
-    
+    <main class="workspace-main">
+      <span id="currentLocation" class="current-location" aria-live="polite">No location selected</span>
+      <div class="treemap-canvas-stack">
+      <canvas id="colorCanvas"></canvas>
+      <canvas id="hoverCanvas" aria-hidden="true"></canvas>
+      <canvas id="flashCanvas" aria-hidden="true"></canvas>
+      <canvas id="idCanvas" style="display: none"></canvas>
+      <canvas id="tmpCanvas" style="display: none"></canvas>
+      <canvas id="maskCanvas" style="display: none"></canvas>
+        <section id="emptyLocation" class="empty-location">
+          <h1 id="emptyLocationTitle">Choose a location</h1>
+          <p id="emptyLocationHint">Select a location on the left, or enter a path above to scan.</p>
+          <button id="scanLocationButton" type="button" hidden>Scan this location</button>
+        </section>
+      </div>
+    </main>
   </div>
   <ul id="contextMenu" class="context-menu">
     <li data-action="refresh">

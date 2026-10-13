@@ -4,7 +4,7 @@ import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-ac
 import { initFolderPicker } from "./folder-picker.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
-import { initLocationSelector, showLocationSelector, hideLocationSelector } from "./locations.js";
+import { initLocationSelector, hideLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected, updateNavButtons } from "./navigation.js";
 import { analyze, openLocation, initScan, updateScanVisibility } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
@@ -40,12 +40,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateNavButtons();
     updateScanVisibility();
   } });
-  byId("homeButton").addEventListener("click", () => {
-    hideContextMenu();
-    showLocationSelector({ refresh: true });
-  });
   initFolderPicker();
   initZoom({ redraw });
+  byId("toggleLocationsButton").addEventListener("click", async () => {
+    const workspace = byId("workspace");
+    const collapsed = workspace.getAttribute("data-sidebar-collapsed") !== "true";
+    workspace.setAttribute("data-sidebar-collapsed", String(collapsed));
+    const button = byId("toggleLocationsButton");
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", collapsed ? "Show locations" : "Hide locations");
+    button.setAttribute("data-tooltip", collapsed ? "Show locations" : "Hide locations");
+    hideContextMenu();
+    resizeCanvas();
+    await redraw();
+  });
 
   window.addEventListener("keydown", event => {
     if (event.isComposing) return;

@@ -20,11 +20,11 @@ async function renderLocation(capacity) {
     "./dom.js": { byId }, "./folder-picker.js": { chooseFolder() {} },
     "./logging.js": { logError() {} }, "./format.js": { formatSize: size => `${size} B` },
   }, { document: { createElement: element } });
-  let scans = 0;
-  ui.initLocationSelector({ analyze: async () => { scans++; } });
+  let scans = 0, selectedPath;
+  ui.initLocationSelector({ analyze: async path => { scans++; selectedPath = path; } });
   await new Promise(resolve => setImmediate(resolve));
   const tile = byId("locationList").children[0].children[0];
-  return { ui, element, tile, usage: tile.children[1].children[2], byId, scans: () => scans };
+  return { ui, element, tile, usage: tile.children[1].children[2], byId, scans: () => scans, selectedPath: () => selectedPath };
 }
 
 for (const [used, level] of [[0, "normal"], [79.9, "normal"], [80, "warning"], [94.9, "warning"], [95, "critical"], [100, "critical"]]) {
@@ -36,7 +36,7 @@ for (const [used, level] of [[0, "normal"], [79.9, "normal"], [80, "warning"], [
     assert.ok(Math.abs(Number(bar.attributes['aria-valuenow']) - used) < 0.0001);
     assert.ok(Math.abs(parseFloat(bar.children[0].style['--scan-progress']) - used) < 0.0001);
     await h.tile.emit('click');
-    assert.equal(h.byId('pathInput').value, '/volume');
+    assert.equal(h.selectedPath(), '/volume');
     assert.equal(h.scans(), 1);
   });
 }
@@ -63,7 +63,7 @@ test('tile background and scan progress area open the location', async () => {
   for (const target of [tile, progress]) {
     target.closest = () => null;
     await tile.emit('click', { target });
-    assert.equal(h.byId('pathInput').value, '/volume');
+    assert.equal(h.selectedPath(), '/volume');
   }
   assert.equal(h.scans(), 2);
 });

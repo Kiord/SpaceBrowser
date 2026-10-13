@@ -21,20 +21,12 @@ type frame struct {
 	rect  int
 }
 
-// Breadcrumb identifies a folder in the current view's ancestor chain.
-type Breadcrumb struct {
-	NodeID   int    `json:"node_id"`
-	Name     string `json:"name"`
-	FullPath string `json:"full_path"`
-}
-
 // Rect is the draw-ready rectangle returned to the frontend.
 type Rect struct {
-	Breadcrumbs []Breadcrumb `json:"breadcrumbs,omitempty"`
-	X           float64      `json:"x"`
-	Y           float64      `json:"y"`
-	W           float64      `json:"w"`
-	H           float64      `json:"h"`
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	W float64 `json:"w"`
+	H float64 `json:"h"`
 
 	NodeID   int   `json:"node_id"`
 	ParentID *int  `json:"parent_id,omitempty"`

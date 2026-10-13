@@ -24,15 +24,28 @@ async function harness(rects, initialPath = "") {
     "./navigation.js": { initNavigation: noop, updateNavButtons: noop, navigateToSelected: () => calls.push(["visit"]) },
     "./scan.js": { analyze: () => calls.push(['scan', byId('pathInput').value, state.homeVisible]), openLocation: noop, initScan: noop, updateScanVisibility: noop },
     "./settings.js": { initSettings: noop, loadSettingsState: async () => {} },
-    "./treemap-view.js": { initTreemapView: noop, redraw: noop, resizeCanvas: noop, repaintScanLabels: noop },
+    "./treemap-view.js": { initTreemapView: noop, redraw: () => calls.push(['redraw']), resizeCanvas: () => calls.push(['resize']), repaintScanLabels: noop },
     "./zoom.js": { initZoom: noop },
     "./state.js": { AppState: state },
   }, { document, window });
   await document.emit("DOMContentLoaded");
   let prevented = false;
-  return { calls, state, prevented: () => prevented,
+  return { calls, state, byId, prevented: () => prevented,
     press: (extra = {}) => handlers[0]({ key: "Enter", preventDefault() { prevented = true; }, ...extra }) };
 }
+
+test('sidebar toggle resizes the treemap without navigating or starting a scan', async () => {
+  const h = await harness([]);
+  const button = h.byId('toggleLocationsButton');
+  await button.emit('click');
+  assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'true');
+  assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(h.calls, [['resize'], ['redraw']]);
+  await button.emit('click');
+  assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'false');
+  assert.equal(button.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(h.calls, [['resize'], ['redraw'], ['resize'], ['redraw']]);
+});
 
 test('CLI path opens the treemap before starting its scan', async () => {
   const h = await harness([], 'D:\\folder');

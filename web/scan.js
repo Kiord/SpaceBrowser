@@ -7,7 +7,7 @@ import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logError } from "./logging.js";
 import { hideLocationSelector, showLocationSelector, setLocationScanJobs } from "./locations.js";
-import { pendingScan, updateScanStatus, createTileScanStatus, refreshScanIcon } from "./scan-status.js";
+import { pendingScan, createTileScanStatus } from "./scan-status.js";
 
 let redraw = async () => {};
 let repaintScanLabels = () => {};
@@ -21,7 +21,7 @@ let nextSession = 0;
 let pollTimer = null;
 let polling = false;
 let queueRequest = false;
-let toolbar;
+let emptyPath = "";
 const views = new Map();
 const previousViews = new Map();
 const reportedFailures = new Set();
@@ -55,11 +55,16 @@ function applyJobState(job) {
 }
 
 export function updateScanVisibility() {
-  if (!toolbar) return;
-  byId("topbar").setAttribute("data-home", String(!!AppState.homeVisible));
   const job = jobs.find(item => item.id === selectedID);
-  if (job) updateScanStatus(toolbar, job);
-  toolbar.container.hidden = !!AppState.homeVisible || !job || job.state === "cancelled";
+  const pending = pendingScan(job);
+  byId("emptyLocation").hidden = AppState.node_id != null;
+  byId("scanLocationButton").hidden = AppState.node_id != null || !emptyPath || pending;
+  byId("emptyLocationTitle").textContent = emptyPath || "Choose a location";
+  byId("emptyLocationHint").textContent = pending
+    ? (AppState.scanPaused ? "Scan paused. Resume it from the sidebar." : "Scanning… the treemap will appear as files are found.")
+    : emptyPath
+    ? "No scan available. Start a scan to explore this location."
+    : "Select a location on the left, or enter a path above to scan.";
 }
 
 async function changePause(job) {
@@ -75,7 +80,7 @@ async function cancelJob(job) {
 function presentJobs() {
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
-    job => enqueue(() => QueueScan(job.path))));
+    job => enqueue(() => QueueScan(job.path))), AppState.scanRootPath || "");
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();
@@ -140,8 +145,8 @@ async function selectJob(id, reveal = true) {
     if (AppState.node_id != null) pushBrowserHistoryEntry(AppState.node_id, AppState.navIndex);
   }
   if (view) {
+    emptyPath = view.job.path;
     AppState.scanRootPath = view.job.path;
-    byId("pathInput").value = view.job.path;
     clearScanWarning();
   }
   if (reveal) hideLocationSelector();
@@ -180,8 +185,7 @@ async function enqueue(request) {
     if (!previousViews.has(job.id)) previousViews.set(job.id, previous);
     jobs = await GetScanJobs();
     presentJobs();
-    // Keep Home visible when adding another scan there. Its tile owns progress.
-    await selectJob(job.id, !previous.homeVisible);
+    await selectJob(job.id, true);
     await pollJobs();
   } catch (error) { showErrorToast(error); }
   finally { queueRequest = false; }
@@ -192,16 +196,27 @@ export async function analyze() {
   if (path) await enqueue(() => QueueScan(path));
 }
 
-export async function openLocation() {
+export async function openLocation(requestedPath = byId("pathInput").value?.trim()) {
+  const token = ++selectionToken;
   try {
-    const path = await ValidateScanPath(byId("pathInput").value?.trim());
-    jobs = await GetScanJobs();
+    const path = await ValidateScanPath(requestedPath);
+    const latestJobs = await GetScanJobs();
+    if (token !== selectionToken) return;
+    jobs = latestJobs;
     const related = jobs.filter(job => pathKey(job.path) === pathKey(path));
     const match = [...related].reverse().find(job => job.state !== "cancelled" && job.state !== "failed");
     if (match) { await selectJob(match.id); await pollJobs(); return; }
-    hideLocationSelector();
-    byId("pathInput").value = path;
-    await analyze();
+    if (selectedID != null) views.set(selectedID, captureView());
+    selectedID = null;
+    selectedKey = "";
+    selectionToken++;
+    clearView();
+    clearScanWarning();
+    AppState.scanRootPath = path;
+    AppState.liveScanPreview = false;
+    emptyPath = path;
+    showLocationSelector();
+    presentJobs();
   } catch (error) { showErrorToast(error); }
 }
 
@@ -255,21 +270,9 @@ export function initScan(options) {
   redraw = options.redraw;
   repaintScanLabels = options.repaintScanLabels || (() => {});
   hideContextMenu = options.hideContextMenu;
-  toolbar = { container: byId("compactScanStatus"), time: byId("compactScanTime"), percent: byId("compactScanPercent"),
-    bar: byId("compactScanBar"), progress: byId("compactScanProgress"), actions: byId("compactScanActions"),
-    pause: byId("pauseScanButton"), icon: byId("pauseScanIcon"),
-    refresh: byId("compactRefreshScanButton"), cancel: byId("compactCancelScanButton") };
-  toolbar.refresh.innerHTML = refreshScanIcon;
-  toolbar.refresh.addEventListener("click", () => {
-    const job = jobs.find(item => item.id === selectedID);
-    if (job?.state === "completed") return enqueue(() => QueueScan(job.path));
-  });
   byId("analyzeButton").addEventListener("click", analyze);
-  byId("pauseScanButton").addEventListener("click", () => {
-    const job = jobs.find(item => item.id === selectedID); if (job) return changePause(job);
-  });
-  byId("compactCancelScanButton").addEventListener("click", () => {
-    const job = jobs.find(item => item.id === selectedID); if (job) return cancelJob(job);
+  byId("scanLocationButton").addEventListener("click", () => {
+    if (emptyPath) return enqueue(() => QueueScan(emptyPath));
   });
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   addControlEventListeners(event => {
