@@ -43,10 +43,31 @@ test("Tab completes the first folder and blur or Escape dismiss pending suggesti
   assert.equal(h.input.value, '/alpha/');
   const second = await h.type('/b');
   await h.input.emit('blur');
-  h.requests[1].resolve(['/beta/']); await second.pending;
+  h.requests[2].resolve(['/beta/']); await second.pending;
   assert.equal(h.list.hidden, true);
   const third = await h.type('/c');
-  h.requests[2].resolve(['/charlie/']); await third.pending;
+  h.requests[3].resolve(['/charlie/']); await third.pending;
   assert.equal(await h.key('Escape'), true);
+  assert.equal(h.list.hidden, true);
+});
+
+
+test("accepting folders queries each next level for keyboard-only navigation", async () => {
+  const h = await harness();
+  const first = await h.type('/a');
+  h.requests[0].resolve(['/alpha/']); await first.pending;
+  await h.key('Tab');
+  assert.equal(h.requests[1].query, '/alpha/');
+  h.requests[1].resolve(['/alpha/one/', '/alpha/two/']);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.list.hidden, false);
+  await h.key('ArrowDown');
+  await h.key('ArrowDown');
+  await h.key('Tab');
+  assert.equal(h.input.value, '/alpha/two/');
+  assert.equal(h.requests[2].query, '/alpha/two/');
+  await h.key('Escape');
+  h.requests[2].resolve(['/alpha/two/child/']);
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.list.hidden, true);
 });

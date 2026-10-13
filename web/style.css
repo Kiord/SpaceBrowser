@@ -1803,7 +1803,8 @@ button:disabled:hover,
 .workspace .location-tile[data-selected="true"] { border-color: #63879c; background: #edf4f8; box-shadow: inset 3px 0 #63879c; }
 .query-toolbar .input-group { max-width: 620px; min-width: 0; margin-left: 10px; margin-right: 16px; }
 .query-toolbar { min-height: 40px; }
-.query-toolbar .navigation-section { flex: 0 0 auto; }
+.query-toolbar .navigation-section { flex: 0 0 auto; margin-left: auto; }
+.query-toolbar .settings-separator { flex: 0 0 1px; height: 22px; margin: 0 5px; background: #ccc; }
 .current-location { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .empty-location { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: #fff; }
 .empty-location[hidden] { display: none; }
