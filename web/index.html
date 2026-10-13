@@ -23,8 +23,26 @@
                 </svg>
               </button>
 
-              <input type="text" id="pathInput" aria-label="Folder to scan" placeholder="Select or paste a folder path…" />
+              <div class="path-query">
+              <input type="text" id="pathInput" aria-label="Folder to scan" placeholder="Select or paste a folder path…" role="combobox" aria-autocomplete="list" aria-controls="pathSuggestions" aria-expanded="false" autocomplete="off" />
+                <div id="pathSuggestions" class="path-suggestions" role="listbox" aria-label="Folder suggestions" hidden></div>
+              </div>
               <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
+          <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
+            <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3 22 21H2z"></path>
+                <path d="M12 9v6M12 18h.01"></path>
+              </svg>
+            </span>
+            <div class="scan-warning-popover" role="tooltip">
+              <strong>Scan completed with issues</strong>
+              <span id="scanWarningSummary"></span>
+              <span id="scanReportSaveError" class="scan-report-save-error" hidden></span>
+              <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
+            </div>
+          </div>
+
             </div>
       <div class="navigation-section" aria-label="Treemap navigation">
         <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Mouse Back" disabled>
@@ -58,20 +76,6 @@
             <circle cx="12" cy="12" r="3"></circle>
           </svg>
         </button>
-          <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
-            <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3 22 21H2z"></path>
-                <path d="M12 9v6M12 18h.01"></path>
-              </svg>
-            </span>
-            <div class="scan-warning-popover" role="tooltip">
-              <strong>Scan completed with issues</strong>
-              <span id="scanWarningSummary"></span>
-              <span id="scanReportSaveError" class="scan-report-save-error" hidden></span>
-              <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
-            </div>
-          </div>
 
     </div>
       <section id="locationSelector" class="location-selector" aria-labelledby="locationSelectorTitle">

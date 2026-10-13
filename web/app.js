@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("keydown", event => {
-    if (event.isComposing) return;
+    if (event.isComposing || event.defaultPrevented) return;
     if (event.key === "Enter" && document.activeElement === byId("pathInput")) {
       event.preventDefault();
       analyze();

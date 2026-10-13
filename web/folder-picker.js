@@ -1,3 +1,4 @@
+import { initPathAutocomplete } from "./path-autocomplete.js";
 import { PickFolder } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { logWarning } from "./logging.js";
@@ -33,5 +34,6 @@ export async function chooseFolder({ focusInput = true } = {}) {
 }
 
 export function initFolderPicker() {
+  initPathAutocomplete();
   byId("triggerFolderSelectButton").addEventListener("click", () => chooseFolder());
 }

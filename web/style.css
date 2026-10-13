@@ -1801,7 +1801,7 @@ button:disabled:hover,
 .workspace .location-selector-header p { font-size: 11px; }
 .workspace .location-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
 .workspace .location-tile[data-selected="true"] { border-color: #63879c; background: #edf4f8; box-shadow: inset 3px 0 #63879c; }
-.query-toolbar .input-group { max-width: none; min-width: 0; }
+.query-toolbar .input-group { max-width: 620px; min-width: 0; margin-left: 10px; margin-right: 16px; }
 .query-toolbar { min-height: 40px; }
 .query-toolbar .navigation-section { flex: 0 0 auto; }
 .current-location { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1813,3 +1813,15 @@ button:disabled:hover,
 .empty-location button:hover { background: #fff; border-color: #777; }
 .workspace .scan-warning-popover { right: 0; left: auto; }
 @media (max-width: 800px) { .container.workspace { grid-template-columns: 230px minmax(0, 1fr); } }
+
+/* The entire location tile owns hover; the nested opener stays transparent. */
+.location-tile .location-card:hover:not(:disabled),
+.location-tile .location-card:active:not(:disabled) { background: transparent; box-shadow: none; }
+.workspace .location-tile:hover { background: #fff; border-color: #858585; }
+.workspace .location-tile[data-selected="true"]:hover { background: #e2eef5; border-color: #52758c; }
+.path-query { position: relative; flex: 1; min-width: 0; }
+.path-query #pathInput { width: 100%; }
+.path-suggestions { position: absolute; top: calc(100% + 3px); left: 0; right: 0; max-height: 240px; overflow: auto; scrollbar-width: thin; padding: 3px; background: #fff; color: #333; border: 1px solid #aaa; border-radius: 2px; box-shadow: 0 2px 5px #0002; z-index: 30; font: 12px "Segoe UI", sans-serif; }
+.path-suggestions[hidden] { display: none; }
+.path-suggestions [role="option"] { padding: 5px 7px; white-space: nowrap; cursor: pointer; }
+.path-suggestions [role="option"]:hover, .path-suggestions [aria-selected="true"] { background: #e5edf3; }
