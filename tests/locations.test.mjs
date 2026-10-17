@@ -4,7 +4,7 @@ import { loadUI, eventTarget } from "./helpers/ui.mjs";
 
 async function renderLocation(capacity) {
   const element = () => ({
-    ...eventTarget(), children: [], dataset: {}, attributes: {}, hidden: true,
+    scrollIntoView() {}, ...eventTarget(), children: [], dataset: {}, attributes: {}, hidden: true,
     style: { setProperty(name, value) { this[name] = value; } },
     append(...children) { this.children.push(...children); },
     replaceChildren() { this.children = []; },
@@ -99,4 +99,31 @@ test('folder jobs get a separate tile with progress but no disk usage bar', asyn
 test('volume tile displays available hardware and filesystem details together', async () => {
   const h = await renderLocation({ mediaType: 'SSD', busType: 'NVMe', filesystem: 'NTFS' });
   assert.equal(h.tile.children[1].children[1].textContent, '/volume · SSD · NVMe · NTFS');
+});
+
+
+test('location cycling wraps in tile order and advances without waiting for opens', async () => {
+  const h = await renderLocation({});
+  h.ui.setLocationScanJobs([{ path: '/folder-a' }, { path: '/folder-b' }], null, '/volume');
+  for (const [direction, path] of [[1, '/folder-a'], [1, '/folder-b'], [1, '/volume'], [-1, '/folder-b'], [-1, '/folder-a']]) {
+    assert.equal(h.ui.cycleLocation(direction), true);
+    assert.equal(h.selectedPath(), path);
+  }
+  h.ui.setLocationScanJobs([], null, '/missing');
+  h.ui.cycleLocation(-1);
+  assert.equal(h.selectedPath(), '/folder-b');
+});
+
+
+test('scan updates do not reset the cursor during a held-Control cycle', async () => {
+  const h = await renderLocation({});
+  const jobs = [{ path: '/folder-a' }, { path: '/folder-b' }];
+  h.ui.setLocationScanJobs(jobs, null, '/volume');
+  h.ui.cycleLocation(1);
+  h.ui.setLocationScanJobs(jobs, null, '/volume');
+  h.ui.cycleLocation(1, true);
+  assert.equal(h.selectedPath(), '/folder-b');
+  h.ui.setLocationScanJobs(jobs, null, '/volume');
+  h.ui.cycleLocation(1, false);
+  assert.equal(h.selectedPath(), '/folder-a');
 });

@@ -11,6 +11,7 @@ const knownLocations = new Map();
 let scanJobs = [];
 let createStatus;
 let selectedPath = "";
+let cyclingPath = "";
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
 
 function addLocation(location) {
@@ -25,8 +26,24 @@ function addLocation(location) {
     return openLocation(location);
   });
   byId("locationList").append(tile);
-  tiles.set(key, { element: tile });
+  tiles.set(key, { element: tile, location });
   tile.setAttribute("data-selected", String(key === pathKey(selectedPath)));
+}
+
+// Map insertion order matches the visible top-to-bottom tile order.
+export function cycleLocation(direction, continuing = false) {
+  const entries = [...tiles.entries()];
+  if (!entries.length) return false;
+  const current = entries.findIndex(([key]) => key === pathKey(continuing ? cyclingPath : selectedPath));
+  const index = current < 0 ? (direction > 0 ? 0 : entries.length - 1)
+    : (current + direction + entries.length) % entries.length;
+  const [key, tile] = entries[index];
+  selectedPath = tile.location.path;
+  cyclingPath = selectedPath;
+  for (const [otherKey, other] of entries) other.element.setAttribute("data-selected", String(otherKey === key));
+  tile.element.scrollIntoView({ block: "nearest" });
+  void openLocation(tile.location);
+  return true;
 }
 
 export function setLocationScanJobs(jobs, statusFactory, path = selectedPath) {

@@ -1,3 +1,4 @@
+import { initLocationShortcuts } from "./location-shortcuts.js";
 import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/main/App.js";
 import { byId } from "./dom.js";
 import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-actions.js";
@@ -42,9 +43,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } });
   initFolderPicker();
   initZoom({ redraw });
-  const toggleLocations = async () => {
+  const locationsCollapsed = () => byId("workspace").getAttribute("data-sidebar-collapsed") === "true";
+  const setLocationsCollapsed = async collapsed => {
     const workspace = byId("workspace");
-    const collapsed = workspace.getAttribute("data-sidebar-collapsed") !== "true";
     workspace.setAttribute("data-sidebar-collapsed", String(collapsed));
     const button = byId("toggleLocationsButton");
     button.setAttribute("aria-expanded", String(!collapsed));
@@ -53,6 +54,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     hideContextMenu();
     resizeCanvas();
     await redraw();
+  };
+  const locationShortcuts = initLocationShortcuts({ isCollapsed: locationsCollapsed, setCollapsed: setLocationsCollapsed });
+  const toggleLocations = () => {
+    locationShortcuts.cancelPreview();
+    return setLocationsCollapsed(!locationsCollapsed());
   };
   byId("toggleLocationsButton").addEventListener("click", toggleLocations);
 
