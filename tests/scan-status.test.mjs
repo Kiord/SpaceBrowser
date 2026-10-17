@@ -62,3 +62,13 @@ test('completed tile exposes a refresh action for its current job only', async (
   await refresh.emit('click');
   assert.deepEqual(refreshed, [1]);
 });
+
+
+test('evicted scan hides its old progress bar and retains rescan control', async () => {
+  const ui = await loadUI('scan-status.js', { './format.js': { formatDuration: String } });
+  const refs = Object.fromEntries(['container','time','percent','bar','progress','actions','pause','cancel','refresh','icon'].map(name => [name, element()]));
+  ui.updateScanStatus(refs, { state: 'completed', evicted: true });
+  assert.equal(refs.time.textContent, 'Scan released');
+  assert.equal(refs.progress.hidden, true);
+  assert.equal(refs.refresh.disabled, false);
+});

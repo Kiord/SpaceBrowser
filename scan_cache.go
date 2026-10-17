@@ -12,11 +12,7 @@ import (
 	"sync"
 )
 
-const (
-	maximumInMemoryScanCaches = 3
-	maximumInMemoryCacheNodes = 2_500_000
-	maximumUnobservedSubtrees = 4096
-)
+const maximumUnobservedSubtrees = 4096
 
 type scanCacheProfile struct {
 	ExcludedPaths  []string `json:"excludedPaths"`
@@ -27,6 +23,7 @@ type scanCacheProfile struct {
 }
 
 type scanCacheEntry struct {
+	memoryBytes      int64
 	rootPath         string
 	profileKey       string
 	root             *Node
@@ -429,6 +426,7 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 	_, profileKey := scanProfileCacheKey(profile)
 	entry := &scanCacheEntry{
+		memoryBytes:      estimateSnapshotBytes(&treeStoreSnapshot{root: root, nodes: nodes}),
 		rootPath:         rootPath,
 		profileKey:       profileKey,
 		root:             root,
@@ -467,7 +465,11 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		delete(manager.entries, otherKey)
 		retired = append(retired, other)
 	}
-	for manager.memoryBudgetExceededLocked() {
+	budgetMiB := profile.ScanMemoryBudgetMiB
+	if budgetMiB == 0 {
+		budgetMiB = 512
+	}
+	for scanCacheEntriesExceedBudget(manager.entries, int64(budgetMiB)<<20) {
 		var oldestKey string
 		var oldest *scanCacheEntry
 		for candidateKey, candidate := range manager.entries {
@@ -508,19 +510,25 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 }
 
-func (manager *scanCacheManager) memoryBudgetExceededLocked() bool {
-	return scanCacheEntriesExceedBudget(manager.entries, maximumInMemoryScanCaches, maximumInMemoryCacheNodes)
+// Standalone scans also respect the configured budget. Queue retention later
+// combines these cache references with displayed and saved snapshots.
+func scanCacheEntriesExceedBudget(entries map[string]*scanCacheEntry, maxBytes int64) bool {
+	total := int64(0)
+	for _, entry := range entries {
+		total += entry.memoryBytes + cacheIndexBytes(entry)
+	}
+	return total > maxBytes && len(entries) > 1
 }
 
-func scanCacheEntriesExceedBudget(entries map[string]*scanCacheEntry, maxEntries, maxNodes int) bool {
-	if len(entries) > maxEntries {
-		return true
+func cacheIndexBytes(entry *scanCacheEntry) int64 {
+	size := int64(len(entry.directories))*160 + int64(len(entry.dirty))*96
+	for path := range entry.directories {
+		size += int64(len(path))
 	}
-	totalNodes := 0
-	for _, entry := range entries {
-		totalNodes += entry.nodeCount
+	for path := range entry.dirty {
+		size += int64(len(path))
 	}
-	return totalNodes > maxNodes && len(entries) > 1
+	return size
 }
 
 func (manager *scanCacheManager) dependenciesChangedLocked(dependencies []scanCacheDependency) bool {

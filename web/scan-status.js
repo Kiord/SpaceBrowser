@@ -13,10 +13,11 @@ export function updateScanStatus(refs, job) {
   refs.container.hidden = job.state === "cancelled";
   refs.container.setAttribute("data-state", job.state);
   refs.container.setAttribute("data-complete", String(done));
-  refs.time.textContent = done ? `Done in ${(progress.elapsedMilliseconds / 1000).toFixed(1)}s`
+  refs.time.textContent = job.evicted ? "Scan released" : done ? `Done in ${(progress.elapsedMilliseconds / 1000).toFixed(1)}s`
     : queued ? "Queued" : paused ? `Paused · ${formatDuration(progress.elapsedMilliseconds || 0)}`
     : job.state === "failed" ? "Scan failed" : job.state === "cancelled" ? "Cancelled" : formatDuration(progress.elapsedMilliseconds || 0);
   const fraction = done ? 1 : Math.max(0, Math.min(0.96, (progress.fraction || 0) * 0.96));
+  refs.progress.hidden = !!job.evicted;
   refs.percent.textContent = `${Math.floor(fraction * 100)}%`;
   refs.percent.hidden = !active || queued;
   refs.bar.style.setProperty("--scan-progress", `${fraction * 100}%`);

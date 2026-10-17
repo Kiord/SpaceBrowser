@@ -45,15 +45,30 @@ func TestQueuedWorkerCanSaveReportsInDefaultConfigLocation(t *testing.T) {
 	a := newAppWithPaths(filepath.Join(t.TempDir(), "custom.json"), defaultPath)
 	t.Cleanup(func() { a.Shutdown(nil) })
 	path := t.TempDir()
+	pending := filepath.Join(path, "pending")
+	if err := os.Mkdir(pending, 0700); err != nil {
+		t.Fatal(err)
+	}
+	block := &blockingReadDirPlatform{API: platform.Impl, path: pending, entered: make(chan struct{}), release: make(chan struct{})}
+	a.filesystem = block
+	var once sync.Once
+	release := func() { once.Do(func() { close(block.release) }) }
+	t.Cleanup(release)
 	job, err := a.QueueScan(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitJob(t, a, job.ID, "completed")
+	select {
+	case <-block.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scan did not start")
+	}
 	q := a.jobQueue()
 	q.mu.Lock()
 	worker := q.jobs[0].worker
 	q.mu.Unlock()
+	release()
+	waitJob(t, a, job.ID, "completed")
 	details := testScanReportDetails(time.Now())
 	info := worker.persistScanReport(path, details.StartedAt, details.Duration, details.Profile,
 		details.Report, details.Files, details.Folders, details.Bytes)

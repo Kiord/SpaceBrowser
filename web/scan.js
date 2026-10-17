@@ -27,7 +27,7 @@ const previousViews = new Map();
 const reportedFailures = new Set();
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
 
-const captureView = () => ({ node_id: AppState.node_id, rects: AppState.rects, scanRootPath: AppState.scanRootPath,
+const captureView = () => ({ node_id: AppState.node_id, scanRootPath: AppState.scanRootPath,
   navHistory: [...AppState.navHistory], navIndex: AppState.navIndex, selectedNodeIds: new Set(selectionIds()),
   fileCount: AppState.fileCount, dirCount: AppState.dirCount, jobID: selectedID, homeVisible: AppState.homeVisible });
 
@@ -59,9 +59,11 @@ export function updateScanVisibility() {
   const pending = pendingScan(job);
   byId("emptyLocation").hidden = AppState.node_id != null;
   byId("scanLocationButton").hidden = AppState.node_id != null || !emptyPath || pending;
+  byId("scanLocationButton").textContent = job?.evicted ? "Rescan location" : "Scan this location";
   byId("emptyLocationTitle").textContent = emptyPath || "Choose a location";
   byId("emptyLocationHint").textContent = pending
     ? (AppState.scanPaused ? "Scan paused. Resume it from the sidebar." : "Scanning… the treemap will appear as files are found.")
+    : job?.evicted ? "This scan was released to free memory. Rescan to explore this location."
     : emptyPath
     ? "No scan available. Start a scan to explore this location."
     : "Select a location on the left, or enter a path above to scan.";
@@ -77,7 +79,18 @@ async function cancelJob(job) {
   catch (error) { showErrorToast(error); }
 }
 
+function pruneSavedViews() {
+  const retained = new Map(jobs.map(job => [job.id, job]));
+  for (const id of views.keys()) if (!retained.has(id) || retained.get(id).evicted) views.delete(id);
+  for (const id of previousViews.keys()) {
+    const job = retained.get(id);
+    if (!job || job.evicted || (!pendingScan(job) && id !== selectedID && !queueRequest)) previousViews.delete(id);
+  }
+  for (const id of reportedFailures) if (!retained.has(id)) reportedFailures.delete(id);
+}
+
 function presentJobs() {
+  pruneSavedViews();
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
     job => enqueue(() => QueueScan(job.path))), AppState.scanRootPath || "");
@@ -90,9 +103,17 @@ async function applyView(view, token) {
   if (!view || token !== selectionToken || view.job.id !== selectedID) return;
   if (view.key === selectedKey) return;
   selectedKey = view.key;
+  if (view.job.evicted) {
+    clearView();
+    clearScanWarning();
+    showLocationSelector();
+    updateScanVisibility();
+    return;
+  }
   if (view.restored) {
     const previous = previousViews.get(selectedID);
-    if (previous?.jobID != null && previous.jobID !== selectedID) {
+    previousViews.delete(selectedID);
+    if (previous?.jobID != null && previous.jobID !== selectedID && jobs.some(job => job.id === previous.jobID && !job.evicted)) {
       await selectJob(previous.jobID, !AppState.homeVisible);
       return;
     }
@@ -119,6 +140,7 @@ async function applyView(view, token) {
     AppState.fileCount = view.tree.fileCount;
     AppState.dirCount = view.tree.dirCount;
     showScanWarning(view.job.report);
+    previousViews.delete(selectedID);
   }
   applyJobState(view.job);
   await redraw();
@@ -135,7 +157,7 @@ async function selectJob(id, reveal = true) {
   if (token !== selectionToken) return;
   if (changing) {
     clearView();
-    const saved = views.get(id) || (view?.job.partial ? previousViews.get(id) : null);
+    const saved = !view?.job.evicted && (views.get(id) || (view?.job.partial ? previousViews.get(id) : null));
     if (saved) {
       const { jobID, homeVisible, ...state } = saved;
       Object.assign(AppState, state);
@@ -188,7 +210,7 @@ async function enqueue(request) {
     await selectJob(job.id, true);
     await pollJobs();
   } catch (error) { showErrorToast(error); }
-  finally { queueRequest = false; }
+  finally { queueRequest = false; pruneSavedViews(); }
 }
 
 export async function analyze() {

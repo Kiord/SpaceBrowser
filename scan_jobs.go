@@ -10,6 +10,7 @@ import (
 )
 
 type ScanJobInfo struct {
+	Evicted  bool            `json:"evicted"`
 	ID       uint64          `json:"id"`
 	Path     string          `json:"path"`
 	State    string          `json:"state"`
@@ -28,21 +29,25 @@ type ScanJobView struct {
 }
 
 type scanJob struct {
-	info       ScanJobInfo
-	worker     *App
-	pause      *scanPause
-	cancel     context.CancelFunc
-	started    bool
-	startedAt  time.Time
-	previous   *treeStoreSnapshot
-	targets    []FolderRefreshTarget
-	tracked    []int
-	nodeIDs    map[int]int
-	queueOrder uint64
-	autoResume bool
+	snapshot           *treeStoreSnapshot
+	revision, lastUsed uint64
+	info               ScanJobInfo
+	worker             *App
+	pause              *scanPause
+	cancel             context.CancelFunc
+	started            bool
+	startedAt          time.Time
+	previous           *treeStoreSnapshot
+	targets            []FolderRefreshTarget
+	tracked            []int
+	nodeIDs            map[int]int
+	queueOrder         uint64
+	autoResume         bool
 }
 
 type scanJobQueue struct {
+	requested, retentionClock uint64
+	retainedSizes             map[*Node]int64
 	mu                        sync.Mutex
 	app                       *App
 	jobs                      []*scanJob
@@ -124,6 +129,8 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	job := &scanJob{info: ScanJobInfo{ID: q.nextID, Path: path, State: "queued", Partial: len(targets) > 0}, worker: worker,
 		pause: pause, cancel: cancel, previous: previous, targets: targets, tracked: tracked}
 	q.jobs = append(q.jobs, job)
+	q.requested = job.info.ID
+	q.touchLocked(job)
 	q.queueClock++
 	job.queueOrder = q.queueClock
 	q.activateLocked(job)
@@ -227,12 +234,26 @@ func (q *scanJobQueue) run(job *scanJob) {
 	if q.running == job.info.ID {
 		q.running = 0
 	}
+	// Terminal jobs retain only a snapshot and lightweight metadata, never a worker.
+	if job.info.State == "completed" {
+		job.snapshot = job.worker.store.sharedSnapshot()
+	} else {
+		job.snapshot = job.previous
+	}
+	job.previous = nil
+	job.worker = nil
+	job.targets, job.tracked = nil, nil
+	job.cancel()
+	job.cancel = nil
+	job.revision++
+	q.touchLocked(job)
 	q.scheduleLocked()
+	q.pruneLocked()
 }
 
 func (q *scanJobQueue) infoLocked(job *scanJob) ScanJobInfo {
 	info := job.info
-	if job.started && pendingJob(info.State) {
+	if job.worker != nil && job.started && pendingJob(info.State) {
 		info.Progress = job.worker.GetScanProgress()
 		info.Progress.ElapsedMilliseconds = job.pause.elapsed(job.startedAt, time.Now()).Milliseconds()
 	}
@@ -286,12 +307,19 @@ func (a *App) CancelScanJob(id uint64) {
 		job.info = q.infoLocked(job)
 		job.info.State = "cancelled"
 		job.cancel()
+		if !job.started {
+			job.snapshot, job.previous = job.previous, nil
+			job.worker, job.cancel = nil, nil
+			job.targets, job.tracked = nil, nil
+			job.revision++
+		}
 		// A cancelled worker may still be returning from native I/O. Its store
 		// is isolated and its result is discarded, so the next job can proceed.
 		if q.running == id {
 			q.running = 0
 		}
 		q.scheduleLocked()
+		q.pruneLocked()
 		return
 	}
 }
@@ -305,12 +333,21 @@ func (a *App) SelectScanJob(id uint64) (*ScanJobView, error) {
 	if q.selected != id {
 		for _, old := range q.jobs {
 			if old.info.ID == q.selected && old.info.State == "completed" && strings.HasSuffix(q.viewKey, ":completed") {
-				old.worker.store.restoreState(a.store.sharedSnapshot())
+				old.snapshot = a.store.sharedSnapshot()
+				old.revision++
 			}
 		}
 		q.selected, q.viewKey = id, ""
 	}
-	return q.viewLocked(id)
+	q.requested = 0
+	for _, job := range q.jobs {
+		if job.info.ID == id {
+			q.touchLocked(job)
+		}
+	}
+	view, err := q.viewLocked(id)
+	q.pruneLocked()
+	return view, err
 }
 
 func (a *App) GetScanJobView(id uint64) (*ScanJobView, error) {
@@ -334,21 +371,32 @@ func (q *scanJobQueue) viewLocked(id uint64) (*ScanJobView, error) {
 		if pendingJob(info.State) && info.Progress.LivePreview {
 			job.worker.GetScanPreview(info.Progress.Generation)
 		}
-		job.worker.store.mu.RLock()
-		generation := job.worker.store.generation
-		job.worker.store.mu.RUnlock()
+		generation := job.revision
+		if job.worker != nil {
+			job.worker.store.mu.RLock()
+			generation = job.worker.store.generation
+			job.worker.store.mu.RUnlock()
+		}
 		key := strconv.FormatUint(id, 10) + ":" + strconv.FormatUint(generation, 10) + ":" + info.State
 		view := &ScanJobView{Job: info, Key: key, NodeIDs: job.nodeIDs}
 		var snapshot *treeStoreSnapshot
 		if info.State == "cancelled" || info.State == "failed" {
-			snapshot, view.Restored = job.previous, true
-		} else {
+			snapshot, view.Restored = job.snapshot, true
+			if job.worker != nil {
+				snapshot = job.previous
+			}
+		} else if job.worker != nil {
 			snapshot = job.worker.store.sharedSnapshot()
+		} else {
+			snapshot = job.snapshot
 		}
 		if snapshot != nil && snapshot.root != nil {
 			view.Tree = &TreeInfo{RootID: snapshot.root.ID, FileCount: snapshot.files, DirCount: snapshot.dirs}
 		}
 		if key != q.viewKey {
+			if snapshot == nil {
+				snapshot = &treeStoreSnapshot{}
+			}
 			q.app.store.restoreState(snapshot)
 			q.viewKey = key
 		}
@@ -362,6 +410,8 @@ func (q *scanJobQueue) close() {
 	defer q.mu.Unlock()
 	q.closed = true
 	for _, job := range q.jobs {
-		job.cancel()
+		if job.cancel != nil {
+			job.cancel()
+		}
 	}
 }

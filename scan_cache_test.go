@@ -84,21 +84,18 @@ func TestScannerIncrementalCacheReusesOnlyCleanSubtrees(t *testing.T) {
 	}
 }
 
-func TestScanCacheBudgetsCountNodesAndEntries(t *testing.T) {
+func TestScanCacheBudgetCountsEstimatedBytes(t *testing.T) {
 	entries := map[string]*scanCacheEntry{
-		"first":  {nodeCount: 60},
-		"second": {nodeCount: 50},
+		"first":  {memoryBytes: 60},
+		"second": {memoryBytes: 50},
 	}
-	if !scanCacheEntriesExceedBudget(entries, 3, 100) {
+	if !scanCacheEntriesExceedBudget(entries, 100) {
 		t.Fatal("node budget was not enforced")
 	}
-	if scanCacheEntriesExceedBudget(entries, 3, 110) {
+	if scanCacheEntriesExceedBudget(entries, 110) {
 		t.Fatal("cache at the node budget was rejected")
 	}
-	if !scanCacheEntriesExceedBudget(entries, 1, 1000) {
-		t.Fatal("entry budget was not enforced")
-	}
-	if scanCacheEntriesExceedBudget(map[string]*scanCacheEntry{"only": {nodeCount: 200}}, 3, 100) {
+	if scanCacheEntriesExceedBudget(map[string]*scanCacheEntry{"only": {memoryBytes: 200}}, 100) {
 		t.Fatal("the only cache entry should be retained even when it exceeds the node budget")
 	}
 }
