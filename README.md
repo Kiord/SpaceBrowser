@@ -25,25 +25,23 @@ SpaceBrowser recreates the main features of SpaceMonger 1.4 in a modern, cross-p
 ### Visualization and scanning
 
 - Size-proportional treemap for files and folders
-- Startup selector for drives, volumes, and folders
+- Locations side bar for drives, volumes, and folders
 - Optional free-space node for scanned volumes
 - Configurable small-file aggregation threshold
-- Live elapsed time and file/folder counts with scan cancellation
-- Scan caching with filesystem change detection for faster rescans during current session
-- Terminal report for skipped paths and filesystem or metadata errors
+- Animated live scan display
 - Exclusions for paths, hidden files, symlinks, and network filesystems
 
 ### Navigation and actions
 
-- Treemap navigation with Back, Forward, Parent, and Root commands
+- In-treemap navigation with Back, Forward, Parent, and Root commands
 - Hover details with full path, byte size, modification date, and system icon
 - "Open" and "Open with ..." command for files and folders
-- Move-to-trah and permanent deletion with protection sensitive filesystem locations. Empty trash can be triggered as well.
+- Move-to-trash and permanent deletion with protection sensitive filesystem locations. Empty trash can be triggered as well.
 
 ### Customization
 
 - Rectangle color palettes, scale, shape, shading, and hover highlighting
-- Rebindable keyboard and mouse controls
+- Rebindable shortcuts
 - Persistent settings
 
 ### Platforms
@@ -72,11 +70,6 @@ Build the application with:
 wails build
 ```
 
-For development with automatic reloads, use:
-
-```sh
-wails dev
-```
 
 
 ## Trigger a new release
