@@ -22,6 +22,7 @@ let redraw = async () => {};
 let pendingDeletion = null;
 let deletionInProgress = false;
 let contextMenuRequest = 0;
+let restoreDetailsRequest = 0;
 const defaultApplicationNames = new Map();
 
 function trashDestinationName() {
@@ -43,6 +44,7 @@ function showActionFailures(failures, multiple) {
 }
 
 function requestSelectedDeletion() {
+  ++restoreDetailsRequest;
   if (AppState.scanInProgress) return;
   hideContextMenu();
   hideRectToast();
@@ -99,9 +101,15 @@ async function requestSelectedRestore() {
     showErrorToast("Another filesystem operation is already in progress");
     return;
   }
+  const session = AppState.navSession;
+  const request = ++restoreDetailsRequest;
+  const nodeId = rect.node_id, path = rect.full_path;
   try {
-    const details = await GetTrashRestoreInfo(rect.node_id);
-    pendingDeletion = { action: "restore", nodeId: rect.node_id, path: rect.full_path, size: rect.size, scanRootPath: AppState.scanRootPath, session: AppState.navSession };
+    const details = await GetTrashRestoreInfo(nodeId);
+    const current = getSelectedRect();
+    if (request !== restoreDetailsRequest || session !== AppState.navSession || AppState.scanInProgress
+      || current?.node_id !== nodeId || current?.full_path !== path || details.path !== path) return;
+    pendingDeletion = { action: "restore", restoreDetails: details, nodeId: rect.node_id, path: rect.full_path, size: rect.size, scanRootPath: AppState.scanRootPath, session: AppState.navSession };
     byId("deleteConfirmTitle").textContent = "Restore this item?";
     byId("deleteConfirmPath").textContent = `Original location: ${details.originalPath}`;
     byId("deleteConfirmSizeLabel").textContent = "Size:";
@@ -117,6 +125,7 @@ async function requestSelectedRestore() {
 }
 
 function closeDeleteConfirmation() {
+  ++restoreDetailsRequest;
   if (deletionInProgress) return;
   const dialog = byId("deleteConfirmDialog");
   if (dialog.open) dialog.close();
@@ -146,7 +155,8 @@ async function confirmSelectedDeletion() {
 
   try {
     await waitForNextPaint();
-    const result = target.action === "restore" ? await RestoreNode(target.nodeId) : await DeleteNodes(target.targets);
+    if (target.action === "restore" && (AppState.navSession !== target.session || AppState.scanInProgress)) return;
+    const result = target.action === "restore" ? await RestoreNode(target.restoreDetails) : await DeleteNodes(target.targets);
     const failures = result.failures || [];
     const changed = target.action === "restore" || result.deleted?.length > 0 || result.rescanRequired;
     const showFailures = () => showActionFailures(failures.map(item => `${item.path}: ${item.error}`), target.targets?.length > 1);

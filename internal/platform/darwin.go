@@ -189,7 +189,7 @@ func (d Darwin) TrashRestoreInfo(p string) (TrashRestoreInfo, error) {
 	return TrashRestoreInfo{}, fmt.Errorf("restoring Trash items is not available on macOS because Finder does not expose the original location")
 }
 
-func (d Darwin) RestoreTrashItem(p string) error {
+func (d Darwin) RestoreTrashItem(p string, expected TrashRestoreInfo) error {
 	_, err := d.TrashRestoreInfo(p)
 	return err
 }

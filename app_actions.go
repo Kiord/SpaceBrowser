@@ -136,14 +136,26 @@ func (a *App) refreshDisplayedTrash(result DeleteResult) DeleteResult {
 }
 
 type TrashRestoreDetails struct {
-	OriginalPath string `json:"originalPath"`
+	NodeID         int    `json:"nodeId"`
+	Path           string `json:"path"`
+	TargetPath     string `json:"targetPath"`
+	OriginalPath   string `json:"originalPath"`
+	TreeGeneration string `json:"treeGeneration"`
 }
 
 func (a *App) GetTrashRestoreInfo(nodeID int) (TrashRestoreDetails, error) {
-	path, err := a.store.NodePath(nodeID)
+	a.filesystemMu.Lock()
+	defer a.filesystemMu.Unlock()
+	a.scanMu.RLock()
+	defer a.scanMu.RUnlock()
+	if a.scanActive {
+		return TrashRestoreDetails{}, fmt.Errorf("items cannot be restored while a scan is running")
+	}
+	target, err := a.store.prepareFilesystemMutation(nodeID, false, false)
 	if err != nil {
 		return TrashRestoreDetails{}, err
 	}
+	path := target.node.FullPath
 	if !a.desktop.IsInTrash(path) || a.desktop.IsTrashRoot(path) {
 		return TrashRestoreDetails{}, fmt.Errorf("the selected item is not restorable Trash content")
 	}
@@ -151,10 +163,13 @@ func (a *App) GetTrashRestoreInfo(nodeID int) (TrashRestoreDetails, error) {
 	if err != nil {
 		return TrashRestoreDetails{}, err
 	}
-	return TrashRestoreDetails{OriginalPath: info.OriginalPath}, nil
+	if !a.store.isCurrentMutation(target) {
+		return TrashRestoreDetails{}, fmt.Errorf("the tree changed; select the item again")
+	}
+	return TrashRestoreDetails{NodeID: nodeID, Path: path, TargetPath: info.TargetPath, OriginalPath: info.OriginalPath, TreeGeneration: fmt.Sprint(target.generation)}, nil
 }
 
-func (a *App) RestoreNode(nodeID int) (DeleteResult, error) {
+func (a *App) RestoreNode(expected TrashRestoreDetails) (DeleteResult, error) {
 	a.filesystemMu.Lock()
 	defer a.filesystemMu.Unlock()
 	a.scanMu.RLock()
@@ -162,14 +177,25 @@ func (a *App) RestoreNode(nodeID int) (DeleteResult, error) {
 	if a.scanActive {
 		return DeleteResult{}, fmt.Errorf("items cannot be restored while a scan is running")
 	}
-	path, err := a.store.NodePath(nodeID)
+	target, err := a.store.prepareFilesystemMutation(expected.NodeID, false, false)
 	if err != nil {
 		return DeleteResult{}, err
+	}
+	path := target.node.FullPath
+	if expected.Path != path || expected.TreeGeneration != fmt.Sprint(target.generation) {
+		return DeleteResult{}, fmt.Errorf("the confirmed restore item is no longer current; select it again")
 	}
 	if !a.desktop.IsInTrash(path) || a.desktop.IsTrashRoot(path) {
 		return DeleteResult{}, fmt.Errorf("the selected item is not restorable Trash content")
 	}
-	if err := a.desktop.RestoreTrashItem(path); err != nil {
+	info, err := a.desktop.TrashRestoreInfo(path)
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	if info.TargetPath != expected.TargetPath || info.OriginalPath != expected.OriginalPath || !a.store.isCurrentMutation(target) {
+		return DeleteResult{}, fmt.Errorf("the restore source or destination changed; confirm it again")
+	}
+	if err := a.desktop.RestoreTrashItem(path, info); err != nil {
 		return DeleteResult{}, err
 	}
 	if a.scanCache != nil {

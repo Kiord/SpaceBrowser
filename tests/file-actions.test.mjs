@@ -23,7 +23,7 @@ async function harness(profile = {}) {
         started.resolve();
         return { ...(await pending.promise), deleted: targets.map(target => target.nodeId), failures: [] };
       }, RestoreNode: mutation("restore"),
-      GetTrashRestoreInfo: async () => ({ originalPath: "D:\\original.bin" }),
+      GetTrashRestoreInfo: async nodeId => ({ nodeId, path: state.rects[0].full_path, targetPath: state.rects[0].full_path, originalPath: "D:\\original.bin", treeGeneration: "1" }),
       GetDefaultApplicationName: async () => "Editor", OpenInFileBrowser: noop,
       OpenPath: async path => calls.push(["open", path]), OpenWith: noop, ShowProperties: noop,
     };
@@ -140,7 +140,12 @@ test("restore confirmation routes to RestoreNode and refreshes when required", a
   await h.started;
   h.pending.resolve({ fileCount: 10, dirCount: 3, rescanRequired: true });
   await run;
-  assert.deepEqual(h.calls, [["restore", 4], ["scan", "D:\\"]]);
+  assert.equal(h.calls[0][0], "restore");
+  assert.equal(h.calls[0][1].nodeId, 4);
+  assert.equal(h.calls[0][1].path, "D:\\$Recycle.Bin\\item");
+  assert.equal(h.calls[0][1].originalPath, "D:\\original.bin");
+  assert.equal(h.calls[0][1].treeGeneration, "1");
+  assert.deepEqual(h.calls[1], ["scan", "D:\\"]);
 });
 
 test("batch confirmation lists only top-level targets and keeps the confirmed selection", async () => {
@@ -259,4 +264,48 @@ test('filesystem mutations stay disabled during live scanning', async () => {
   h.select({ node_id: 1, full_path: '/trash/file', is_in_trash: true });
   await h.action('restore');
   assert.deepEqual(h.calls, []);
+});
+
+
+for (const change of ['session', 'selection', 'scan', 'source']) {
+  test(`stale restore details do not open confirmation after ${change} changes`, async () => {
+    const h = await harness();
+    const path = 'D:\\$Recycle.Bin\\item';
+    h.select({ node_id: 4, is_in_trash: true, full_path: path, size: 99 });
+    const details = deferred();
+    h.backend.GetTrashRestoreInfo = () => details.promise;
+    const request = h.action('restore');
+    if (change === 'session') h.state.navSession++;
+    if (change === 'selection') h.select({ node_id: 5, full_path: 'different' });
+    if (change === 'scan') h.state.scanInProgress = true;
+    details.resolve({ nodeId: 4, path: change === 'source' ? 'replacement' : path, originalPath: 'original', treeGeneration: '1' });
+    await request;
+    assert.equal(h.byId('deleteConfirmDialog').open, false);
+    assert.deepEqual(h.calls, []);
+  });
+}
+
+test('restore checks the session before invoking the filesystem operation', async () => {
+  const h = await harness();
+  h.select({ node_id: 4, is_in_trash: true, full_path: 'trash/item', size: 99 });
+  await h.action('restore');
+  h.state.navSession++;
+  await h.confirm();
+  assert.deepEqual(h.calls, []);
+});
+
+
+test('a late restore response cannot replace a newer deletion confirmation', async () => {
+  const h = await harness();
+  const path = 'trash/item';
+  h.select({ node_id: 4, is_in_trash: true, full_path: path, size: 99 });
+  const details = deferred();
+  h.backend.GetTrashRestoreInfo = () => details.promise;
+  const request = h.action('restore');
+  await h.action('delete');
+  const title = h.byId('deleteConfirmTitle').textContent;
+  details.resolve({ nodeId: 4, path, originalPath: 'original', treeGeneration: '1' });
+  await request;
+  assert.equal(h.byId('deleteConfirmTitle').textContent, title);
+  assert.notEqual(h.byId('confirmDeleteButton').textContent, 'Restore');
 });

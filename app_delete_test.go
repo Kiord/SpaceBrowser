@@ -101,7 +101,7 @@ func (desktop trashActionDesktop) TrashRestoreInfo(path string) (platform.TrashR
 	return platform.TrashRestoreInfo{TargetPath: path, OriginalPath: desktop.originalPath}, nil
 }
 
-func (desktop trashActionDesktop) RestoreTrashItem(path string) error {
+func (desktop trashActionDesktop) RestoreTrashItem(path string, expected platform.TrashRestoreInfo) error {
 	if desktop.restored == nil {
 		return errors.New("restore was not expected")
 	}
@@ -605,7 +605,7 @@ func TestAppRestoresTrashItemToReportedOriginalLocation(t *testing.T) {
 	if details.OriginalPath != originalPath {
 		t.Fatalf("original path = %q, want %q", details.OriginalPath, originalPath)
 	}
-	result, err := app.RestoreNode(item.ID)
+	result, err := app.RestoreNode(details)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,5 +691,44 @@ func TestAppsOwnIndependentTreeStores(t *testing.T) {
 	}
 	if _, err := second.Layout(root.ID, 100, 100, 1); err == nil {
 		t.Fatal("second app unexpectedly accessed the first app's tree")
+	}
+}
+
+func TestRestoreRejectsStaleConfirmation(t *testing.T) {
+	for _, change := range []string{"reused id", "same path new tree", "destination", "source", "missing confirmation"} {
+		t.Run(change, func(t *testing.T) {
+			trashPath := filepath.Join(t.TempDir(), "trash")
+			itemPath := filepath.Join(trashPath, "item")
+			root := &Node{ID: 0, ParentID: -1, FullPath: trashPath, IsFolder: true}
+			item := &Node{ID: 1, ParentID: 0, FullPath: itemPath}
+			root.Children = []*Node{item}
+			restored := ""
+			desktop := trashActionDesktop{path: trashPath, restored: &restored, originalPath: filepath.Join(t.TempDir(), "original")}
+			app := &App{desktop: desktop, store: TreeStore{root: root, nodes: []*Node{root, item}}}
+			details, err := app.GetTrashRestoreInfo(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "reused id":
+				replacement := &Node{ID: 1, ParentID: 0, FullPath: filepath.Join(trashPath, "replacement")}
+				app.store.Replace(root, []*Node{root, replacement}, 1, 1)
+			case "same path new tree":
+				app.store.Replace(root, []*Node{root, item}, 1, 1)
+			case "destination":
+				desktop.originalPath += "-changed"
+				app.desktop = desktop
+			case "source":
+				details.TargetPath += "-changed"
+			case "missing confirmation":
+				details = TrashRestoreDetails{NodeID: 1}
+			}
+			if _, err := app.RestoreNode(details); err == nil {
+				t.Fatal("stale restore confirmation was accepted")
+			}
+			if restored != "" {
+				t.Fatalf("filesystem restore called for %q", restored)
+			}
+		})
 	}
 }

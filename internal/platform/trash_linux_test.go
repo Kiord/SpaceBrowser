@@ -123,7 +123,15 @@ func TestLinuxRestoreTrashItem(t *testing.T) {
 	if details.OriginalPath != originalPath || details.TargetPath != trashedPath {
 		t.Fatalf("restore info = %+v", details)
 	}
-	if err := linuxPlatform.RestoreTrashItem(trashedPath); err != nil {
+	stale := details
+	stale.OriginalPath += "-changed"
+	if err := linuxPlatform.RestoreTrashItem(trashedPath, stale); err == nil {
+		t.Fatal("mismatched restore destination was accepted")
+	}
+	if _, err := os.Stat(trashedPath); err != nil {
+		t.Fatalf("rejected restore changed source: %v", err)
+	}
+	if err := linuxPlatform.RestoreTrashItem(trashedPath, details); err != nil {
 		t.Fatal(err)
 	}
 	if data, err := os.ReadFile(originalPath); err != nil || string(data) != "restored" {

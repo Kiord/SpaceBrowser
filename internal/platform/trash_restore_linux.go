@@ -58,10 +58,13 @@ func (Linux) TrashRestoreInfo(p string) (TrashRestoreInfo, error) {
 	return TrashRestoreInfo{TargetPath: targetPath, OriginalPath: originalPath}, nil
 }
 
-func (l Linux) RestoreTrashItem(p string) error {
+func (l Linux) RestoreTrashItem(p string, expected TrashRestoreInfo) error {
 	info, err := l.TrashRestoreInfo(p)
 	if err != nil {
 		return err
+	}
+	if info != expected {
+		return fmt.Errorf("the restore source or destination changed; confirm it again")
 	}
 	if _, err := os.Lstat(info.OriginalPath); err == nil {
 		return fmt.Errorf("the original location already exists: %s", info.OriginalPath)

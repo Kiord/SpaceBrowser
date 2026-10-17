@@ -106,7 +106,7 @@ type DesktopActions interface {
 	IsInTrash(string) bool
 	EmptyTrash(string) error
 	TrashRestoreInfo(string) (TrashRestoreInfo, error)
-	RestoreTrashItem(string) error
+	RestoreTrashItem(string, TrashRestoreInfo) error
 	DeleteTrashItemPermanently(string) error
 	DefaultStartPath() string
 }
@@ -237,7 +237,7 @@ func (Default) TrashRestoreInfo(string) (TrashRestoreInfo, error) {
 	return TrashRestoreInfo{}, fmt.Errorf("restoring Trash items is not supported on this platform")
 }
 
-func (Default) RestoreTrashItem(string) error {
+func (Default) RestoreTrashItem(string, TrashRestoreInfo) error {
 	return fmt.Errorf("restoring Trash items is not supported on this platform")
 }
 
