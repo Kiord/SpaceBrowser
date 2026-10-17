@@ -23,8 +23,15 @@ func (a *App) SuggestFolders(query string) []string {
 			}
 		}
 	}
-	if runtime.GOOS == "windows" && len(query) == 2 && query[1] == ':' {
-		query += `\`
+	if runtime.GOOS == "windows" {
+		if len(query) == 1 && ((query[0] >= 'a' && query[0] <= 'z') || (query[0] >= 'A' && query[0] <= 'Z')) {
+			query += `:\`
+		} else if len(query) == 2 && query[1] == ':' {
+			query += `\`
+		}
+		if len(query) >= 2 && query[1] == ':' && query[0] >= 'a' && query[0] <= 'z' {
+			query = strings.ToUpper(query[:1]) + query[1:]
+		}
 	}
 	directory, prefix := filepath.Split(query)
 	if directory == "" {

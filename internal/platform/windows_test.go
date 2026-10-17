@@ -519,7 +519,7 @@ func TestWindowsCanonicalizeDriveLetter(t *testing.T) {
 	windows := Windows{}
 	for input, want := range map[string]string{
 		"C":  `C:\`,
-		"d":  `d:\`,
+		"d":  `D:\`,
 		"E:": `E:\`,
 	} {
 		if got := windows.Canonicalize(input); got != want {
@@ -555,5 +555,18 @@ func TestReadWindowsRecycleInfoVersionTwo(t *testing.T) {
 	}
 	if got != originalPath {
 		t.Fatalf("original path = %q, want %q", got, originalPath)
+	}
+}
+
+func TestCanonicalizeUppercasesDriveLetterOnly(t *testing.T) {
+	for input, want := range map[string]string{
+		"d": `D:\`, "d:": `D:\`, `d:\`: `D:\`,
+		`d:/MixedCase/folder`:      `D:\MixedCase\folder`,
+		`\\?\d:\MixedCase`:         `D:\MixedCase`,
+		`\\server\share\MixedCase`: `\\server\share\MixedCase`,
+	} {
+		if got := (Windows{}).Canonicalize(input); got != want {
+			t.Errorf("Canonicalize(%q) = %q, want %q", input, got, want)
+		}
 	}
 }

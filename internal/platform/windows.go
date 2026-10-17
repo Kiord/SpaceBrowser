@@ -252,6 +252,9 @@ func (Windows) Canonicalize(p string) string {
 		p += `\`
 	}
 
+	if len(p) >= 2 && p[1] == ':' && p[0] >= 'a' && p[0] <= 'z' {
+		p = strings.ToUpper(p[:1]) + p[1:]
+	}
 	return filepath.Clean(p)
 }
 
