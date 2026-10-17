@@ -19,7 +19,7 @@ async function harness() {
       getBoundingClientRect: () => ({ left: 0, top: 0 }), getContext: () => state[`${name}Ctx`] };
   }
   const ui = await loadUI("treemap-view.js", {
-    "./wailsjs/go/main/App.js": { LayoutWithBoxPadding: (...args) => { const request = deferred(); requests.push({ ...request, args }); return request.promise; } },
+    "./wailsjs/go/app/App.js": { LayoutWithBoxPadding: (...args) => { const request = deferred(); requests.push({ ...request, args }); return request.promise; } },
     "./file-actions.js": { hideContextMenu: noop, openRectWithDefault: rect => actions.push(["open", rect.node_id]), showContextMenu: () => actions.push(["menu"]) },
     "./format.js": { debounce: fn => fn, formatCompactSize: String, formatCount: String, formatModTime: String, formatSize: String },
     "./navigation.js": { navigateToSelected: () => actions.push(["visit"]), updateNavButtons: noop },

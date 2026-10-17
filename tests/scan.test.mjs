@@ -34,7 +34,7 @@ async function harness() {
     OpenPath: async path => calls.push(['open', path]),
   };
   const modules = {
-    './wailsjs/go/main/App.js': Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
+    './wailsjs/go/app/App.js': Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
     './dom.js': { byId: element }, './state.js': { AppState: state },
     './navigation.js': { pushBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping, fallback) { state.node_id = mapping[state.node_id] ?? fallback; } },
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },

@@ -1,4 +1,4 @@
-import { GetScanLocations } from "./wailsjs/go/main/App.js";
+import { GetScanLocations } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { logError } from "./logging.js";
 import { formatSize } from "./format.js";

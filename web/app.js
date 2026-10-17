@@ -1,5 +1,5 @@
 import { initLocationShortcuts } from "./location-shortcuts.js";
-import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/main/App.js";
+import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-actions.js";
 import { initFolderPicker } from "./folder-picker.js";

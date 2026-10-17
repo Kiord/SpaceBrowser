@@ -16,7 +16,7 @@ async function harness() {
   let redraws = 0;
   let setFreeSpace = async () => {};
   const ui = await loadUI("navigation.js", {
-    "./wailsjs/go/main/App.js": { SetShowFreeSpace: value => setFreeSpace(value) },
+    "./wailsjs/go/app/App.js": { SetShowFreeSpace: value => setFreeSpace(value) },
     "./dom.js": { byId },
     "./controls.js": { addControlEventListeners: noop, eventMatchesShortcut: noop, shortcutCanRun: noop },
     "./logging.js": { logError: noop }, "./state.js": { AppState: state, AppearanceState: appearance, activePalette: () => ["#ffffff", "#70d6ff"] },

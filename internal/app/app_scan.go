@@ -1,0 +1,478 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/shirou/gopsutil/v3/disk"
+
+	"spacebrowser/internal/platform"
+)
+
+type TreeInfo struct {
+	RootID     int             `json:"rootId"`
+	FileCount  int             `json:"fileCount"`
+	DirCount   int             `json:"dirCount"`
+	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
+	Revision   uint64          `json:"revision,omitempty"`
+}
+
+type ScanProgress struct {
+	Paused              bool    `json:"paused"`
+	Active              bool    `json:"active"`
+	Generation          uint64  `json:"generation"`
+	RootPath            string  `json:"rootPath"`
+	LivePreview         bool    `json:"livePreview"`
+	Path                string  `json:"path"`
+	Processed           int64   `json:"processed"`
+	Discovered          int64   `json:"discovered"`
+	Fraction            float64 `json:"fraction"`
+	FileCount           int64   `json:"fileCount"`
+	DirCount            int64   `json:"dirCount"`
+	ElapsedMilliseconds int64   `json:"elapsedMilliseconds"`
+}
+
+const networkFilesystemScanDisabledMessage = "network filesystem scanning is disabled; go to Settings and untick Skip network filesystems"
+
+var errScanSuperseded = errors.New("scan was superseded by a newer scan")
+
+func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFilesystem) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("missing path")
+	}
+
+	path = filesystem.Canonicalize(path)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("this path does not exist")
+	}
+	if err != nil {
+		return "", fmt.Errorf("cannot access this path: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("this path is not a folder")
+	}
+	return path, nil
+}
+
+func (a *App) ValidateScanPath(path string) (string, error) {
+	return a.validateScanPath(path)
+}
+
+func (a *App) validateScanPath(path string) (string, error) {
+	path, err := validateScanPathWithFilesystem(path, a.filesystem)
+	if err != nil {
+		return "", err
+	}
+	if a.GetProfile().SkipNetworkFS && a.filesystem.IsLikelyNetworkFS(path) {
+		return "", errors.New(networkFilesystemScanDisabledMessage)
+	}
+	return path, nil
+}
+
+func (a *App) startupScanCacheDisabled(path string) bool {
+	a.initialScanMu.Lock()
+	defer a.initialScanMu.Unlock()
+	if !a.initialScanNoCache || a.initialScanPath == "" {
+		return false
+	}
+	initialPath := canonicalCachePath(a.filesystem.Canonicalize(a.initialScanPath))
+	if initialPath != canonicalCachePath(path) {
+		return false
+	}
+	a.initialScanNoCache = false
+	return true
+}
+
+func (a *App) GetScanProgress() ScanProgress {
+	a.scanMu.RLock()
+	active := a.scanActive
+	path := a.scanPath
+	startedAt := a.scanStartedAt
+	scanner := a.scanScanner
+	generation, rootPath := a.scanGeneration, a.scanRootPath
+	paused := a.scanPause != nil && a.scanPause.paused.Load()
+	pause := a.scanPause
+	a.scanMu.RUnlock()
+
+	var processed, discovered int64
+	var files, dirs int64
+	if scanner != nil {
+		processed, discovered = scanner.WorkProgress()
+		files, dirs = scanner.LiveCounts()
+	}
+	elapsed := pause.elapsed(startedAt, time.Now())
+	if !active || startedAt.IsZero() {
+		elapsed = 0
+	}
+	fraction := 0.0
+	if discovered > 0 {
+		fraction = min(1, float64(processed)/float64(discovered))
+	}
+
+	return ScanProgress{
+		Paused:     paused,
+		Generation: generation, RootPath: rootPath, LivePreview: scanner != nil && scanner.preview != nil,
+		Active:              active,
+		Path:                path,
+		Processed:           processed,
+		Discovered:          discovered,
+		Fraction:            fraction,
+		FileCount:           files,
+		DirCount:            dirs,
+		ElapsedMilliseconds: elapsed.Milliseconds(),
+	}
+}
+
+func (a *App) CancelScan() {
+	a.scanMu.RLock()
+	cancel := a.scanCancel
+	a.scanMu.RUnlock()
+	if cancel != nil {
+		a.logger.Infof("cancelling active scan")
+		cancel()
+	}
+}
+
+func (a *App) beginScan(path string) (context.Context, uint64) {
+	base := a.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	ctx, cancel := context.WithCancel(base)
+
+	a.scanMu.Lock()
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
+	if a.scanPreview != nil && !a.scanResultPublished {
+		a.store.restoreState(a.scanPrevious)
+	}
+	a.scanPrevious = a.store.snapshotState()
+	a.scanGeneration++
+	generation := a.scanGeneration
+	a.scanActive = true
+	a.scanPause = &scanPause{}
+	if a.initialPause != nil {
+		a.scanPause = a.initialPause
+	}
+	a.scanPath = path
+	a.scanRootPath = path
+	a.scanPreview = nil
+	a.scanPreviewAt = time.Time{}
+	a.scanResultPublished = false
+	a.scanCancel = cancel
+	a.scanStartedAt = time.Now()
+	a.scanScanner = nil
+	a.scanMu.Unlock()
+	return ctx, generation
+}
+
+func (a *App) attachScanner(generation uint64, scanner *Scanner) {
+	a.scanMu.Lock()
+	if a.scanGeneration == generation && a.scanActive {
+		scanner.pause = a.scanPause
+		a.scanScanner = scanner
+	}
+	a.scanMu.Unlock()
+}
+
+func (a *App) updateScanPath(generation uint64, path string) {
+	a.scanMu.Lock()
+	if a.scanGeneration == generation && a.scanActive {
+		a.scanPath = path
+		a.logger.Tracef("scanning %s", path)
+	}
+	a.scanMu.Unlock()
+}
+
+func (a *App) finishScan(generation uint64) {
+	a.scanMu.Lock()
+	if a.scanGeneration == generation {
+		if a.scanPreview != nil && !a.scanResultPublished {
+			a.store.restoreState(a.scanPrevious)
+		}
+		a.scanPrevious = nil
+		a.scanPreview = nil
+		a.scanActive = false
+		a.scanCancel = nil
+		a.scanScanner = nil
+	}
+	a.scanMu.Unlock()
+}
+
+func (a *App) publishScanResult(
+	ctx context.Context,
+	generation uint64,
+	root *Node,
+	nodes []*Node,
+	files, dirs int,
+	shared bool,
+	persistReport func() *ScanReportInfo,
+) (*ScanReportInfo, error) {
+	a.scanMu.Lock()
+	if a.scanGeneration != generation || !a.scanActive {
+		a.scanMu.Unlock()
+		return nil, errScanSuperseded
+	}
+	if err := ctx.Err(); err != nil {
+		a.scanMu.Unlock()
+		return nil, err
+	}
+
+	if shared {
+		// The live cache retains this allocation. TreeStore
+		// detaches lazily before any later structural mutation.
+		a.store.ReplaceShared(root, nodes, files, dirs)
+	} else {
+		a.store.Replace(root, nodes, files, dirs)
+	}
+	a.scanResultPublished = true
+	a.scanMu.Unlock()
+	return persistReport(), nil
+}
+
+func (a *App) publishCachedScanResult(ctx context.Context, generation uint64, root *Node, nodes []*Node, files, dirs int, persistReport func() *ScanReportInfo) (*ScanReportInfo, error) {
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+	if a.scanGeneration != generation || !a.scanActive {
+		return nil, errScanSuperseded
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	a.store.ReplaceShared(root, nodes, files, dirs)
+	a.scanResultPublished = true
+	return persistReport(), nil
+}
+
+// OpenScanSnapshot reopens an existing in-memory tree without filesystem enumeration.
+// A nil result means the caller must scan; dirty trees remain valid snapshots.
+func (a *App) OpenScanSnapshot(path string) *TreeInfo {
+	a.filesystemMu.Lock()
+	defer a.filesystemMu.Unlock()
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+	if a.scanActive || a.scanCache == nil {
+		return nil
+	}
+	_, profileKey := scanProfileCacheKey(a.GetProfile())
+	a.scanCache.mu.Lock()
+	defer a.scanCache.mu.Unlock()
+	entry := a.scanCache.entries[scanMemoryCacheKey(path, profileKey)]
+	if entry == nil || entry.root == nil {
+		return nil
+	}
+	a.scanCache.touchLocked(entry)
+	a.store.ReplaceShared(entry.root, entry.nodes, entry.fileCount, entry.dirCount)
+	return &TreeInfo{RootID: entry.root.ID, FileCount: entry.fileCount, DirCount: entry.dirCount}
+}
+
+func (a *App) GetFullTree(path string) (*TreeInfo, error) {
+	path, err := a.validateScanPath(path)
+	if err != nil {
+		a.logger.Errorf("cannot start scan: %v", err)
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
+	}
+	startedAt := time.Now()
+	a.logger.Infof("scan started: %s", path)
+
+	var volumeUsage *disk.UsageStat
+	if a.filesystem.IsMountRoot(path) {
+		if fs, usageErr := disk.Usage(path); usageErr == nil {
+			volumeUsage = fs
+		}
+	}
+
+	ctx, generation := a.beginScan(path)
+	defer a.finishScan(generation)
+
+	profile := a.GetProfile()
+	startupCacheDisabled := a.startupScanCacheDisabled(path)
+	useCache := profile.UseCache && !startupCacheDisabled
+	cachePlan := scanReusePlan{}
+	if useCache {
+		cachePlan = a.scanCache.Prepare(path, profile)
+	}
+	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t useCache=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS, useCache)
+	if useCache && cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
+		cachedRoot, cachedNodes := cachePlan.source.root, cachePlan.source.nodes
+		duration := time.Since(startedAt)
+		report := cachePlan.source.report
+		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, cachedRoot, cachedNodes, cachePlan.source.fileCount, cachePlan.source.dirCount, func() *ScanReportInfo {
+			return a.persistScanReport(path, startedAt, duration, profile, report, int64(cachePlan.source.fileCount), int64(cachePlan.source.dirCount), cachePlan.source.root.Size)
+		})
+		if publishErr != nil {
+			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, publishErr
+		}
+		if volumeUsage != nil {
+			a.store.UpdateDiskUsage(int64(volumeUsage.Total), int64(volumeUsage.Free))
+		}
+		a.logScanReport(report)
+		a.logger.Infof("scan cache reused the complete tree for %s", path)
+		a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, cachePlan.source.fileCount, cachePlan.source.dirCount, cachePlan.source.root.Size)
+		return &TreeInfo{RootID: cachedRoot.ID, FileCount: cachePlan.source.fileCount, DirCount: cachePlan.source.dirCount, ScanReport: reportInfo}, nil
+	}
+	if useCache && cachePlan.source != nil && len(cachePlan.dirty) == 0 {
+		// A watcher event arrived after Prepare. Refresh the plan so the scanner
+		// cannot reuse a tree using the now-stale empty dirty set.
+		cachePlan = a.scanCache.Prepare(path, profile)
+	}
+	var observation *scanCacheObservation
+	if useCache {
+		observation = a.scanCache.BeginObservation(path)
+	}
+	defer observation.Close()
+	var files, dirs int64
+	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+	scanner.preview = newScanPreviewTree()
+	if volumeUsage != nil {
+		scanner.preview.diskTotal, scanner.preview.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
+	}
+	// Persisted scan reports need the complete error list independently of the
+	// terminal verbosity selected by the user.
+	scanner.ReportAllErrors(true)
+	if observation != nil {
+		scanner.SetDirectoryObserver(observation.WatchDirectory)
+	}
+	if len(cachePlan.directories) > 0 {
+		scanner.SetIncrementalCache(cachePlan.directories, cachePlan.dirty)
+		scanner.SetIncrementalCacheReports(cachePlan.reports)
+	}
+	a.attachScanner(generation, scanner)
+	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
+	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
+	if err != nil {
+		if errors.Is(err, errNetworkFilesystemRootSkipped) {
+			err = errors.New(networkFilesystemScanDisabledMessage)
+		}
+		a.logScanReport(scanner.Report())
+		if ctx.Err() != nil {
+			a.logger.Warningf("scan cancelled after %s: %s", time.Since(startedAt).Round(time.Millisecond), path)
+			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
+		}
+		a.logger.Errorf("scan failed after %s: %v", time.Since(startedAt).Round(time.Millisecond), err)
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
+	}
+
+	if volumeUsage != nil {
+		fs := volumeUsage
+		free := &Node{
+			ID:          -1,
+			ParentID:    root.ID,
+			Name:        "[Free Disk Space]",
+			Size:        int64(fs.Free),
+			DiskTotal:   int64(fs.Total),
+			IsFolder:    false,
+			IsFreeSpace: true,
+			Depth:       1,
+		}
+		root.Children = append(root.Children, free)
+
+		root.DiskTotal = int64(fs.Total)
+		root.DiskFree = int64(fs.Free)
+	}
+
+	sort.Slice(root.Children, func(i, j int) bool {
+		return root.Children[i].Size > root.Children[j].Size
+	})
+
+	report := scanner.Report()
+	duration := time.Since(startedAt)
+	// The shared cache manager validates current policy and observation generation
+	// at installation; this worker keeps its scan options frozen.
+	reportInfo, err := a.publishScanResult(ctx, generation, root, scanner.Nodes(), int(files), int(dirs), useCache, func() *ScanReportInfo {
+		return a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
+	})
+	if err != nil {
+		if errors.Is(err, errScanSuperseded) {
+			a.logger.Warningf("discarding superseded scan result: %s", path)
+			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
+		}
+		a.logger.Warningf("discarding cancelled scan result: %s", path)
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled")
+	}
+	a.logScanReport(report)
+	if reused := scanner.ReusedDirectories(); reused > 0 {
+		a.logger.Infof("scan cache reused %d directories", reused)
+	}
+	if useCache {
+		a.scanCache.Install(path, profile, root, scanner.Nodes(), int(files), int(dirs), report, cachePlan, observation)
+	}
+	a.logger.Infof("scan completed in %s: %s (%d files, %d folders, %d bytes)", duration.Round(time.Millisecond), path, files, dirs, root.Size)
+	return &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), ScanReport: reportInfo}, nil
+}
+
+func (a *App) logScanReport(report ScanReportSnapshot) {
+	skipped := report.TotalSkipped()
+	errors := report.TotalErrors()
+	a.logger.Infof("scan report: %d skipped paths, %d filesystem or metadata errors", skipped, errors)
+	if skipped > 0 {
+		a.logger.Infof("scan report skipped: %s", formatNonzeroScanCounts(report.Skipped[:], scanSkipLabels[:]))
+	}
+	if errors > 0 {
+		a.logger.Infof("scan report errors: %s", formatNonzeroScanCounts(report.Errors[:], scanErrorLabels[:]))
+		entryLabel := "example"
+		examples := report.Examples
+		if a.logger.Enabled(verbosityDebug) {
+			entryLabel = "error"
+		} else if len(examples) > maximumScanReportExamples {
+			examples = examples[:maximumScanReportExamples]
+		}
+		for _, example := range examples {
+			a.logger.Infof("scan report %s [%s]: %s: %s", entryLabel, example.Reason, example.Path, example.Error)
+		}
+	}
+}
+
+func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
+	a.settingsMu.RLock()
+	showFreeSpace := a.showFreeSpace
+	boxPadding := float64(a.profile.Appearance.BoxPadding)
+	a.settingsMu.RUnlock()
+	if boxPadding < 1 {
+		boxPadding = treemapPad
+	}
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
+}
+
+// LayoutWithBoxPadding previews an unsaved appearance setting without
+// changing the persisted profile.
+func (a *App) LayoutWithBoxPadding(nodeID, width, height int, scale float64, boxPadding float64) ([]Rect, error) {
+	a.settingsMu.RLock()
+	showFreeSpace := a.showFreeSpace
+	a.settingsMu.RUnlock()
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, float64(boxPadding))
+}
+
+func (a *App) layoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace bool, boxPadding float64) ([]Rect, error) {
+	rects, err := a.store.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
+	if err != nil {
+		return nil, err
+	}
+	inTrashByNodeID := make(map[int]bool, len(rects))
+	for index := range rects {
+		rect := &rects[index]
+		if a.desktop == nil || rect.FullPath == "" {
+			continue
+		}
+		if rect.IsFolder {
+			rect.IsTrashRoot = a.desktop.IsTrashRoot(rect.FullPath)
+		}
+		parentInTrash, parentIsVisible := false, false
+		if rect.ParentID != nil {
+			parentInTrash, parentIsVisible = inTrashByNodeID[*rect.ParentID]
+		}
+		rect.IsInTrash = rect.IsTrashRoot || parentInTrash
+		if !parentIsVisible && !rect.IsTrashRoot {
+			rect.IsInTrash = a.desktop.IsInTrash(rect.FullPath)
+		}
+		inTrashByNodeID[rect.NodeID] = rect.IsInTrash
+	}
+	return rects, nil
+}

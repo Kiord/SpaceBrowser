@@ -1,5 +1,5 @@
 import { initPathAutocomplete } from "./path-autocomplete.js";
-import { PickFolder } from "./wailsjs/go/main/App.js";
+import { PickFolder } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { logWarning } from "./logging.js";
 import { showErrorToast } from "./notifications.js";

@@ -1,0 +1,486 @@
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"spacebrowser/internal/platform"
+	"sync"
+	"testing"
+	"time"
+)
+
+type countingCacheFilesystem struct {
+	platform.API
+	mu    sync.Mutex
+	reads map[string]int
+}
+
+type capacityTreeWatcher struct{}
+
+func (capacityTreeWatcher) AddDirectory(string) error { return errTreeWatchCapacity }
+func (capacityTreeWatcher) Close() error              { return nil }
+
+func (filesystem *countingCacheFilesystem) ReadDir(path string) ([]platform.DirectoryEntry, error) {
+	filesystem.mu.Lock()
+	filesystem.reads[canonicalCachePath(path)]++
+	filesystem.mu.Unlock()
+	return filesystem.API.ReadDir(path)
+}
+
+func (filesystem *countingCacheFilesystem) readCount(path string) int {
+	filesystem.mu.Lock()
+	defer filesystem.mu.Unlock()
+	return filesystem.reads[canonicalCachePath(path)]
+}
+
+func scanTestTree(t *testing.T, root string, filesystem platform.ScannerFilesystem) (*Node, []*Node, int64, int64) {
+	t.Helper()
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	scanner := NewScannerWithFilesystem(&profile, 1, filesystem)
+	var files, dirs int64
+	tree, err := scanner.buildTree(root, 0, -1, &files, &dirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tree, scanner.Nodes(), files, dirs
+}
+
+func TestScannerIncrementalCacheReusesOnlyCleanSubtrees(t *testing.T) {
+	root := t.TempDir()
+	dirtyDirectory := filepath.Join(root, "dirty")
+	cleanDirectory := filepath.Join(root, "clean")
+	for _, directory := range []string{dirtyDirectory, cleanDirectory} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "file.bin"), []byte("content"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cachedRoot, _, expectedFiles, expectedDirs := scanTestTree(t, root, platform.Impl)
+
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	scanner := NewScannerWithFilesystem(&profile, 1, filesystem)
+	scanner.SetIncrementalCache(indexCachedDirectories(cachedRoot), []string{dirtyDirectory})
+	var files, dirs int64
+	rescanned, err := scanner.buildTree(root, 0, -1, &files, &dirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rescanned == nil || files != expectedFiles || dirs != expectedDirs {
+		t.Fatalf("incremental result = tree:%v files:%d dirs:%d, want files:%d dirs:%d", rescanned != nil, files, dirs, expectedFiles, expectedDirs)
+	}
+	if filesystem.readCount(root) == 0 || filesystem.readCount(dirtyDirectory) == 0 {
+		t.Fatalf("read counts root=%d dirty=%d", filesystem.readCount(root), filesystem.readCount(dirtyDirectory))
+	}
+	if filesystem.readCount(cleanDirectory) != 0 {
+		t.Fatalf("clean subtree was read %d times", filesystem.readCount(cleanDirectory))
+	}
+	if scanner.ReusedDirectories() == 0 {
+		t.Fatal("no cached directory was reported as reused")
+	}
+}
+
+func TestScanCacheBudgetCountsEstimatedBytes(t *testing.T) {
+	entries := map[string]*scanCacheEntry{
+		"first":  {memoryBytes: 60},
+		"second": {memoryBytes: 50},
+	}
+	if !scanCacheEntriesExceedBudget(entries, 100) {
+		t.Fatal("node budget was not enforced")
+	}
+	if scanCacheEntriesExceedBudget(entries, 110) {
+		t.Fatal("cache at the node budget was rejected")
+	}
+	if scanCacheEntriesExceedBudget(map[string]*scanCacheEntry{"only": {memoryBytes: 200}}, 100) {
+		t.Fatal("the only cache entry should be retained even when it exceeds the node budget")
+	}
+}
+
+func TestDisablingCacheClearsMemoryEntries(t *testing.T) {
+	rootPath := t.TempDir()
+	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
+	settingsPath := filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json")
+	app := newApp(settingsPath)
+	defer app.Shutdown(nil)
+	profile := app.GetProfile()
+	app.scanCache.Install(rootPath, profile, root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, app.scanCache.BeginObservation(rootPath))
+
+	profile.UseCache = false
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	app.scanCache.mu.Lock()
+	entryCount := len(app.scanCache.entries)
+	app.scanCache.mu.Unlock()
+	if entryCount != 0 {
+		t.Fatalf("cache retained %d entries after being disabled", entryCount)
+	}
+	if _, err := app.GetFullTree(rootPath); err != nil {
+		t.Fatal(err)
+	}
+	app.scanCache.mu.Lock()
+	entryCount = len(app.scanCache.entries)
+	app.scanCache.mu.Unlock()
+	if entryCount != 0 {
+		t.Fatalf("cache-disabled scan created %d entries", entryCount)
+	}
+}
+
+func TestLiveCacheReusesScanUntilAppCloses(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file.bin"), []byte("content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(t.TempDir(), "settings.json")
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	app := newApp(settings)
+	t.Cleanup(func() { app.Shutdown(nil) })
+	app.filesystem = filesystem
+	first, err := app.GetFullTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := filesystem.readCount(root)
+	second, err := app.GetFullTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads == 0 || filesystem.readCount(root) != reads || first.FileCount != second.FileCount {
+		t.Fatal("repeat scan did not reuse the live cache")
+	}
+	app.Shutdown(nil)
+	if len(app.scanCache.entries) != 0 {
+		t.Fatal("closing the app retained the live cache")
+	}
+	reopened := newApp(settings)
+	t.Cleanup(func() { reopened.Shutdown(nil) })
+	reopened.filesystem = filesystem
+	if _, err := reopened.GetFullTree(root); err != nil {
+		t.Fatal(err)
+	}
+	if filesystem.readCount(root) <= reads {
+		t.Fatal("a new app reused results from the previous session")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(settings), "cache", "scans")); !os.IsNotExist(err) {
+		t.Fatalf("scan created persistent cache storage: %v", err)
+	}
+}
+
+func TestCLIStartupCacheOverrideAppliesOnlyToInitialScan(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, "file.bin"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := newApp(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"))
+	defer app.Shutdown(nil)
+	profile := app.GetProfile()
+	profile.MinFileSize = 0
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	app.initialScanPath = rootPath
+	app.initialScanNoCache = true
+
+	if _, err := app.GetFullTree(rootPath); err != nil {
+		t.Fatal(err)
+	}
+	app.scanCache.mu.Lock()
+	firstEntryCount := len(app.scanCache.entries)
+	app.scanCache.mu.Unlock()
+	if firstEntryCount != 0 {
+		t.Fatalf("startup scan created %d cache entries despite --no-cache", firstEntryCount)
+	}
+
+	if _, err := app.GetFullTree(rootPath); err != nil {
+		t.Fatal(err)
+	}
+	app.scanCache.mu.Lock()
+	secondEntryCount := len(app.scanCache.entries)
+	app.scanCache.mu.Unlock()
+	if secondEntryCount != 1 {
+		t.Fatalf("later scan created %d cache entries, want 1", secondEntryCount)
+	}
+}
+
+func TestScanCacheProfileKeyIgnoresAppearanceButIncludesScanSettings(t *testing.T) {
+	base := *defaultProfile()
+	_, original := scanProfileCacheKey(base)
+	base.Appearance.CornerRadius++
+	_, appearanceChanged := scanProfileCacheKey(base)
+	if appearanceChanged != original {
+		t.Fatal("appearance unexpectedly invalidated the scan cache")
+	}
+	base.SkipHidden = !base.SkipHidden
+	_, scanChanged := scanProfileCacheKey(base)
+	if scanChanged == original {
+		t.Fatal("scan settings did not invalidate the scan cache")
+	}
+}
+
+func TestScanCacheWatcherChangeMarksAffectedPathDirty(t *testing.T) {
+	root := t.TempDir()
+	profile := *defaultProfile()
+	_, profileKey := scanProfileCacheKey(profile)
+	entry := &scanCacheEntry{
+		rootPath: root, profileKey: profileKey,
+		root:        &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true},
+		directories: map[string]*Node{canonicalCachePath(root): {ID: 0, FullPath: root, IsFolder: true}},
+		dirty:       make(map[string]struct{}),
+	}
+	manager := &scanCacheManager{entries: map[string]*scanCacheEntry{scanMemoryCacheKey(root, profileKey): entry}}
+	changed := filepath.Join(root, "folder", "file.bin")
+	manager.markChanged(entry, changed)
+	plan := manager.Prepare(root, profile)
+	if len(plan.dirty) == 0 || manager.StillClean(entry, 0) {
+		t.Fatalf("watcher change did not dirty cache: %+v", plan.dirty)
+	}
+}
+
+func TestScanCacheWatchCapacityDirtiesOnlyUnobservedSubtree(t *testing.T) {
+	root := t.TempDir()
+	unobserved := filepath.Join(root, "unobserved")
+	sibling := filepath.Join(root, "watched-sibling")
+	observation := &scanCacheObservation{
+		manager: &scanCacheManager{}, rootPath: root, watcher: capacityTreeWatcher{},
+		dirty: make(map[string]struct{}),
+	}
+
+	observation.WatchDirectory(unobserved)
+	if observation.invalid {
+		t.Fatal("nested watch exhaustion invalidated the complete cache")
+	}
+	if _, ok := observation.dirty[canonicalCachePath(unobserved)]; !ok {
+		t.Fatal("unobserved subtree was not marked dirty")
+	}
+	if _, ok := observation.dirty[canonicalCachePath(root)]; ok {
+		t.Fatal("watch exhaustion dirtied the scan root instead of preserving clean siblings")
+	}
+	if cachePathWithin(sibling, unobserved) || cachePathWithin(unobserved, sibling) {
+		t.Fatal("test paths unexpectedly overlap")
+	}
+	cachedUnobserved := &Node{FullPath: unobserved, IsFolder: true}
+	cachedSibling := &Node{FullPath: sibling, IsFolder: true}
+	scanner := &Scanner{}
+	scanner.SetIncrementalCache(map[string]*Node{
+		canonicalCachePath(unobserved): cachedUnobserved,
+		canonicalCachePath(sibling):    cachedSibling,
+	}, []string{unobserved})
+	if scanner.reusableCachedDirectory(unobserved) != nil {
+		t.Fatal("unobserved subtree was reused")
+	}
+	if scanner.reusableCachedDirectory(sibling) != cachedSibling {
+		t.Fatal("clean watched sibling was not reusable")
+	}
+}
+
+func TestDirtySubtreeSetCompactsAndFallsBackToRoot(t *testing.T) {
+	root := t.TempDir()
+	paths := make(map[string]struct{})
+	parent := filepath.Join(root, "parent")
+	child := filepath.Join(parent, "child")
+	if !addDirtySubtree(paths, root, child, 3) || !addDirtySubtree(paths, root, parent, 3) {
+		t.Fatal("dirty subtree was not recorded")
+	}
+	if len(paths) != 1 {
+		t.Fatalf("nested dirty paths were not compacted: %+v", paths)
+	}
+	if addDirtySubtree(paths, root, child, 3) {
+		t.Fatal("covered child was recorded twice")
+	}
+	for _, name := range []string{"second", "third", "fourth"} {
+		addDirtySubtree(paths, root, filepath.Join(root, name), 3)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("over-budget dirty paths were not collapsed: %+v", paths)
+	}
+	if _, ok := paths[canonicalCachePath(root)]; !ok {
+		t.Fatalf("over-budget dirty paths did not fall back to the scan root: %+v", paths)
+	}
+}
+
+func TestScanCacheKeepsIndependentRoots(t *testing.T) {
+	profile := *defaultProfile()
+	firstRoot := filepath.Join(t.TempDir(), "first")
+	secondRoot := filepath.Join(t.TempDir(), "second")
+	for _, root := range []string{firstRoot, secondRoot} {
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	for _, root := range []string{firstRoot, secondRoot} {
+		node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
+		manager.Install(root, profile, node, []*Node{node}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(root))
+	}
+	if plan := manager.Prepare(firstRoot, profile); plan.source == nil || len(plan.directories) == 0 {
+		t.Fatal("first root was evicted when the second root was installed")
+	}
+}
+
+func TestScanCacheOffersChildTreeToBroaderScan(t *testing.T) {
+	profile := *defaultProfile()
+	volume := t.TempDir()
+	child := filepath.Join(volume, "large-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	report := ScanReportSnapshot{}
+	report.Skipped[scanSkipHidden] = 2
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{}, manager.BeginObservation(child))
+	plan := manager.Prepare(volume, profile)
+	if plan.source != nil || plan.directories[canonicalCachePath(child)] == nil || len(plan.dependencies) != 1 || plan.reports[canonicalCachePath(child)].Skipped[scanSkipHidden] != 2 {
+		t.Fatalf("broader reuse plan = %+v", plan)
+	}
+}
+
+func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
+	volume := t.TempDir()
+	child := filepath.Join(volume, "large-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(child, "cached.bin"), []byte("cached"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cachedRoot, cachedNodes, cachedFiles, cachedDirs := scanTestTree(t, child, platform.Impl)
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(child))
+
+	if err := os.WriteFile(filepath.Join(volume, "outside.bin"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	scanner := NewScannerWithFilesystem(&profile, 1, filesystem)
+	plan := manager.Prepare(volume, profile)
+	scanner.SetIncrementalCache(plan.directories, plan.dirty)
+	var files, dirs int64
+	if _, err := scanner.buildTree(volume, 0, -1, &files, &dirs); err != nil {
+		t.Fatal(err)
+	}
+	if files != 2 || filesystem.readCount(child) != 0 || scanner.ReusedDirectories() == 0 {
+		t.Fatalf("files=%d child reads=%d reused=%d", files, filesystem.readCount(child), scanner.ReusedDirectories())
+	}
+}
+
+func TestBroaderScanMergesReusedChildReport(t *testing.T) {
+	volume := t.TempDir()
+	child := filepath.Join(volume, "reported-folder")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	node := &Node{ID: 0, ParentID: -1, FullPath: child, IsFolder: true, EntryDirs: 1}
+	report := ScanReportSnapshot{}
+	report.Skipped[scanSkipHidden] = 3
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	manager.Install(child, profile, node, []*Node{node}, 0, 1, report, scanReusePlan{}, manager.BeginObservation(child))
+
+	plan := manager.Prepare(volume, profile)
+	scanner := NewScannerWithFilesystem(&profile, 1, platform.Impl)
+	scanner.SetIncrementalCache(plan.directories, plan.dirty)
+	scanner.SetIncrementalCacheReports(plan.reports)
+	var files, dirs int64
+	if _, err := scanner.buildTree(volume, 0, -1, &files, &dirs); err != nil {
+		t.Fatal(err)
+	}
+	if got := scanner.Report().Skipped[scanSkipHidden]; got != 3 {
+		t.Fatalf("merged hidden skips = %d, want 3", got)
+	}
+}
+
+func TestScanCacheRetainsChangesObservedBeforeInstallation(t *testing.T) {
+	root := t.TempDir()
+	profile := *defaultProfile()
+	observation := newScanCacheManager(nil).BeginObservation(root)
+	manager := observation.manager
+	defer manager.Close()
+	defer observation.Close()
+
+	changed := filepath.Join(root, "changed-during-scan.bin")
+	if err := os.WriteFile(changed, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		observation.mu.Lock()
+		observed := observation.eventCount > 0
+		observation.mu.Unlock()
+		if observed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("filesystem change was not observed before cache installation")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	node := &Node{ID: 0, ParentID: -1, FullPath: root, IsFolder: true, EntryDirs: 1}
+	manager.Install(root, profile, node, []*Node{node}, 1, 1, ScanReportSnapshot{}, scanReusePlan{}, observation)
+	plan := manager.Prepare(root, profile)
+	if plan.source == nil || len(plan.dirty) == 0 || manager.StillClean(plan.source, plan.eventCount) {
+		t.Fatalf("pre-install change was lost: %+v", plan)
+	}
+}
+
+func TestCachePolicyRejectsStaleObservations(t *testing.T) {
+	for _, reset := range []string{"disable", "reenable", "clear", "close"} {
+		t.Run(reset, func(t *testing.T) {
+			manager := newScanCacheManager(nil)
+			defer manager.Close()
+			path := t.TempDir()
+			observation := manager.BeginObservation(path)
+			defer observation.Close()
+			switch reset {
+			case "disable":
+				manager.SetEnabled(false)
+			case "reenable":
+				manager.SetEnabled(false)
+				manager.SetEnabled(true)
+			case "clear":
+				manager.Clear()
+			case "close":
+				manager.Close()
+			}
+			root := &Node{FullPath: path, IsFolder: true}
+			manager.Install(path, *defaultProfile(), root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, observation)
+			if len(manager.entries) != 0 {
+				t.Fatal("stale observation repopulated cache")
+			}
+			manager.SetEnabled(true)
+			fresh := manager.BeginObservation(path)
+			defer fresh.Close()
+			manager.Install(path, *defaultProfile(), root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, fresh)
+			if len(manager.entries) != 1 {
+				t.Fatal("fresh observation was rejected")
+			}
+		})
+	}
+}
+
+func TestDisabledObservationCannotSurviveReenable(t *testing.T) {
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	manager.SetEnabled(false)
+	observation := manager.BeginObservation(t.TempDir())
+	defer observation.Close()
+	if observation.watcher != nil {
+		t.Fatal("disabled cache started watcher")
+	}
+	manager.SetEnabled(true)
+	if manager.acceptsObservation(observation) {
+		t.Fatal("disabled observation accepted after reenable")
+	}
+}

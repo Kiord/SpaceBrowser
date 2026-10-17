@@ -1,4 +1,4 @@
-import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, OpenPath, ValidateScanPath } from "./wailsjs/go/main/App.js";
+import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { AppState } from "./state.js";
 import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";

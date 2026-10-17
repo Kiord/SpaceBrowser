@@ -12,7 +12,7 @@ async function harness() {
   let next = 0;
   const ui = await loadUI("path-autocomplete.js", {
     "./dom.js": { byId },
-    "./wailsjs/go/main/App.js": { SuggestFolders: query => { const request = deferred(); requests.push({ query, ...request }); return request.promise; } },
+    "./wailsjs/go/app/App.js": { SuggestFolders: query => { const request = deferred(); requests.push({ query, ...request }); return request.promise; } },
   }, { setTimeout: fn => { timers.set(++next, fn); return next; }, clearTimeout: id => timers.delete(id),
     document: { createElement: () => ({ ...eventTarget(), setAttribute() {}, scrollIntoView() {} }) } });
   ui.initPathAutocomplete();

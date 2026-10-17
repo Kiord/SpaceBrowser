@@ -13,7 +13,7 @@ async function harness(rects, initialPath = "") {
   const handlers = [], calls = [];
   await loadUI("app.js", {
     "./location-shortcuts.js": { initLocationShortcuts: () => ({ cancelPreview: noop }) },
-    "./wailsjs/go/main/App.js": { DefaultPath: async () => "", GetInitialScanPath: async () => initialPath },
+    "./wailsjs/go/app/App.js": { DefaultPath: async () => "", GetInitialScanPath: async () => initialPath },
     "./dom.js": { byId },
     "./file-actions.js": { hideContextMenu: noop, initFileActions: noop,
       openRectWithDefault: (...args) => calls.push(["open", ...args]) },

@@ -6,7 +6,7 @@ import {
   PickSettingsPath,
   SetProfile,
   SetSettingsPath,
-} from "./wailsjs/go/main/App.js";
+} from "./wailsjs/go/app/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
 import { addControlEventListeners, shortcutFromEvent } from "./controls.js";

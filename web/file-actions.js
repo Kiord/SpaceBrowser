@@ -8,7 +8,7 @@ import {
   OpenWith,
   RestoreNode,
   ShowProperties,
-} from "./wailsjs/go/main/App.js";
+} from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize } from "./format.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";

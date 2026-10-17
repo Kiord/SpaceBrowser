@@ -1,4 +1,4 @@
-import { GetAssociatedIcon } from "./wailsjs/go/main/App.js";
+import { GetAssociatedIcon } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize, formatModTime, formatSize } from "./format.js";
 import { AppState } from "./state.js";

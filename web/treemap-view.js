@@ -1,6 +1,6 @@
 import { getSelectedRect, getSelectedRects, isPassiveRect, selectRect, selectionIds } from "./selection.js";
 export { getSelectedRect, getSelectedRects, isPassiveRect } from "./selection.js";
-import { LayoutWithBoxPadding } from "./wailsjs/go/main/App.js";
+import { LayoutWithBoxPadding } from "./wailsjs/go/app/App.js";
 import { hideContextMenu, openRectWithDefault, showContextMenu } from "./file-actions.js";
 import { debounce, formatCompactSize, formatCount, formatModTime, formatSize } from "./format.js";
 import { navigateToSelected, updateNavButtons } from "./navigation.js";

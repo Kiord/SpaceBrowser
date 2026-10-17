@@ -1,4 +1,4 @@
-import { SuggestFolders } from "./wailsjs/go/main/App.js";
+import { SuggestFolders } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 
 export function initPathAutocomplete() {

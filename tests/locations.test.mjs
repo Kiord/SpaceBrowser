@@ -16,7 +16,7 @@ async function renderLocation(capacity) {
     return elements.get(id);
   };
   const ui = await loadUI("locations.js", {
-    "./wailsjs/go/main/App.js": { GetScanLocations: async () => [{ name: "Disk", path: "/volume", ...capacity }] },
+    "./wailsjs/go/app/App.js": { GetScanLocations: async () => [{ name: "Disk", path: "/volume", ...capacity }] },
     "./dom.js": { byId }, "./folder-picker.js": { chooseFolder() {} },
     "./logging.js": { logError() {} }, "./format.js": { formatSize: size => `${size} B` },
   }, { document: { createElement: element } });

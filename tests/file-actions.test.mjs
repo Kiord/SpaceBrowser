@@ -28,7 +28,7 @@ async function harness(profile = {}) {
       OpenPath: async path => calls.push(["open", path]), OpenWith: noop, ShowProperties: noop,
     };
   const ui = await loadUI("file-actions.js", {
-    "./wailsjs/go/main/App.js": Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
+    "./wailsjs/go/app/App.js": Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
     "./dom.js": { byId }, "./format.js": { detailedByteSize: String },
     "./controls.js": { addControlEventListeners: noop, eventMatchesShortcut: noop, shortcutCanRun: noop },
     "./logging.js": { logError: noop },

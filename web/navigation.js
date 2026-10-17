@@ -1,5 +1,5 @@
 import { getSelectedRect, isPassiveRect } from "./selection.js";
-import { SetShowFreeSpace } from "./wailsjs/go/main/App.js";
+import { SetShowFreeSpace } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
