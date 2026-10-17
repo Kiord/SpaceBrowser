@@ -10,7 +10,6 @@ import (
 )
 
 type ScanJobInfo struct {
-	Evicted  bool            `json:"evicted"`
 	ID       uint64          `json:"id"`
 	Path     string          `json:"path"`
 	State    string          `json:"state"`
@@ -29,25 +28,24 @@ type ScanJobView struct {
 }
 
 type scanJob struct {
-	snapshot           *treeStoreSnapshot
-	revision, lastUsed uint64
-	info               ScanJobInfo
-	worker             *App
-	pause              *scanPause
-	cancel             context.CancelFunc
-	started            bool
-	startedAt          time.Time
-	previous           *treeStoreSnapshot
-	targets            []FolderRefreshTarget
-	tracked            []int
-	nodeIDs            map[int]int
-	queueOrder         uint64
-	autoResume         bool
+	snapshot   *treeStoreSnapshot
+	revision   uint64
+	info       ScanJobInfo
+	worker     *App
+	pause      *scanPause
+	cancel     context.CancelFunc
+	started    bool
+	startedAt  time.Time
+	previous   *treeStoreSnapshot
+	targets    []FolderRefreshTarget
+	tracked    []int
+	nodeIDs    map[int]int
+	queueOrder uint64
+	autoResume bool
 }
 
 type scanJobQueue struct {
-	requested, retentionClock uint64
-	retainedSizes             map[*Node]int64
+	requested                 uint64
 	mu                        sync.Mutex
 	app                       *App
 	jobs                      []*scanJob
@@ -130,7 +128,6 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 		pause: pause, cancel: cancel, previous: previous, targets: targets, tracked: tracked}
 	q.jobs = append(q.jobs, job)
 	q.requested = job.info.ID
-	q.touchLocked(job)
 	q.queueClock++
 	job.queueOrder = q.queueClock
 	q.activateLocked(job)
@@ -246,7 +243,6 @@ func (q *scanJobQueue) run(job *scanJob) {
 	job.cancel()
 	job.cancel = nil
 	job.revision++
-	q.touchLocked(job)
 	q.scheduleLocked()
 	q.pruneLocked()
 }
@@ -342,7 +338,6 @@ func (a *App) SelectScanJob(id uint64) (*ScanJobView, error) {
 	q.requested = 0
 	for _, job := range q.jobs {
 		if job.info.ID == id {
-			q.touchLocked(job)
 		}
 	}
 	view, err := q.viewLocked(id)

@@ -213,20 +213,20 @@ test('opening a never-scanned tile does not scan until explicitly requested', as
 });
 
 
-test('evicted locations keep an explicit rescan action and discard saved navigation', async () => {
+test('switching completed locations preserves navigation without rescanning', async () => {
   const h = await harness();
   await h.ui.analyze(); h.complete(0); await h.poll();
   h.state.node_id = 42;
   h.element('pathInput').value = '/two';
   await h.ui.analyze(); h.complete(1); await h.poll();
-  h.jobs[0].evicted = true;
-  h.jobs[0].tree = undefined;
-  h.jobs[0].revision++;
+  h.state.node_id = 24;
   const queues = h.calls.filter(call => call[0] === 'queue').length;
   await h.ui.openLocation('/one');
-  assert.equal(h.state.node_id, null);
-  assert.equal(h.element('scanLocationButton').hidden, false);
-  assert.equal(h.element('scanLocationButton').textContent, 'Rescan location');
-  assert.match(h.element('emptyLocationHint').textContent, /released to free memory/);
+  assert.equal(h.state.node_id, 42);
+  await h.ui.openLocation('/two');
+  assert.equal(h.state.node_id, 24);
+  await h.ui.openLocation('/one');
+  assert.equal(h.state.node_id, 42);
+  assert.equal(h.element('scanLocationButton').hidden, true);
   assert.equal(h.calls.filter(call => call[0] === 'queue').length, queues);
 });

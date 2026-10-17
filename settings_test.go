@@ -15,7 +15,6 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 
 	first := newApp(settingsPath)
 	want := Profile{
-		ScanMemoryBudgetMiB:  256,
 		ExcludedPaths:        []string{"  " + excludedPath + "  ", excludedPath},
 		SkipHidden:           true,
 		MinFileSize:          1024 * 1024,
@@ -437,19 +436,5 @@ func TestFailedSaveDoesNotApplyProfile(t *testing.T) {
 	}
 	if got := app.GetProfile(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("profile changed after failed save: got %#v, want %#v", got, want)
-	}
-}
-
-func TestScanMemoryBudgetDefaultsAndValidation(t *testing.T) {
-	app := newApp("")
-	if app.GetProfile().ScanMemoryBudgetMiB != 512 {
-		t.Fatal("default budget is not 512 MiB")
-	}
-	for _, budget := range []int{-1, 63, 65537} {
-		profile := app.GetProfile()
-		profile.ScanMemoryBudgetMiB = budget
-		if err := app.SetProfile(profile); err == nil {
-			t.Fatalf("invalid budget accepted: %d", budget)
-		}
 	}
 }

@@ -490,11 +490,8 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		delete(manager.entries, otherKey)
 		retired = append(retired, other)
 	}
-	budgetMiB := profile.ScanMemoryBudgetMiB
-	if budgetMiB == 0 {
-		budgetMiB = 512
-	}
-	for scanCacheEntriesExceedBudget(manager.entries, int64(budgetMiB)<<20) {
+	// This limit only drops acceleration-cache references, never location snapshots.
+	for scanCacheEntriesExceedBudget(manager.entries, 512<<20) {
 		var oldestKey string
 		var oldest *scanCacheEntry
 		for candidateKey, candidate := range manager.entries {
@@ -535,8 +532,7 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 }
 
-// Standalone scans also respect the configured budget. Queue retention later
-// combines these cache references with displayed and saved snapshots.
+// Bound acceleration-cache references independently of browsable scan results.
 func scanCacheEntriesExceedBudget(entries map[string]*scanCacheEntry, maxBytes int64) bool {
 	total := int64(0)
 	for _, entry := range entries {

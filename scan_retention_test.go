@@ -7,7 +7,7 @@ import (
 
 func retainedJob(id uint64, path string) *scanJob {
 	root := &Node{ID: 0, ParentID: -1, FullPath: path, IsFolder: true}
-	return &scanJob{info: ScanJobInfo{ID: id, Path: path, State: "completed"}, snapshot: &treeStoreSnapshot{root: root, nodes: []*Node{root}}, lastUsed: id}
+	return &scanJob{info: ScanJobInfo{ID: id, Path: path, State: "completed"}, snapshot: &treeStoreSnapshot{root: root, nodes: []*Node{root}}}
 }
 
 func TestRepeatedRescansReleaseWorkersAndOldTreesWithoutCache(t *testing.T) {
@@ -32,70 +32,36 @@ func TestRepeatedRescansReleaseWorkersAndOldTreesWithoutCache(t *testing.T) {
 	if job.worker != nil || job.previous != nil || job.snapshot == nil {
 		t.Fatal("terminal job still retains worker or rollback state")
 	}
-	if len(q.retainedSizes) != 1 {
-		t.Fatalf("accounting retained %d obsolete roots", len(q.retainedSizes))
-	}
+
 }
 
-func TestRetentionEvictsLeastRecentlyViewedAndSharedCacheReference(t *testing.T) {
-	app := &App{profile: Profile{ScanMemoryBudgetMiB: 1}, scanCache: newScanCacheManager(nil)}
-	oldest, recent, selected := retainedJob(1, "old"), retainedJob(2, "recent"), retainedJob(3, "selected")
-	q := &scanJobQueue{app: app, selected: 3, jobs: []*scanJob{oldest, recent, selected}, retainedSizes: map[*Node]int64{
-		oldest.snapshot.root: 600 << 10, recent.snapshot.root: 600 << 10, selected.snapshot.root: 100 << 10,
-	}}
-	// Simulate large allocations without allocating hundreds of MiB in the test.
-	app.scanCache.entries["old"] = &scanCacheEntry{root: oldest.snapshot.root, nodes: oldest.snapshot.nodes}
-	q.pruneLocked()
-	if !oldest.info.Evicted || oldest.snapshot != nil {
-		t.Fatal("oldest snapshot was not evicted")
-	}
-	if recent.info.Evicted || selected.info.Evicted {
-		t.Fatal("recent or displayed snapshot was evicted")
-	}
-	if len(app.scanCache.entries) != 0 {
-		t.Fatal("cache kept the evicted tree alive")
-	}
-	if len(q.jobs) != 3 {
-		t.Fatal("eviction removed location history")
-	}
-	app.jobs = q
-	view, err := app.SelectScanJob(1)
-	if err != nil || !view.Job.Evicted || view.Tree != nil {
-		t.Fatalf("evicted view = %+v, %v", view, err)
-	}
-}
-
-func TestRetentionCountsSharedRootsOnceAndProtectsPausedRollback(t *testing.T) {
-	app := &App{profile: Profile{ScanMemoryBudgetMiB: 1}, scanCache: newScanCacheManager(nil)}
-	completed := retainedJob(1, "completed")
-	paused := &scanJob{info: ScanJobInfo{ID: 2, Path: "paused", State: "paused"}, worker: &App{}, previous: completed.snapshot}
-	q := &scanJobQueue{app: app, jobs: []*scanJob{completed, paused}, retainedSizes: map[*Node]int64{completed.snapshot.root: 900 << 10}}
-	app.scanCache.entries["same"] = &scanCacheEntry{root: completed.snapshot.root, nodes: completed.snapshot.nodes}
-	q.pruneLocked()
-	if completed.info.Evicted || len(app.scanCache.entries) != 1 {
-		t.Fatal("shared allocation charged twice")
-	}
-	q.retainedSizes[completed.snapshot.root] = 2 << 20
-	q.pruneLocked()
-	if completed.info.Evicted || paused.previous == nil {
-		t.Fatal("paused rollback tree was evicted")
-	}
-}
-
-func TestScanBudgetChangePrunesImmediately(t *testing.T) {
-	app := newApp(filepath.Join(t.TempDir(), "settings.json"))
-	t.Cleanup(app.scanCache.Close)
-	q := app.jobQueue()
-	oldest, selected := retainedJob(1, "old"), retainedJob(2, "selected")
-	q.jobs, q.selected = []*scanJob{oldest, selected}, 2
-	q.retainedSizes = map[*Node]int64{oldest.snapshot.root: 50 << 20, selected.snapshot.root: 50 << 20}
+func TestSwitchingLocationsKeepsCompletedTreesWithoutCache(t *testing.T) {
+	app := newApp("")
+	defer app.scanCache.Close()
 	profile := app.GetProfile()
-	profile.ScanMemoryBudgetMiB = 64
+	profile.UseCache = false
 	if err := app.SetProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if !oldest.info.Evicted || selected.info.Evicted {
-		t.Fatal("lowered budget was not applied immediately")
+	first, second := retainedJob(1, "C:/"), retainedJob(2, "D:/")
+	q := app.jobQueue()
+	q.jobs = []*scanJob{first, second}
+	for _, id := range []uint64{1, 2, 1, 2, 1} {
+		view, err := app.SelectScanJob(id)
+		if err != nil || view.Tree == nil {
+			t.Fatalf("location %d lost its tree: %+v, %v", id, view, err)
+		}
+		if first.snapshot == nil || second.snapshot == nil {
+			t.Fatal("switching discarded another location")
+		}
+	}
+	// Clearing the acceleration cache and saving settings cannot discard scans either.
+	app.scanCache.Clear()
+	if err := app.SetProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.jobs) != 2 || first.snapshot == nil || second.snapshot == nil {
+		t.Fatal("completed locations were removed")
 	}
 }
 

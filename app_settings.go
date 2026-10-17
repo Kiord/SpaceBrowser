@@ -47,14 +47,6 @@ func (a *App) SetProfile(profile Profile) error {
 	a.profile = profile
 	a.scanCache.SetEnabled(profile.UseCache)
 	a.settingsMu.Unlock()
-	a.jobsMu.Lock()
-	queue := a.jobs
-	a.jobsMu.Unlock()
-	if queue != nil {
-		queue.mu.Lock()
-		queue.pruneLocked()
-		queue.mu.Unlock()
-	}
 	return nil
 }
 
@@ -134,12 +126,6 @@ func normalizeProfile(profile Profile) (Profile, error) {
 }
 
 func normalizeProfileWithFilesystem(profile Profile, filesystem platform.ScannerFilesystem) (Profile, error) {
-	if profile.ScanMemoryBudgetMiB == 0 {
-		profile.ScanMemoryBudgetMiB = 512
-	}
-	if profile.ScanMemoryBudgetMiB < 64 || profile.ScanMemoryBudgetMiB > 65536 {
-		return Profile{}, fmt.Errorf("scan memory budget must be between 64 and 65536 MiB")
-	}
 	if profile.MinFileSize < 0 {
 		return Profile{}, fmt.Errorf("minimum file size cannot be negative")
 	}

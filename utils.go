@@ -8,7 +8,6 @@ import (
 )
 
 type Profile struct {
-	ScanMemoryBudgetMiB  int                `json:"scanMemoryBudgetMiB"`
 	PlatformSystem       string             `json:"platformSystem"`
 	ExcludedPaths        []string           `json:"excludedPaths"`
 	SkipHidden           bool               `json:"skipHidden"`
@@ -120,7 +119,6 @@ func defaultProfile() *Profile {
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
 		UseCache:             true,
-		ScanMemoryBudgetMiB:  512,
 		ShowTooltips:         true,
 		TooltipDelayMS:       0,
 		AllowDelete:          false,
