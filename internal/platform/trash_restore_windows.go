@@ -92,18 +92,13 @@ func (Windows) DeleteTrashItemPermanently(p string) error {
 		return pairErr
 	}
 	if !direct {
-		if err := os.RemoveAll(clean); err != nil {
-			return fmt.Errorf("permanently delete Recycle Bin item: %w", err)
+		// Only descendants of the data item are deletable, never metadata descendants.
+		if !strings.EqualFold(parts[1][:2], "$R") {
+			return fmt.Errorf("the selected path is protected Recycle Bin metadata")
 		}
-		return nil
+		return removeTrashPaths(root, []string{clean}, nil)
 	}
-	if err := os.RemoveAll(dataPath); err != nil {
-		return fmt.Errorf("permanently delete Recycle Bin item: %w", err)
-	}
-	if err := os.Remove(infoPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove Recycle Bin metadata: %w", err)
-	}
-	return nil
+	return removeTrashPaths(root, []string{dataPath}, []string{infoPath})
 }
 
 func readWindowsRecycleInfo(path string) (string, error) {

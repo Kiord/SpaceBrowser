@@ -93,32 +93,18 @@ func (Linux) DeleteTrashItemPermanently(p string) error {
 	switch parts[0] {
 	case "files":
 		if len(parts) > 2 {
-			if err := os.RemoveAll(clean); err != nil {
-				return fmt.Errorf("permanently delete Trash item: %w", err)
-			}
-			return nil
+			return removeTrashPaths(root, []string{clean}, nil)
 		}
-		dataPath := filepath.Join(root, "files", parts[1])
-		infoPath := filepath.Join(root, "info", parts[1]+".trashinfo")
-		if err := os.RemoveAll(dataPath); err != nil {
-			return fmt.Errorf("permanently delete Trash item: %w", err)
-		}
-		if err := os.Remove(infoPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove Trash metadata: %w", err)
-		}
-		return nil
+		return removeTrashPaths(root, []string{clean}, []string{filepath.Join(root, "info", parts[1]+".trashinfo")})
 	case "info":
 		if len(parts) != 2 || !strings.HasSuffix(parts[1], ".trashinfo") {
 			return fmt.Errorf("the selected path is protected Trash metadata")
 		}
 		name := strings.TrimSuffix(parts[1], ".trashinfo")
-		if err := os.RemoveAll(filepath.Join(root, "files", name)); err != nil {
-			return fmt.Errorf("permanently delete Trash item: %w", err)
+		if name == "" || name == "." || name == ".." {
+			return fmt.Errorf("invalid Trash metadata name")
 		}
-		if err := os.Remove(clean); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove Trash metadata: %w", err)
-		}
-		return nil
+		return removeTrashPaths(root, []string{filepath.Join(root, "files", name)}, []string{clean})
 	default:
 		return fmt.Errorf("the selected path is protected Trash metadata")
 	}

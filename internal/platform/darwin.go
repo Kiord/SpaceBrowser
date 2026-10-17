@@ -198,10 +198,18 @@ func (d Darwin) DeleteTrashItemPermanently(p string) error {
 	if !d.IsInTrash(p) || d.IsTrashRoot(p) {
 		return fmt.Errorf("the selected item is not inside a supported Trash folder")
 	}
-	if err := os.RemoveAll(p); err != nil {
-		return fmt.Errorf("permanently delete Trash item: %w", err)
+	clean, err := filepath.Abs(p)
+	if err != nil {
+		return err
 	}
-	return nil
+	for root := filepath.Dir(clean); ; root = filepath.Dir(root) {
+		if d.IsTrashRoot(root) {
+			return removeTrashPaths(root, []string{clean}, nil)
+		}
+		if filepath.Dir(root) == root {
+			return fmt.Errorf("Trash directory is unavailable")
+		}
+	}
 }
 
 func (Darwin) DefaultStartPath() string {
