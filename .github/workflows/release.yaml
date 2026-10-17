@@ -6,7 +6,14 @@ on:
       - "v*.*.*" 
 
 jobs:
+  validate:
+    # A local reusable workflow validates the same tagged commit as this release.
+    uses: ./.github/workflows/test.yaml
+    permissions:
+      contents: read
+
   build:
+    needs: validate
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
