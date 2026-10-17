@@ -51,6 +51,8 @@ type scanCacheDependency struct {
 // forwards them to the installed cache entry.
 type scanCacheObservation struct {
 	manager        *scanCacheManager
+	generation     uint64
+	disabled       bool
 	rootPath       string
 	mu             sync.Mutex
 	watcher        treeWatcher
@@ -72,10 +74,12 @@ type scanReusePlan struct {
 }
 
 type scanCacheManager struct {
-	mu      sync.Mutex
-	logger  *SeverityLogger
-	entries map[string]*scanCacheEntry
-	clock   uint64
+	mu         sync.Mutex
+	logger     *SeverityLogger
+	entries    map[string]*scanCacheEntry
+	clock      uint64
+	generation uint64
+	disabled   bool
 }
 
 func newScanCacheManager(logger *SeverityLogger) *scanCacheManager {
@@ -126,6 +130,9 @@ func (manager *scanCacheManager) Prepare(rootPath string, profile Profile) scanR
 	_, profileKey := scanProfileCacheKey(profile)
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	if manager.disabled {
+		return scanReusePlan{}
+	}
 	exact := manager.entries[scanMemoryCacheKey(rootPath, profileKey)]
 	if exact != nil {
 		manager.touchLocked(exact)
@@ -231,6 +238,15 @@ func cacheEntryCrossRootSafe(entry *scanCacheEntry, profile Profile) bool {
 func (manager *scanCacheManager) BeginObservation(rootPath string) *scanCacheObservation {
 	observation := &scanCacheObservation{
 		manager: manager, rootPath: rootPath, dirty: make(map[string]struct{}),
+	}
+	if manager != nil {
+		manager.mu.Lock()
+		observation.generation = manager.generation
+		observation.disabled = manager.disabled
+		manager.mu.Unlock()
+	}
+	if observation.disabled {
+		return observation
 	}
 	watcher, err := startTreeWatcher(rootPath, []string{rootPath}, observation.markChanged, observation.markSubtreeChanged, observation.markFailed)
 	observation.mu.Lock()
@@ -421,6 +437,10 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		// Keep the fallback safe for any caller that omitted BeginObservation.
 		observation.markChanged(rootPath)
 	}
+	defer observation.Close()
+	if !manager.acceptsObservation(observation) {
+		return
+	}
 	for _, directory := range watchedDirectories(rootPath, nodes) {
 		observation.WatchDirectory(directory)
 	}
@@ -442,6 +462,11 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 
 	manager.mu.Lock()
+	// Recheck under the publication lock: settings may change during indexing.
+	if !manager.acceptsObservationLocked(observation) {
+		manager.mu.Unlock()
+		return
+	}
 	if manager.entries == nil {
 		manager.entries = make(map[string]*scanCacheEntry)
 	}
@@ -623,11 +648,38 @@ func (manager *scanCacheManager) InvalidatePath(path string) {
 	}
 }
 
+// Cache lifecycle policy belongs to the shared manager, not frozen scan profiles.
+func (manager *scanCacheManager) acceptsObservationLocked(observation *scanCacheObservation) bool {
+	return !manager.disabled && !observation.disabled && observation.manager == manager && observation.generation == manager.generation
+}
+
+func (manager *scanCacheManager) acceptsObservation(observation *scanCacheObservation) bool {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return manager.acceptsObservationLocked(observation)
+}
+
+func (manager *scanCacheManager) SetEnabled(enabled bool) {
+	manager.reset(&enabled)
+}
+
 func (manager *scanCacheManager) Clear() {
+	manager.reset(nil)
+}
+
+func (manager *scanCacheManager) reset(enabled *bool) {
 	if manager == nil {
 		return
 	}
 	manager.mu.Lock()
+	if enabled != nil {
+		if manager.disabled == !*enabled {
+			manager.mu.Unlock()
+			return
+		}
+		manager.disabled = !*enabled
+	}
+	manager.generation++
 	entries := make([]*scanCacheEntry, 0, len(manager.entries))
 	for _, entry := range manager.entries {
 		entries = append(entries, entry)
@@ -642,5 +694,5 @@ func (manager *scanCacheManager) Clear() {
 }
 
 func (manager *scanCacheManager) Close() {
-	manager.Clear()
+	manager.SetEnabled(false)
 }

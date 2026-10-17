@@ -38,7 +38,6 @@ func (a *App) SetProfile(profile Profile) error {
 	}
 
 	a.settingsMu.Lock()
-	wasUsingCache := a.profile.UseCache
 	if a.settingsPath != "" {
 		if err := saveSettings(a.settingsPath, profile); err != nil {
 			a.settingsMu.Unlock()
@@ -46,10 +45,8 @@ func (a *App) SetProfile(profile Profile) error {
 		}
 	}
 	a.profile = profile
+	a.scanCache.SetEnabled(profile.UseCache)
 	a.settingsMu.Unlock()
-	if wasUsingCache && !profile.UseCache && a.scanCache != nil {
-		a.scanCache.Clear()
-	}
 	a.jobsMu.Lock()
 	queue := a.jobs
 	a.jobsMu.Unlock()

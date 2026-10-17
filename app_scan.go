@@ -384,11 +384,8 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 
 	report := scanner.Report()
 	duration := time.Since(startedAt)
-	// Settings can be saved through another backend caller while a scan is in
-	// progress. Do not publish a new cache after caching was disabled.
-	if useCache && !a.GetProfile().UseCache {
-		useCache = false
-	}
+	// The shared cache manager validates current policy and observation generation
+	// at installation; this worker keeps its scan options frozen.
 	reportInfo, err := a.publishScanResult(ctx, generation, root, scanner.Nodes(), int(files), int(dirs), useCache, func() *ScanReportInfo {
 		return a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
 	})

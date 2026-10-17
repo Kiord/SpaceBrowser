@@ -434,3 +434,53 @@ func TestScanCacheRetainsChangesObservedBeforeInstallation(t *testing.T) {
 		t.Fatalf("pre-install change was lost: %+v", plan)
 	}
 }
+
+func TestCachePolicyRejectsStaleObservations(t *testing.T) {
+	for _, reset := range []string{"disable", "reenable", "clear", "close"} {
+		t.Run(reset, func(t *testing.T) {
+			manager := newScanCacheManager(nil)
+			defer manager.Close()
+			path := t.TempDir()
+			observation := manager.BeginObservation(path)
+			defer observation.Close()
+			switch reset {
+			case "disable":
+				manager.SetEnabled(false)
+			case "reenable":
+				manager.SetEnabled(false)
+				manager.SetEnabled(true)
+			case "clear":
+				manager.Clear()
+			case "close":
+				manager.Close()
+			}
+			root := &Node{FullPath: path, IsFolder: true}
+			manager.Install(path, *defaultProfile(), root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, observation)
+			if len(manager.entries) != 0 {
+				t.Fatal("stale observation repopulated cache")
+			}
+			manager.SetEnabled(true)
+			fresh := manager.BeginObservation(path)
+			defer fresh.Close()
+			manager.Install(path, *defaultProfile(), root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, fresh)
+			if len(manager.entries) != 1 {
+				t.Fatal("fresh observation was rejected")
+			}
+		})
+	}
+}
+
+func TestDisabledObservationCannotSurviveReenable(t *testing.T) {
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	manager.SetEnabled(false)
+	observation := manager.BeginObservation(t.TempDir())
+	defer observation.Close()
+	if observation.watcher != nil {
+		t.Fatal("disabled cache started watcher")
+	}
+	manager.SetEnabled(true)
+	if manager.acceptsObservation(observation) {
+		t.Fatal("disabled observation accepted after reenable")
+	}
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -228,5 +229,46 @@ func TestManualPauseClearsAutomaticResume(t *testing.T) {
 	q.scheduleLocked()
 	if q.running != 0 || first.autoResume || first.info.State != "paused" {
 		t.Fatal("explicit pause did not override automatic resume")
+	}
+}
+
+func TestQueuedWorkerCannotUndoCacheDisable(t *testing.T) {
+	for _, reenable := range []bool{false, true} {
+		t.Run(fmt.Sprint(reenable), func(t *testing.T) {
+			a, path, release := queuedFixture(t)
+			profile := a.GetProfile()
+			profile.UseCache = true
+			if err := a.SetProfile(profile); err != nil {
+				t.Fatal(err)
+			}
+			job, err := a.QueueScan(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			block := a.filesystem.(*blockingReadDirPlatform)
+			select {
+			case <-block.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("scan did not start")
+			}
+			profile.UseCache = false
+			if err := a.SetProfile(profile); err != nil {
+				t.Fatal(err)
+			}
+			if reenable {
+				profile.UseCache = true
+				if err := a.SetProfile(profile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			release()
+			waitJob(t, a, job.ID, "completed")
+			a.scanCache.mu.Lock()
+			count := len(a.scanCache.entries)
+			a.scanCache.mu.Unlock()
+			if count != 0 {
+				t.Fatalf("worker restored %d cache entries", count)
+			}
+		})
 	}
 }
