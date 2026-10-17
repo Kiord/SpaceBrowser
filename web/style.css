@@ -145,7 +145,8 @@ html.keyboard-navigation button:focus {
   top: calc(100% + 7px);
   right: 0;
   width: max-content;
-  max-width: 220px;
+  max-width: min(220px, calc(100vw - 24px));
+  box-sizing: border-box;
   padding: 4px 7px;
   color: #fff;
   background: #1f1f1f;
@@ -153,7 +154,9 @@ html.keyboard-navigation button:focus {
   border-radius: 3px;
   box-shadow: 0 2px 5px rgba(0,0,0,.2);
   font: 11px/1.25 "Segoe UI", sans-serif;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -163,6 +166,7 @@ html.keyboard-navigation button:focus {
   z-index: 10001;
 }
 
+.controls #toggleLocationsButton[data-tooltip]::after,
 .controls .browse-button[data-tooltip]::after {
   right: auto;
   left: 0;
@@ -1759,9 +1763,9 @@ button:disabled:hover,
 
 /* Home owns per-location controls; the toolbar shows only the selected job. */
 .location-tile { min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
-.location-tile .location-card { width: 100%; border: 0; box-shadow: none; background: transparent; }
+.location-tile .location-card { padding-top: 6px; padding-bottom: 6px; width: 100%; border: 0; box-shadow: none; background: transparent; }
 .location-tile:hover { background: #fff; }
-.tile-scan-status { padding: 0 10px 10px; }
+.tile-scan-status { padding: 0 10px 7px; }
 .tile-scan-status .scan-progress-bar { background: #8f9c8b; border-radius: 1px; }
 .tile-scan-status[data-complete="true"] .scan-progress-bar { background: #527eaf; }
 .tile-scan-status .compact-scan-label { font-size: 11px; }
@@ -1773,7 +1777,6 @@ button:disabled:hover,
 .controls { height: 43px; min-height: 43px; }
 .controls > .input-group > button, .controls .right-group > button, .controls .home-section > button { height: 28px; box-sizing: border-box; }
 .tile-scan-status { padding-left: 54px; }
-.tile-scan-title { color: #666; font-size: 11px; margin-bottom: 2px; }
 .tile-scan-status[data-state="paused"] .scan-progress-bar,
 .compact-scan-status[data-state="paused"] #compactScanBar { background: #999; }
 .tile-scan-status[hidden] { display: none; }
@@ -1798,13 +1801,12 @@ button:disabled:hover,
 .workspace .location-selector-panel { width: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .workspace .location-selector-header { gap: 8px; margin-bottom: 12px; }
 .workspace .location-selector-header h1 { font-size: 14px; }
-.workspace .location-selector-header p { font-size: 11px; }
 .workspace .location-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
 .workspace .location-tile[data-selected="true"] { border-color: #63879c; background: #edf4f8; box-shadow: inset 3px 0 #63879c; }
-.query-toolbar .input-group { max-width: 620px; min-width: 0; margin-left: 10px; margin-right: 16px; }
+.query-toolbar .input-group { max-width: 620px; min-width: 0; margin-left: 0; margin-right: 16px; }
 .query-toolbar { min-height: 40px; }
 .query-toolbar .navigation-section { flex: 0 0 auto; margin-left: auto; }
-.query-toolbar .settings-separator { flex: 0 0 1px; height: 22px; margin: 0 5px; background: #ccc; }
+.query-toolbar .toolbar-separator { flex: 0 0 1px; height: 22px; margin: 0 5px; background: #ccc; }
 .current-location { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .empty-location { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; background: #fff; }
 .empty-location[hidden] { display: none; }
@@ -1826,3 +1828,6 @@ button:disabled:hover,
 .path-suggestions[hidden] { display: none; }
 .path-suggestions [role="option"] { padding: 5px 7px; white-space: nowrap; cursor: pointer; }
 .path-suggestions [role="option"]:hover, .path-suggestions [aria-selected="true"] { background: #e5edf3; }
+
+#toggleLocationsButton[aria-expanded="true"] .sidebar-expand-icon,
+#toggleLocationsButton[aria-expanded="false"] .sidebar-collapse-icon { display: none; }
