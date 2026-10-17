@@ -87,7 +87,7 @@ function locationButton(location) {
   const name = document.createElement("strong");
   name.textContent = location.name || location.path;
   const path = document.createElement("span");
-  path.textContent = location.filesystem ? `${location.path} · ${location.filesystem}` : location.path;
+  path.textContent = [location.path, location.mediaType, location.busType, location.filesystem].filter(Boolean).join(" · ");
   text.append(name, path);
   const total = location.diskTotal;
   const free = location.diskFree;

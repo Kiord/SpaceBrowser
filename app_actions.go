@@ -252,6 +252,8 @@ func (a *App) GetAssociatedIcon(path string, isFolder bool) (string, error) {
 }
 
 type ScanLocation struct {
+	MediaType  string `json:"mediaType,omitempty"`
+	BusType    string `json:"busType,omitempty"`
 	Name       string `json:"name"`
 	Path       string `json:"path"`
 	Kind       string `json:"kind"`
@@ -268,7 +270,7 @@ func (a *App) GetScanLocations() ([]ScanLocation, error) {
 	}
 	result := make([]ScanLocation, 0, len(locations))
 	for _, location := range locations {
-		entry := ScanLocation{Name: location.Name, Path: location.Path, Kind: location.Kind}
+		entry := ScanLocation{Name: location.Name, Path: location.Path, Kind: location.Kind, MediaType: location.MediaType, BusType: location.BusType}
 		if usage, usageErr := disk.Usage(location.Path); usageErr == nil && usage.Total > 0 && usage.Free <= usage.Total {
 			entry.DiskTotal = usage.Total
 			entry.DiskFree = usage.Free

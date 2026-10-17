@@ -35,6 +35,15 @@ func (Linux) ListScanLocations() ([]ScanLocation, error) {
 	}
 
 	locations = normalizeLinuxLocations(locations)
+	partitions, _ := disk.Partitions(true)
+	for i := range locations {
+		for _, partition := range partitions {
+			if filepath.Clean(partition.Mountpoint) == locations[i].Path {
+				locations[i].MediaType, locations[i].BusType = linuxStorageDetails(partition.Device)
+				break
+			}
+		}
+	}
 	sort.SliceStable(locations, func(i, j int) bool {
 		if locations[i].Path == locations[j].Path {
 			return false

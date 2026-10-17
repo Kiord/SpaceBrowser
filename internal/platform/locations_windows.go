@@ -44,7 +44,8 @@ func (Windows) ListScanLocations() ([]ScanLocation, error) {
 		if name == "" {
 			name = fallbackName
 		}
-		locations = append(locations, ScanLocation{Name: name, Path: root, Kind: kind})
+		media, bus := windowsStorageDetails(root)
+		locations = append(locations, ScanLocation{Name: name, Path: root, Kind: kind, MediaType: media, BusType: bus})
 	}
 	return locations, nil
 }

@@ -94,3 +94,9 @@ test('folder jobs get a separate tile with progress but no disk usage bar', asyn
   assert.equal(tiles.length, 2);
   assert.deepEqual(updates, ['running', 'paused']);
 });
+
+
+test('volume tile displays available hardware and filesystem details together', async () => {
+  const h = await renderLocation({ mediaType: 'SSD', busType: 'NVMe', filesystem: 'NTFS' });
+  assert.equal(h.tile.children[1].children[1].textContent, '/volume · SSD · NVMe · NTFS');
+});

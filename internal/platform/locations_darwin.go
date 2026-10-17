@@ -43,7 +43,8 @@ func (Darwin) ListScanLocations() ([]ScanLocation, error) {
 		if isNetworkFilesystemType(partition.Fstype) {
 			kind = "network"
 		}
-		locations = append(locations, ScanLocation{Name: name, Path: mountPoint, Kind: kind})
+		media, bus := darwinStorageDetails(mountPoint)
+		locations = append(locations, ScanLocation{Name: name, Path: mountPoint, Kind: kind, MediaType: media, BusType: bus})
 		seen[mountPoint] = struct{}{}
 	}
 
