@@ -57,11 +57,12 @@ type TrashRestoreInfo struct {
 // ScanLocation is a user-visible filesystem root that can be selected as a
 // scan target, such as a Windows drive, a macOS volume, or a Linux mount.
 type ScanLocation struct {
-	MediaType string
-	BusType   string
-	Name      string
-	Path      string
-	Kind      string
+	Filesystem string
+	MediaType  string
+	BusType    string
+	Name       string
+	Path       string
+	Kind       string
 }
 
 type diagnosticDirectoryReader interface {

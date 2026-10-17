@@ -41,26 +41,28 @@ type ColorTheme struct {
 }
 
 type ControlSettings struct {
-	Back          string `json:"back"`
-	Forward       string `json:"forward"`
-	Parent        string `json:"parent"`
-	Root          string `json:"root"`
-	Open          string `json:"open"`
-	OpenWith      string `json:"openWith"`
-	VisitSelected string `json:"visitSelected"`
-	Refresh       string `json:"refresh"`
-	Delete        string `json:"delete"`
+	ToggleLocations string `json:"toggleLocations"`
+	Back            string `json:"back"`
+	Forward         string `json:"forward"`
+	Parent          string `json:"parent"`
+	Root            string `json:"root"`
+	Open            string `json:"open"`
+	OpenWith        string `json:"openWith"`
+	VisitSelected   string `json:"visitSelected"`
+	Refresh         string `json:"refresh"`
+	Delete          string `json:"delete"`
 }
 
 func defaultControlSettings() ControlSettings {
 	return ControlSettings{
-		Parent:        "Alt+ArrowUp",
-		Root:          "Ctrl+Alt+ArrowUp",
-		Open:          "Ctrl+O",
-		OpenWith:      "Ctrl+Shift+O",
-		VisitSelected: "Enter",
-		Refresh:       "Ctrl+R",
-		Delete:        "Delete",
+		ToggleLocations: "Ctrl+B",
+		Parent:          "Alt+ArrowUp",
+		Root:            "Ctrl+Alt+ArrowUp",
+		Open:            "Ctrl+O",
+		OpenWith:        "Ctrl+Shift+O",
+		VisitSelected:   "Enter",
+		Refresh:         "Ctrl+R",
+		Delete:          "Delete",
 	}
 }
 

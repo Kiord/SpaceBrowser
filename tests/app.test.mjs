@@ -30,7 +30,7 @@ async function harness(rects, initialPath = "") {
   }, { document, window });
   await document.emit("DOMContentLoaded");
   let prevented = false;
-  return { calls, state, byId, prevented: () => prevented,
+  return { calls, state, byId, handlers, prevented: () => prevented,
     press: (extra = {}) => handlers[0]({ key: "Enter", preventDefault() { prevented = true; }, ...extra }) };
 }
 
@@ -84,4 +84,24 @@ test("Visit shortcut respects blocked and nonmatching keyboard events", async ()
   h.press({ blocked: true });
   h.press({ key: "Escape" });
   assert.deepEqual(h.calls, []);
+});
+
+
+test('locations shortcut uses the configured binding and respects shortcut guards', async () => {
+  const h = await harness([]);
+  const press = async (key, blocked = false) => {
+    let prevented = false;
+    await h.handlers[1]({ key, blocked, preventDefault() { prevented = true; } });
+    return prevented;
+  };
+  h.state.profile.controls.toggleLocations = 'Ctrl+B';
+  assert.equal(await press('Ctrl+B'), true);
+  assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'true');
+  h.state.profile.controls.toggleLocations = 'Alt+L';
+  assert.equal(await press('Ctrl+B'), false);
+  assert.equal(await press('Alt+L', true), false);
+  assert.equal(await press('Alt+L'), true);
+  assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'false');
+  h.state.profile.controls.toggleLocations = '';
+  assert.equal(await press('Alt+L'), false);
 });

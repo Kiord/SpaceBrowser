@@ -260,3 +260,25 @@ func TestRefreshCannotPublishOverANewerScan(t *testing.T) {
 		t.Fatal("refresh overwrote the newer tree")
 	}
 }
+
+func TestLocationsBindingMigrationPreservesOtherControls(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"version":14,"controls":{"open":"Alt+O","visitSelected":"Space"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := loadSettingsWithFilesystem(path, platform.Impl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Controls.ToggleLocations != "Ctrl+B" || profile.Controls.Open != "Alt+O" || profile.Controls.VisitSelected != "Space" {
+		t.Fatalf("controls = %+v", profile.Controls)
+	}
+	profile.Controls.ToggleLocations = ""
+	if err := saveSettings(path, profile); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := loadSettingsWithFilesystem(path, platform.Impl)
+	if err != nil || reloaded.Controls.ToggleLocations != "" {
+		t.Fatalf("cleared binding not preserved: %+v, %v", reloaded.Controls, err)
+	}
+}

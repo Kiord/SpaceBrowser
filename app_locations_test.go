@@ -40,11 +40,14 @@ func TestGetScanLocationsPreservesLocationsWhenIconsAreUnavailable(t *testing.T)
 
 func TestGetScanLocationsIncludesAvailableCapacity(t *testing.T) {
 	app := &App{locations: staticLocationProvider{locations: []platform.ScanLocation{
-		{Name: "Test volume", Path: t.TempDir(), Kind: "volume"},
+		{Name: "Test volume", Path: t.TempDir(), Kind: "volume", Filesystem: "native-fs"},
 	}}}
 	locations, err := app.GetScanLocations()
 	if err != nil || len(locations) != 1 {
 		t.Fatalf("GetScanLocations() = %v, %v", locations, err)
+	}
+	if locations[0].Filesystem != "native-fs" {
+		t.Fatalf("native filesystem was overwritten: %q", locations[0].Filesystem)
 	}
 	if locations[0].DiskTotal == 0 || locations[0].DiskFree > locations[0].DiskTotal {
 		t.Fatalf("invalid capacity: %+v", locations[0])

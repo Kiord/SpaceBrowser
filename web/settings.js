@@ -48,6 +48,7 @@ const SETTINGS_TAB_LABELS = Object.freeze({
 });
 
 const CONTROL_BINDING_LABELS = Object.freeze({
+  toggleLocations: "Show/hide locations",
   back: "Back",
   forward: "Forward",
   parent: "Parent folder",

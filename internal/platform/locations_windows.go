@@ -40,12 +40,12 @@ func (Windows) ListScanLocations() ([]ScanLocation, error) {
 			continue
 		}
 
-		name := windowsVolumeLabel(root)
+		name, filesystem := windowsVolumeInformation(root)
 		if name == "" {
 			name = fallbackName
 		}
 		media, bus := windowsStorageDetails(root)
-		locations = append(locations, ScanLocation{Name: name, Path: root, Kind: kind, MediaType: media, BusType: bus})
+		locations = append(locations, ScanLocation{Name: name, Path: root, Kind: kind, MediaType: media, BusType: bus, Filesystem: filesystem})
 	}
 	return locations, nil
 }
@@ -83,14 +83,15 @@ func windowsLocationKind(driveType uint32) (kind, name string, supported bool) {
 	}
 }
 
-func windowsVolumeLabel(root string) string {
+func windowsVolumeInformation(root string) (string, string) {
 	rootPtr, err := windows.UTF16PtrFromString(root)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	name := make([]uint16, windows.MAX_PATH+1)
-	if err := windows.GetVolumeInformation(rootPtr, &name[0], uint32(len(name)), nil, nil, nil, nil, 0); err != nil {
-		return ""
+	filesystem := make([]uint16, windows.MAX_PATH+1)
+	if err := windows.GetVolumeInformation(rootPtr, &name[0], uint32(len(name)), nil, nil, nil, &filesystem[0], uint32(len(filesystem))); err != nil {
+		return "", ""
 	}
-	return strings.TrimSpace(windows.UTF16ToString(name))
+	return strings.TrimSpace(windows.UTF16ToString(name)), windows.UTF16ToString(filesystem)
 }

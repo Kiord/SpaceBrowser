@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } });
   initFolderPicker();
   initZoom({ redraw });
-  byId("toggleLocationsButton").addEventListener("click", async () => {
+  const toggleLocations = async () => {
     const workspace = byId("workspace");
     const collapsed = workspace.getAttribute("data-sidebar-collapsed") !== "true";
     workspace.setAttribute("data-sidebar-collapsed", String(collapsed));
@@ -53,7 +53,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     hideContextMenu();
     resizeCanvas();
     await redraw();
-  });
+  };
+  byId("toggleLocationsButton").addEventListener("click", toggleLocations);
 
   window.addEventListener("keydown", event => {
     if (event.isComposing || event.defaultPrevented) return;
@@ -73,6 +74,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     else openRectWithDefault();
   };
   addControlEventListeners(handleVisitShortcut);
+  addControlEventListeners(event => {
+    if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.toggleLocations)) return;
+    event.preventDefault();
+    return toggleLocations();
+  });
 
   try {
     await loadSettingsState();

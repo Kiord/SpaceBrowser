@@ -163,6 +163,7 @@ func normalizeProfileWithFilesystem(profile Profile, filesystem platform.Scanner
 }
 
 func normalizeControlSettings(controls ControlSettings) ControlSettings {
+	controls.ToggleLocations = strings.TrimSpace(controls.ToggleLocations)
 	controls.Back = strings.TrimSpace(controls.Back)
 	controls.Forward = strings.TrimSpace(controls.Forward)
 	controls.Parent = strings.TrimSpace(controls.Parent)

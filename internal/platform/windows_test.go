@@ -570,3 +570,11 @@ func TestCanonicalizeUppercasesDriveLetterOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsVolumeInformationIncludesFilesystem(t *testing.T) {
+	root := filepath.VolumeName(t.TempDir()) + `\`
+	_, filesystem := windowsVolumeInformation(root)
+	if filesystem == "" {
+		t.Fatal("filesystem missing for temporary directory's volume")
+	}
+}

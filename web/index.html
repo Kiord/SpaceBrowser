@@ -366,6 +366,13 @@
         <section id="settingsControlsPanel" class="settings-panel controls-panel" role="tabpanel" aria-labelledby="settingsControlsTab" data-settings-panel="controls" hidden>
           <p class="controls-help">Click a binding, then press a keyboard key or mouse button.</p>
           <div class="settings-row control-binding-row">
+            <label for="controlBindingToggleLocations">Show/hide locations</label>
+            <div class="control-binding-field">
+              <button id="controlBindingToggleLocations" class="control-binding-button" type="button" data-control-binding="toggleLocations"><span>Ctrl+B</span></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="toggleLocations" aria-label="Clear Show/hide locations binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            </div>
+          </div>
+          <div class="settings-row control-binding-row">
             <label for="controlBindingRefresh">Refresh selected folders</label>
             <div class="control-binding-field">
             <button id="controlBindingRefresh" class="control-binding-button" type="button" data-control-binding="refresh"><span>Ctrl+R</span></button>

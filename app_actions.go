@@ -270,11 +270,13 @@ func (a *App) GetScanLocations() ([]ScanLocation, error) {
 	}
 	result := make([]ScanLocation, 0, len(locations))
 	for _, location := range locations {
-		entry := ScanLocation{Name: location.Name, Path: location.Path, Kind: location.Kind, MediaType: location.MediaType, BusType: location.BusType}
+		entry := ScanLocation{Name: location.Name, Path: location.Path, Kind: location.Kind, MediaType: location.MediaType, BusType: location.BusType, Filesystem: location.Filesystem}
 		if usage, usageErr := disk.Usage(location.Path); usageErr == nil && usage.Total > 0 && usage.Free <= usage.Total {
 			entry.DiskTotal = usage.Total
 			entry.DiskFree = usage.Free
-			entry.Filesystem = usage.Fstype
+			if entry.Filesystem == "" {
+				entry.Filesystem = usage.Fstype
+			}
 		}
 		if iconURL, iconErr := a.GetAssociatedIcon(location.Path, true); iconErr == nil {
 			entry.IconURL = iconURL
