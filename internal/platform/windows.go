@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -275,13 +274,6 @@ func (w Windows) IsMountRoot(p string) bool {
 		}
 	}
 	return false
-}
-
-func (Windows) OpenInFileBrowser(p string) error {
-	if info, err := os.Stat(p); err == nil && !info.IsDir() {
-		return exec.Command("explorer", "/select,", p).Run()
-	}
-	return exec.Command("explorer", p).Run()
 }
 
 func (Windows) DefaultStartPath() string {
