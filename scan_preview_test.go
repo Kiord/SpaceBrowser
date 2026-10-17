@@ -254,3 +254,68 @@ func TestVolumePreviewStartsWithFreeSpaceAndShrinksAsFilesArrive(t *testing.T) {
 		t.Fatal("free-space node duplicated")
 	}
 }
+
+func TestUnchangedPreviewSkipsAllSnapshotAllocations(t *testing.T) {
+	preview := newScanPreviewTree()
+	preview.add(&Node{ID: 0, ParentID: -1, IsFolder: true})
+	for id := 1; id <= 100_000; id++ {
+		preview.add(&Node{ID: id, ParentID: 0, Size: 1})
+	}
+	_, _, revision := preview.snapshot()
+	allocations := testing.AllocsPerRun(100, func() {
+		root, nodes, got := preview.snapshotAfter(revision)
+		if root != nil || nodes != nil || got != revision {
+			t.Fatal("unchanged preview was rebuilt")
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("unchanged snapshot allocated %v times", allocations)
+	}
+	preview.smallFiles(0, 12, 3, 4, 1)
+	root, _, next := preview.snapshotAfter(revision)
+	if root == nil || root.Size != 100_012 || next <= revision {
+		t.Fatal("new small-file records were skipped")
+	}
+	preview.complete(0)
+	root, _, latest := preview.snapshotAfter(next)
+	if root == nil || root.ScanIncomplete || latest <= next {
+		t.Fatal("folder completion was skipped")
+	}
+}
+
+func TestUnchangedForcedPreviewDoesNotReplacePublishedTree(t *testing.T) {
+	preview := newScanPreviewTree()
+	preview.add(&Node{ID: 0, ParentID: -1, IsFolder: true})
+	scanner := NewScannerWithFilesystem(&Profile{}, 0, platform.Impl)
+	scanner.preview = preview
+	app := &App{scanActive: true, scanGeneration: 1, scanScanner: scanner}
+	first := app.publishScanPreview(1, true)
+	before := app.store.snapshotState()
+	generation := app.store.generation
+	for i := 0; i < 3; i++ {
+		if got := app.publishScanPreview(1, true); got != first {
+			t.Fatal("unchanged preview metadata replaced")
+		}
+	}
+	if app.store.generation != generation || app.store.snapshotState().root != before.root {
+		t.Fatal("unchanged preview replaced the store")
+	}
+	preview.add(&Node{ID: 1, ParentID: 0, Size: 10})
+	if next := app.publishScanPreview(1, true); next == first || next.Revision <= first.Revision {
+		t.Fatal("changed preview not published")
+	}
+}
+
+func BenchmarkUnchangedScanPreview(b *testing.B) {
+	preview := newScanPreviewTree()
+	preview.add(&Node{ID: 0, ParentID: -1, IsFolder: true})
+	for id := 1; id <= 100_000; id++ {
+		preview.add(&Node{ID: id, ParentID: 0, Size: 1})
+	}
+	_, _, revision := preview.snapshot()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		preview.snapshotAfter(revision)
+	}
+}

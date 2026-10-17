@@ -96,7 +96,19 @@ func (p *scanPreviewTree) complete(id int) {
 }
 
 func (p *scanPreviewTree) snapshot() (*Node, []*Node, uint64) {
+	return p.snapshotAfter(^uint64(0))
+}
+
+// Check under the recording mutex before allocating or copying anything. A
+// paused scanner can still finish in-flight records; publish those once, then
+// subsequent polls are constant-time until another record actually changes.
+func (p *scanPreviewTree) snapshotAfter(previousRevision uint64) (*Node, []*Node, uint64) {
 	p.mu.Lock()
+	if p.revision == previousRevision {
+		revision := p.revision
+		p.mu.Unlock()
+		return nil, nil, revision
+	}
 	maxID := -1
 	for id := range p.nodes {
 		if id > maxID {
@@ -186,10 +198,11 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 		return previous
 	}
 	a.scanMu.RUnlock()
-	root, nodes, revision := scanner.preview.snapshot()
-	if root == nil {
-		return nil
+	previousRevision := ^uint64(0)
+	if previous != nil {
+		previousRevision = previous.Revision
 	}
+	root, nodes, revision := scanner.preview.snapshotAfter(previousRevision)
 	files, dirs := scanner.LiveCounts()
 	a.scanMu.Lock()
 	defer a.scanMu.Unlock()
@@ -199,6 +212,9 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 	if previous != nil && previous.Revision == revision {
 		a.scanPreviewAt = time.Now()
 		return previous
+	}
+	if root == nil {
+		return nil
 	}
 	a.store.Replace(root, nodes, int(files), int(dirs))
 	a.scanPreview = &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), Revision: revision}
