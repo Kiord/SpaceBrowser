@@ -155,3 +155,32 @@ test('late volume discovery upgrades a saved-scan placeholder without losing con
   assert.ok(details.children[2]);
   assert.equal(tile.children[1], progress);
 });
+
+
+test('cancelling a rescan restores the saved snapshot tile status and timestamp', async () => {
+  const h = await renderLocation({});
+  const updates = [];
+  const factory = () => ({ element: h.element(), update: job => updates.push(job) });
+  const saved = { id: 1, path: 'C:\\', state: 'completed', cached: true,
+    scannedAt: '2026-10-18T10:00:00Z', progress: { fraction: 1, elapsedMilliseconds: 4500 } };
+  const rescan = { id: 2, path: 'c:/', state: 'running', progress: { fraction: 0.3 } };
+  h.ui.setLocationScanJobs([saved], factory);
+  assert.equal(updates.at(-1), saved);
+  h.ui.setLocationScanJobs([saved, rescan], factory);
+  assert.equal(updates.at(-1), rescan);
+  h.ui.setLocationScanJobs([saved, { ...rescan, state: 'cancelled' }], factory);
+  assert.equal(updates.at(-1), saved);
+  assert.equal(updates.at(-1).scannedAt, saved.scannedAt);
+  assert.equal(updates.at(-1).progress.fraction, 1);
+  const restarted = { ...rescan, id: 3 };
+  h.ui.setLocationScanJobs([saved, { ...rescan, state: 'cancelled' }, restarted], factory);
+  assert.equal(updates.at(-1), restarted);
+});
+
+test('a cancelled first scan still supplies the hidden status for its location', async () => {
+  const h = await renderLocation({});
+  const updates = [];
+  const cancelled = { id: 1, path: '/volume', state: 'cancelled' };
+  h.ui.setLocationScanJobs([cancelled], () => ({ element: h.element(), update: job => updates.push(job) }));
+  assert.deepEqual(updates, [cancelled]);
+});

@@ -65,8 +65,17 @@ function renderScanJobs() {
   for (const [key, tile] of tiles) {
     if (tile.status && !currentPaths.has(key)) { tile.status.element.remove(); tile.status = null; }
   }
+  // A cancelled rescan must not hide the completed snapshot it restored.
+  // Keep cancelled-only locations so their tile remains available to scan again.
+  const displayedJobs = new Map();
   for (const job of scanJobs) {
     const key = pathKey(job.path);
+    const previous = displayedJobs.get(key);
+    if (job.state !== "cancelled" || !previous || previous.state === "cancelled") {
+      displayedJobs.set(key, job);
+    }
+  }
+  for (const [key, job] of displayedJobs) {
     if (!tiles.has(key)) {
       const location = knownLocations.get(key) || { path: job.path, name: job.path.split(/[\\/]/).filter(Boolean).at(-1) || job.path, kind: "folder" };
       addLocation(location);
