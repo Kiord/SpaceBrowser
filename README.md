@@ -92,32 +92,6 @@ Download the latest available version from the **[GitHub Releases](https://githu
 
 > **Note:** macOS builds are provided but have not yet been tested. Feedback and bug reports are welcome.
 
-The **Windows MSI** offers “Create a Start menu shortcut” and “Add ‘Scan with
-SpaceBrowser’ to File Explorer” during setup, followed by “Launch SpaceBrowser
-when setup finishes.” The context menu is optional and covers folders, drives,
-and folder backgrounds. On Windows 11 it appears under **Show more options**.
-Uninstalling the MSI removes these entries. The portable EXE makes no system changes.
-
-The **Linux setup TAR.GZ** includes `Install.sh`: extract the archive and run it
-to install for your account, with optional application-menu and file-manager
-entries and launch after setup. Zenity provides a graphical checklist when
-available; otherwise run it in a terminal. Supported file managers are Dolphin
-(context menu) and Nautilus (the **Scripts** submenu), for one selected local
-folder. DEB/RPM packages retain standard package-manager installation without
-interactive prompts or automatic context-menu registration.
-
-The **macOS DMG/ZIP** includes `Install.command`, an optional setup assistant
-that installs into `~/Applications` and offers a Finder **Quick Action / Services**
-entry for one selected folder and launch after setup. Drag-and-drop installation
-remains available without the Finder action. The setup assistant and Finder
-action still need testing on macOS.
-
-These options are installation choices, with no controls in the application and
-no background daemon or login autostart. Linux/macOS setup can be rerun to change
-the optional entries; `Install.sh --remove-shortcuts` or
-`Install.command --remove-shortcuts` removes them without removing the app.
-Remove shortcuts before deleting a Linux/macOS installation.
-
 
 <details>
 <summary>Build from source</summary>
