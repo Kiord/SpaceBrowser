@@ -106,10 +106,10 @@ Download the latest available version from the **[GitHub Releases](https://githu
 ```sh
 git clone https://github.com/Kiord/SpaceBrowser.git
 cd SpaceBrowser
-go -C tools/wails install github.com/wailsapp/wails/v2/cmd/wails
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 ```
 
-The [pinned build tool](tools/wails/README.md) includes the Go analysis library needed for Go 1.27.2.
+Use Wails CLI 2.17.0 to match the application dependency and CI builds. Its standard installation supports Go 1.27.2; no separate build-tool module is needed.
 
 Make sure the Go binary installation directory is included in your `PATH`.
 
