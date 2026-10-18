@@ -74,11 +74,3 @@ wails build
 
 
 
-## Trigger a new release
-
-Create and push a version tag. The release build derives its version from the tag:
-
-```sh
-git tag -a vX.X.X -m "Release vX.X.X"
-git push origin vX.X.X
-```
