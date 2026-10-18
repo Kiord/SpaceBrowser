@@ -109,10 +109,6 @@ cd SpaceBrowser
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 ```
 
-Use Wails CLI 2.17.0 to match the application dependency and CI builds. Its standard installation supports Go 1.27.2; no separate build-tool module is needed.
-
-Make sure the Go binary installation directory is included in your `PATH`.
-
 ### Build
 
 ```sh
