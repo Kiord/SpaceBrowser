@@ -13,25 +13,59 @@
 
     <Icon Id="SpaceBrowserIcon" SourceFile="$(var.IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="SpaceBrowserIcon" />
+    <Property Id="STARTMENUSHORTCUT" Value="1" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch SpaceBrowser when setup finishes" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#SpaceBrowserExecutable]" />
+    <CustomAction Id="LaunchSpaceBrowser" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
+    <UIRef Id="SpaceBrowserSetupUI" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="SpaceBrowser">
         <Component Id="SpaceBrowserApplication" Guid="*" Bitness="always64">
-          <File Id="SpaceBrowserExecutable" Source="$(var.ExecutablePath)" Name="spacebrowser.exe" KeyPath="yes">
-            <Shortcut
-              Id="SpaceBrowserStartMenuShortcut"
-              Directory="ProgramMenuFolder"
-              Name="SpaceBrowser"
-              Description="Disk space visualizer"
-              WorkingDirectory="INSTALLFOLDER"
-              Advertise="yes" />
-          </File>
+          <File Id="SpaceBrowserExecutable" Source="$(var.ExecutablePath)" Name="spacebrowser.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="SpaceBrowserStartMenu" Guid="*" Bitness="always64">
+          <Shortcut Id="SpaceBrowserStartMenuShortcut" Directory="ProgramMenuFolder" Name="SpaceBrowser"
+                    Target="[#SpaceBrowserExecutable]" Description="Disk space visualizer" WorkingDirectory="INSTALLFOLDER" />
+          <RegistryValue Root="HKLM" Key="Software\Kiord\SpaceBrowser" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+        <Component Id="SpaceBrowserFolderMenu" Guid="*" Bitness="always64">
+          <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\SpaceBrowser.Scan">
+            <RegistryValue Type="string" Value="Scan with SpaceBrowser" KeyPath="yes" />
+            <RegistryValue Name="Icon" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot;,0" />
+            <RegistryValue Name="MultiSelectModel" Type="string" Value="Single" />
+            <RegistryValue Key="command" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot; -- &quot;%1\.&quot;" />
+          </RegistryKey>
+        </Component>
+        <Component Id="SpaceBrowserBackgroundMenu" Guid="*" Bitness="always64">
+          <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\SpaceBrowser.Scan">
+            <RegistryValue Type="string" Value="Scan with SpaceBrowser" KeyPath="yes" />
+            <RegistryValue Name="Icon" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot;,0" />
+            <RegistryValue Key="command" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot; -- &quot;%V\.&quot;" />
+          </RegistryKey>
+        </Component>
+        <Component Id="SpaceBrowserDriveMenu" Guid="*" Bitness="always64">
+          <RegistryKey Root="HKLM" Key="Software\Classes\Drive\shell\SpaceBrowser.Scan">
+            <RegistryValue Type="string" Value="Scan with SpaceBrowser" KeyPath="yes" />
+            <RegistryValue Name="Icon" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot;,0" />
+            <RegistryValue Name="MultiSelectModel" Type="string" Value="Single" />
+            <RegistryValue Key="command" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot; -- &quot;%1\.&quot;" />
+          </RegistryKey>
         </Component>
       </Directory>
     </StandardDirectory>
 
-    <Feature Id="MainFeature" Title="SpaceBrowser" Level="1">
+    <Feature Id="MainFeature" Title="SpaceBrowser" Level="1" AllowAbsent="no">
       <ComponentRef Id="SpaceBrowserApplication" />
+    </Feature>
+    <Feature Id="StartMenuFeature" Title="Start menu shortcut" Level="1">
+      <ComponentRef Id="SpaceBrowserStartMenu" />
+    </Feature>
+    <Feature Id="ContextMenuFeature" Title="Scan with SpaceBrowser in File Explorer" Level="200">
+      <ComponentRef Id="SpaceBrowserFolderMenu" />
+      <ComponentRef Id="SpaceBrowserBackgroundMenu" />
+      <ComponentRef Id="SpaceBrowserDriveMenu" />
     </Feature>
   </Package>
 </Wix>

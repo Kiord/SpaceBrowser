@@ -84,3 +84,32 @@ jobs:
 
       - name: Build Wails app
         run: wails build -trimpath -tags webkit2_41
+
+      - name: Test Linux setup in an isolated home
+        if: runner.os == 'Linux'
+        run: bash tests/installer.test.sh
+
+      - name: Validate macOS setup files
+        if: runner.os == 'macOS'
+        run: |
+          bash -n packaging/macos/Install.command
+          plutil -lint packaging/macos/ScanWithSpaceBrowser.workflow/Contents/Info.plist
+          plutil -lint packaging/macos/ScanWithSpaceBrowser.workflow/Contents/document.wflow
+
+      - name: Setup .NET for installer validation
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build and validate Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 4.0.6
+          wix extension add -g WixToolset.UI.wixext/4.0.6
+          wix extension add -g WixToolset.Util.wixext/4.0.6
+          wix build packaging/windows/SpaceBrowser.wxs packaging/windows/SetupUI.wxs `
+            -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext `
+            -d AppVersion=0.0.0 -d ExecutablePath=build/bin/spacebrowser.exe `
+            -d IconPath=assets/appicon.ico -o build/bin/SpaceBrowser.msi

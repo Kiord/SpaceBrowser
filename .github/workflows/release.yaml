@@ -51,7 +51,10 @@ jobs:
 
       - name: Install WiX Toolset
         if: runner.os == 'Windows'
-        run: dotnet tool install --global wix --version 4.0.6
+        run: |
+          dotnet tool install --global wix --version 4.0.6
+          wix extension add -g WixToolset.UI.wixext/4.0.6
+          wix extension add -g WixToolset.Util.wixext/4.0.6
 
       - name: Install nFPM
         if: runner.os == 'Linux'
@@ -92,7 +95,8 @@ jobs:
 
           $executablePath = (Resolve-Path build/bin/spacebrowser.exe).Path
           $iconPath = (Resolve-Path assets/appicon.ico).Path
-          wix build packaging/windows/SpaceBrowser.wxs `
+          wix build packaging/windows/SpaceBrowser.wxs packaging/windows/SetupUI.wxs `
+            -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext `
             -arch x64 `
             -d "AppVersion=$env:VERSION" `
             -d "ExecutablePath=$executablePath" `
@@ -108,6 +112,11 @@ jobs:
 
           cp build/bin/spacebrowser "dist/SpaceBrowser-${TAG_VERSION}-linux-x64"
           chmod 0755 "dist/SpaceBrowser-${TAG_VERSION}-linux-x64"
+
+          mkdir -p build/linux-setup
+          cp build/bin/spacebrowser packaging/linux/Install.sh assets/appicon.png build/linux-setup/
+          chmod 0755 build/linux-setup/Install.sh
+          tar -czf "dist/SpaceBrowser-${TAG_VERSION}-linux-setup.tar.gz" -C build/linux-setup .
 
           nfpm package \
             --config packaging/linux/nfpm.yaml \
@@ -127,10 +136,6 @@ jobs:
           set -euo pipefail
           mkdir -p dist
 
-          ditto -c -k --sequesterRsrc --keepParent \
-            build/bin/SpaceBrowser.app \
-            "dist/SpaceBrowser-${TAG_VERSION}-macOS.zip"
-
           STAGE="$(mktemp -d "${RUNNER_TEMP}/spacebrowser-dmg.XXXXXX")"
           cleanup() {
             case "$STAGE" in
@@ -141,6 +146,10 @@ jobs:
           trap cleanup EXIT
 
           ditto build/bin/SpaceBrowser.app "$STAGE/SpaceBrowser.app"
+          cp packaging/macos/Install.command "$STAGE/Install.command"
+          ditto packaging/macos/ScanWithSpaceBrowser.workflow "$STAGE/Scan with SpaceBrowser.workflow"
+          chmod 0755 "$STAGE/Install.command"
+          ditto -c -k --sequesterRsrc "$STAGE" "dist/SpaceBrowser-${TAG_VERSION}-macOS.zip"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create \
             -volname "SpaceBrowser ${VERSION}" \

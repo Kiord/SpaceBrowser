@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>AMDocumentVersion</key><string>2</string>
+  <key>actions</key><array><dict><key>action</key><dict>
+    <key>AMActionVersion</key><string>2.0.3</string>
+    <key>AMActionIdentifier</key><string>com.apple.RunShellScript</string>
+    <key>AMApplication</key><array><string>Automator</string></array>
+    <key>AMAccepts</key><dict><key>Container</key><string>List</string><key>Optional</key><true/><key>Types</key><array><string>com.apple.cocoa.string</string></array></dict>
+    <key>AMProvides</key><dict><key>Container</key><string>List</string><key>Types</key><array><string>com.apple.cocoa.string</string></array></dict>
+    <key>ActionBundlePath</key><string>/System/Library/Automator/Run Shell Script.action</string>
+    <key>ActionName</key><string>Run Shell Script</string>
+    <key>ActionParameters</key><dict>
+      <key>shell</key><string>/bin/bash</string>
+      <key>inputMethod</key><integer>1</integer>
+      <key>source</key><string>if [[ $# == 1 &amp;&amp; -d $1 ]]; then
+    /usr/bin/open -n "$HOME/Applications/SpaceBrowser.app" --args -- "$1"
+fi</string>
+    </dict>
+    <key>UUID</key><string>EF1D6143-85F7-4694-8898-6206B377BD3C</string>
+  </dict></dict></array>
+  <key>connectors</key><dict/>
+  <key>workflowMetaData</key><dict>
+    <key>workflowTypeIdentifier</key><string>com.apple.Automator.servicesMenu</string>
+    <key>serviceInputTypeIdentifier</key><string>com.apple.Automator.fileSystemObject.folder</string>
+    <key>serviceOutputTypeIdentifier</key><string>com.apple.Automator.nothing</string>
+    <key>serviceProcessesInput</key><integer>0</integer>
+    <key>serviceApplicationBundleID</key><string>com.apple.finder</string>
+    <key>serviceApplicationPath</key><string>/System/Library/CoreServices/Finder.app</string>
+    <key>serviceName</key><string>Scan with SpaceBrowser</string>
+  </dict>
+</dict></plist>

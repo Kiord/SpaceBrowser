@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <UI Id="SpaceBrowserSetupUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchSpaceBrowser" Order="1"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Property Id="ARPNOMODIFY" Value="1" />
+      <Dialog Id="SetupOptionsDlg" Width="370" Height="270" Title="SpaceBrowser Setup" NoMinimize="yes">
+        <Control Id="Title" Type="Text" X="20" Y="18" Width="330" Height="22" Text="{\WixUI_Font_Bigger}Install SpaceBrowser" />
+        <Control Id="Description" Type="Text" X="20" Y="52" Width="330" Height="28" Text="Choose how you want to access SpaceBrowser. Setup installs it for everyone using this computer." />
+        <Control Id="StartMenu" Type="CheckBox" X="20" Y="92" Width="330" Height="18" Property="STARTMENUSHORTCUT" CheckBoxValue="1" Text="Create a Start menu shortcut" />
+        <Control Id="ContextMenu" Type="CheckBox" X="20" Y="120" Width="330" Height="18" Property="CONTEXTMENUSHORTCUT" CheckBoxValue="1" Text="Add 'Scan with SpaceBrowser' to File Explorer" />
+        <Control Id="ContextHelp" Type="Text" X="35" Y="142" Width="310" Height="32" Text="Right-click a folder, drive, or folder background to scan it. On Windows 11, choose 'Show more options'." />
+        <Control Id="Destination" Type="Text" X="20" Y="188" Width="330" Height="28" Text="Install location: [INSTALLFOLDER]" />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Install" Type="PushButton" X="212" Y="243" Width="66" Height="17" Default="yes" Text="Install" ElevationShield="yes">
+          <Publish Event="AddLocal" Value="MainFeature" Order="1" />
+          <Publish Event="AddLocal" Value="StartMenuFeature" Order="2" Condition="STARTMENUSHORTCUT = 1" />
+          <Publish Event="Remove" Value="StartMenuFeature" Order="3" Condition="NOT STARTMENUSHORTCUT" />
+          <Publish Event="AddLocal" Value="ContextMenuFeature" Order="4" Condition="CONTEXTMENUSHORTCUT = 1" />
+          <Publish Event="Remove" Value="ContextMenuFeature" Order="5" Condition="NOT CONTEXTMENUSHORTCUT" />
+          <Publish Event="EndDialog" Value="Return" Order="6" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="286" Y="243" Width="66" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+      <InstallUISequence>
+        <Show Dialog="SetupOptionsDlg" Before="ProgressDlg" Condition="NOT Installed" />
+      </InstallUISequence>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+  </Fragment>
+</Wix>
