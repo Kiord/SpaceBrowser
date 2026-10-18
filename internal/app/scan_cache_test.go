@@ -319,7 +319,13 @@ func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
 	profile.MinFileSize = 0
 	manager := newScanCacheManager(nil)
 	defer manager.Close()
-	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{}, manager.BeginObservation(child))
+	// This test exercises cache selection, not native notification timing.
+	// FSEvents may deliver pending setup changes after the watcher starts,
+	// legitimately making this freshly populated cache dirty on macOS.
+	observation := &scanCacheObservation{
+		manager: manager, rootPath: child, dirty: make(map[string]struct{}),
+	}
+	manager.Install(child, profile, cachedRoot, cachedNodes, int(cachedFiles), int(cachedDirs), ScanReportSnapshot{}, scanReusePlan{}, observation)
 
 	if err := os.WriteFile(filepath.Join(volume, "outside.bin"), []byte("outside"), 0o600); err != nil {
 		t.Fatal(err)
@@ -334,6 +340,23 @@ func TestBroaderScanReusesPreviouslyScannedChild(t *testing.T) {
 	}
 	if files != 2 || filesystem.readCount(child) != 0 || scanner.ReusedDirectories() == 0 {
 		t.Fatalf("files=%d child reads=%d reused=%d", files, filesystem.readCount(child), scanner.ReusedDirectories())
+	}
+
+	// A reported change must still prevent reuse, even when broadening the scan.
+	if err := os.WriteFile(filepath.Join(child, "new.bin"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	observation.markChanged(filepath.Join(child, "new.bin"))
+	filesystem = &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	scanner = NewScannerWithFilesystem(&profile, 1, filesystem)
+	plan = manager.Prepare(volume, profile)
+	scanner.SetIncrementalCache(plan.directories, plan.dirty)
+	files, dirs = 0, 0
+	if _, err := scanner.buildTree(volume, 0, -1, &files, &dirs); err != nil {
+		t.Fatal(err)
+	}
+	if files != 3 || filesystem.readCount(child) == 0 || scanner.ReusedDirectories() != 0 {
+		t.Fatalf("dirty cache: files=%d child reads=%d reused=%d", files, filesystem.readCount(child), scanner.ReusedDirectories())
 	}
 }
 
