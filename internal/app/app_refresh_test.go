@@ -25,7 +25,7 @@ func refreshFixture(t *testing.T) (*App, *countingCacheFilesystem, string, map[s
 	fs := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
 	a := newAppWithDependencies("", "", NewSeverityLogger(0, os.Stderr), fs, platform.Impl, platform.Impl)
 	a.profile.MinFileSize = 0
-	a.profile.UseCache = false
+	a.scanCache.SetEnabled(false)
 	if _, err := a.GetFullTree(root); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestRefreshBindingMigrationPreservesOtherControls(t *testing.T) {
 
 func TestRefreshInvalidatesLiveCacheWithoutMutatingItsSnapshot(t *testing.T) {
 	a, _, root, ids := refreshFixture(t)
-	a.profile.UseCache = true
+	a.scanCache.SetEnabled(true)
 	if _, err := a.GetFullTree(root); err != nil {
 		t.Fatal(err)
 	}

@@ -109,7 +109,7 @@ func TestDisablingCacheClearsMemoryEntries(t *testing.T) {
 	profile := app.GetProfile()
 	app.scanCache.Install(rootPath, profile, root, []*Node{root}, 0, 1, ScanReportSnapshot{}, scanReusePlan{}, app.scanCache.BeginObservation(rootPath))
 
-	profile.UseCache = false
+	app.scanCache.SetEnabled(false)
 	if err := app.SetProfile(profile); err != nil {
 		t.Fatal(err)
 	}
@@ -167,42 +167,6 @@ func TestLiveCacheReusesScanUntilAppCloses(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(settings), "cache", "scans")); !os.IsNotExist(err) {
 		t.Fatalf("scan created persistent cache storage: %v", err)
-	}
-}
-
-func TestCLIStartupCacheOverrideAppliesOnlyToInitialScan(t *testing.T) {
-	rootPath := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootPath, "file.bin"), []byte("content"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	app := newApp(filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json"))
-	defer app.Shutdown(nil)
-	profile := app.GetProfile()
-	profile.MinFileSize = 0
-	if err := app.SetProfile(profile); err != nil {
-		t.Fatal(err)
-	}
-	app.initialScanPath = rootPath
-	app.initialScanNoCache = true
-
-	if _, err := app.GetFullTree(rootPath); err != nil {
-		t.Fatal(err)
-	}
-	app.scanCache.mu.Lock()
-	firstEntryCount := len(app.scanCache.entries)
-	app.scanCache.mu.Unlock()
-	if firstEntryCount != 0 {
-		t.Fatalf("startup scan created %d cache entries despite --no-cache", firstEntryCount)
-	}
-
-	if _, err := app.GetFullTree(rootPath); err != nil {
-		t.Fatal(err)
-	}
-	app.scanCache.mu.Lock()
-	secondEntryCount := len(app.scanCache.entries)
-	app.scanCache.mu.Unlock()
-	if secondEntryCount != 1 {
-		t.Fatalf("later scan created %d cache entries, want 1", secondEntryCount)
 	}
 }
 

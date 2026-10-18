@@ -692,3 +692,34 @@ func (manager *scanCacheManager) reset(enabled *bool) {
 func (manager *scanCacheManager) Close() {
 	manager.SetEnabled(false)
 }
+
+// Forget releases live-cache references overlapping a manually cleared snapshot.
+// Other locations retain their scan acceleration.
+func (manager *scanCacheManager) Forget(path string) {
+	if manager == nil {
+		return
+	}
+	manager.mu.Lock()
+	var retired []*scanCacheEntry
+	for key, entry := range manager.entries {
+		if cachePathWithin(path, entry.rootPath) || cachePathWithin(entry.rootPath, path) {
+			delete(manager.entries, key)
+			retired = append(retired, entry)
+		}
+	}
+	manager.mu.Unlock()
+	for _, entry := range retired {
+		if entry.watcher != nil {
+			_ = entry.watcher.Close()
+		}
+	}
+}
+
+func (manager *scanCacheManager) Enabled() bool {
+	if manager == nil {
+		return false
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	return !manager.disabled
+}

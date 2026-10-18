@@ -15,7 +15,7 @@ func TestParseCommandLineDefaults(t *testing.T) {
 	}
 }
 
-func TestParseCommandLineDisablesCacheForStartupPath(t *testing.T) {
+func TestParseCommandLineDisablesSavedCacheForSession(t *testing.T) {
 	options, err := parseCommandLine([]string{"--no-cache", `C:\Users`})
 	if err != nil {
 		t.Fatal(err)
@@ -23,8 +23,8 @@ func TestParseCommandLineDisablesCacheForStartupPath(t *testing.T) {
 	if !options.disableCache || options.initialPath != `C:\Users` {
 		t.Fatalf("unexpected options: %+v", options)
 	}
-	if _, err := parseCommandLine([]string{"--no-cache"}); err == nil {
-		t.Fatal("--no-cache without a startup path was accepted")
+	if options, err := parseCommandLine([]string{"--no-cache"}); err != nil || !options.disableCache {
+		t.Fatal("--no-cache without a startup path must disable saved caching")
 	}
 }
 

@@ -210,12 +210,12 @@
         <button id="settingsGeneralTab" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general">General</button>
         <button id="settingsAppearanceTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAppearancePanel" data-settings-tab="appearance">Appearance</button>
         <button id="settingsControlsTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsControlsPanel" data-settings-tab="controls">Controls</button>
+        <button id="settingsCachingTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsCachingPanel" data-settings-tab="caching">Caching</button>
         <button id="settingsMiscTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsMiscPanel" data-settings-tab="misc">Misc</button>
       </div>
 
       <div class="settings-body">
         <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general">
-          <p class="scan-settings-note">Changes to scan options below apply to the next scan.</p>
           <div class="settings-row">
             <label>Platform</label>
             <output id="settingsPlatform"></output>
@@ -250,10 +250,6 @@
           <label class="settings-check">
             <input id="settingsSkipNetworkFS" type="checkbox">
             <span>Skip network filesystems</span>
-          </label>
-          <label class="settings-check">
-            <input id="settingsUseCache" type="checkbox">
-            <span title="Reuse unchanged results during this app session. Closing the app clears the cache.">Use live scan cache</span>
           </label>
           <div class="tooltip-settings-row">
             <label class="settings-check">
@@ -439,6 +435,15 @@
             <button type="button" data-restore-settings="controls">Restore Controls defaults</button>
           </div>
         </section>
+        <section id="settingsCachingPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsCachingTab" data-settings-panel="caching" hidden>
+          <label class="settings-check">
+            <input id="settingsCachingEnabled" type="checkbox">
+            <span>Enable scan caching</span>
+          </label>
+          <p id="cachedScansStatus" role="status"></p>
+          <div id="cachedScansList" class="cached-scans-list"></div>
+          <div class="settings-panel-actions"><button id="clearAllCachedScans" type="button" class="danger-button">Clear all cached scans</button></div>
+        </section>
         <section id="settingsMiscPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsMiscTab" data-settings-panel="misc" hidden>
           <div class="settings-row settings-row-top">
             <label for="settingsConfigPath">Configuration file</label>
@@ -452,7 +457,6 @@
                   </svg>
                 </button>
               </div>
-              <small>Previous configuration file will <strong>not</strong> be deleted.</small>
             </div>
           </div>
           <div class="settings-panel-actions">

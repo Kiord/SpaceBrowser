@@ -16,14 +16,20 @@ const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/")
 
 function addLocation(location) {
   const key = pathKey(location.path);
-  if (tiles.has(key)) return;
+  const existing = tiles.get(key);
+  if (existing) {
+    existing.location = location;
+    existing.element.replaceChildren(locationButton(location));
+    if (existing.status) existing.element.append(existing.status.element);
+    return;
+  }
   const tile = document.createElement("div");
   tile.className = "location-tile";
   tile.append(locationButton(location));
   tile.addEventListener("click", event => {
     // Buttons handle their own clicks, including the scan controls.
     if (event.target.closest("button")) return;
-    return openLocation(location);
+    return openLocation(tiles.get(key).location);
   });
   byId("locationList").append(tile);
   tiles.set(key, { element: tile, location });
@@ -55,6 +61,10 @@ export function setLocationScanJobs(jobs, statusFactory, path = selectedPath) {
 }
 
 function renderScanJobs() {
+  const currentPaths = new Set(scanJobs.map(job => pathKey(job.path)));
+  for (const [key, tile] of tiles) {
+    if (tile.status && !currentPaths.has(key)) { tile.status.element.remove(); tile.status = null; }
+  }
   for (const job of scanJobs) {
     const key = pathKey(job.path);
     if (!tiles.has(key)) {

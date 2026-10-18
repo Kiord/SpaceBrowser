@@ -23,7 +23,7 @@ async function harness(rects, initialPath = "") {
     "./logging.js": { logError: noop },
     "./locations.js": { initLocationSelector: () => { state.homeVisible = true; }, showLocationSelector: noop, hideLocationSelector: () => { state.homeVisible = false; } },
     "./navigation.js": { initNavigation: noop, updateNavButtons: noop, navigateToSelected: () => calls.push(["visit"]) },
-    "./scan.js": { analyze: () => calls.push(['scan', byId('pathInput').value, state.homeVisible]), openLocation: noop, initScan: noop, updateScanVisibility: noop },
+    "./scan.js": { analyze: () => calls.push(['scan', byId('pathInput').value, state.homeVisible]), openLocation: noop, initScan: noop, refreshScanJobs: async () => {}, updateScanVisibility: noop },
     "./settings.js": { initSettings: noop, loadSettingsState: async () => {} },
     "./treemap-view.js": { initTreemapView: noop, redraw: () => calls.push(['redraw']), resizeCanvas: () => calls.push(['resize']), repaintScanLabels: noop },
     "./zoom.js": { initZoom: noop },

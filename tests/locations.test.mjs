@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadUI, eventTarget } from "./helpers/ui.mjs";
+import { loadUI, eventTarget, deferred } from "./helpers/ui.mjs";
 
 async function renderLocation(capacity) {
   const element = () => ({
@@ -126,4 +126,32 @@ test('scan updates do not reset the cursor during a held-Control cycle', async (
   h.ui.setLocationScanJobs(jobs, null, '/volume');
   h.ui.cycleLocation(1, false);
   assert.equal(h.selectedPath(), '/folder-a');
+});
+
+
+test('late volume discovery upgrades a saved-scan placeholder without losing controls', async () => {
+  const pending = deferred();
+  const make = () => ({ ...eventTarget(), children: [], dataset: {}, attributes: {}, style: { setProperty() {} },
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    setAttribute(key, value) { this.attributes[key] = value; } });
+  const elements = new Map();
+  const byId = id => { if (!elements.has(id)) elements.set(id, make()); return elements.get(id); };
+  const ui = await loadUI('locations.js', {
+    './wailsjs/go/app/App.js': { GetScanLocations: () => pending.promise },
+    './dom.js': { byId }, './logging.js': { logError() {} }, './format.js': { formatSize: String },
+  }, { document: { createElement: make } });
+  ui.initLocationSelector({ analyze: async () => {} });
+  const progress = make();
+  ui.setLocationScanJobs([{ id: 1, path: 'D:\\', state: 'completed', cached: true }], () => ({ element: progress, update() {} }));
+  const tile = byId('locationList').children[0];
+  pending.resolve([{ name: 'Data', path: 'D:\\', kind: 'volume', iconUrl: 'data:image/png;base64,icon', filesystem: 'NTFS', diskTotal: 100, diskFree: 20 }]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(byId('locationList').children.length, 1);
+  assert.equal(tile.children[0].children[0].children[0].src, 'data:image/png;base64,icon');
+  const details = tile.children[0].children[1];
+  assert.equal(details.children[0].textContent, 'Data');
+  assert.match(details.children[1].textContent, /NTFS/);
+  assert.ok(details.children[2]);
+  assert.equal(tile.children[1], progress);
 });

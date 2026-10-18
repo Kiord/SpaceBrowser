@@ -75,20 +75,6 @@ func (a *App) validateScanPath(path string) (string, error) {
 	return path, nil
 }
 
-func (a *App) startupScanCacheDisabled(path string) bool {
-	a.initialScanMu.Lock()
-	defer a.initialScanMu.Unlock()
-	if !a.initialScanNoCache || a.initialScanPath == "" {
-		return false
-	}
-	initialPath := canonicalCachePath(a.filesystem.Canonicalize(a.initialScanPath))
-	if initialPath != canonicalCachePath(path) {
-		return false
-	}
-	a.initialScanNoCache = false
-	return true
-}
-
 func (a *App) GetScanProgress() ScanProgress {
 	a.scanMu.RLock()
 	active := a.scanActive
@@ -293,8 +279,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()
-	startupCacheDisabled := a.startupScanCacheDisabled(path)
-	useCache := profile.UseCache && !startupCacheDisabled
+	useCache := a.scanCache.Enabled()
 	cachePlan := scanReusePlan{}
 	if useCache {
 		cachePlan = a.scanCache.Prepare(path, profile)

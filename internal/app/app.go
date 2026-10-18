@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,14 +17,13 @@ import (
 type App struct {
 	ctx                 context.Context
 	initialScanPath     string
-	initialScanNoCache  bool
-	initialScanMu       sync.Mutex
 	logger              *SeverityLogger
 	filesystem          platform.ScannerFilesystem
 	desktop             platform.DesktopActions
 	locations           platform.LocationProvider
 	store               TreeStore
 	scanCache           *scanCacheManager
+	coldCache           *coldCache
 	showFreeSpace       bool
 	profile             Profile
 	settingsPath        string
@@ -104,8 +104,10 @@ func newAppWithDependencies(settingsPath, defaultPath string, logger *SeverityLo
 		desktop:             desktop,
 		locations:           locations,
 	}
+	if defaultPath != "" {
+		app.coldCache = &coldCache{dir: filepath.Join(filepath.Dir(defaultPath), "scans")}
+	}
 	app.scanCache = newScanCacheManager(logger)
-	app.scanCache.SetEnabled(app.profile.UseCache)
 	return app
 }
 
@@ -123,6 +125,9 @@ func (a *App) Shutdown(context.Context) {
 		a.jobs.close()
 	}
 	a.jobsMu.Unlock()
+	if a.coldCache != nil {
+		a.coldCache.writes.Wait()
+	}
 	if a.scanCache != nil {
 		a.scanCache.Close()
 	}

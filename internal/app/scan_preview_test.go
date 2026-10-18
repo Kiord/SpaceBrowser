@@ -61,7 +61,7 @@ func previewFixture(t *testing.T) (*App, string) {
 	}
 	a := newAppWithDependencies("", "", NewSeverityLogger(0, os.Stderr), platform.Impl, platform.Impl, platform.Impl)
 	a.profile.MinFileSize = 0
-	a.profile.UseCache = false
+	a.scanCache.SetEnabled(false)
 	t.Cleanup(a.scanCache.Close)
 	return a, root
 }

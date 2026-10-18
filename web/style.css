@@ -1831,3 +1831,14 @@ button:disabled:hover,
 
 #toggleLocationsButton[aria-expanded="true"] .sidebar-expand-icon,
 #toggleLocationsButton[aria-expanded="false"] .sidebar-collapse-icon { display: none; }
+
+.scan-snapshot-date { display:block; font-size:10px; color:#777; margin-top:5px; overflow-wrap:anywhere; }
+.cached-scans-description { color:#777; font-size:12px; line-height:1.5; }
+.cached-scans-list { display:grid; gap:8px; }
+.cached-scan-row { display:flex; gap:12px; align-items:center; padding:10px; border:1px solid #ccc; border-radius:2px; background:#fafafa; }
+.cached-scan-row > div { flex:1; min-width:0; display:grid; gap:4px; }
+.cached-scan-row strong { font-size:12px; overflow-wrap:anywhere; }
+.cached-scan-row span { font-size:11px; color:#777; }
+
+.scan-snapshot-date[hidden] { display:none; }
+.cached-scan-row button { padding:3px 8px; border:1px solid #aaa; border-radius:2px; background:#fafafa; color:#444; cursor:pointer; font:inherit; }

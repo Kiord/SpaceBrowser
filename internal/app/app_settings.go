@@ -45,7 +45,6 @@ func (a *App) SetProfile(profile Profile) error {
 		}
 	}
 	a.profile = profile
-	a.scanCache.SetEnabled(profile.UseCache)
 	a.settingsMu.Unlock()
 	return nil
 }

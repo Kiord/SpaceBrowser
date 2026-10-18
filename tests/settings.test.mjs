@@ -23,9 +23,9 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
   const appState = { node_id: 0, profile: { appearance }, defaultProfile: { appearance } };
   const ui = await loadUI("settings.js", {
-    "./wailsjs/go/app/App.js": { GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SetProfile() {}, SetSettingsPath() {} },
+    "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SetProfile() {}, SetSettingsPath() {} },
     "./dom.js": { byId, queryAll: () => [] },
-    "./format.js": { SIZE_UNITS: {}, splitSizeIntoUnit() {} },
+    "./format.js": { formatSize: String, SIZE_UNITS: {}, splitSizeIntoUnit() {} },
     "./controls.js": { addControlEventListeners() {}, shortcutFromEvent() {} },
     "./logging.js": { logError() {} },
     "./state.js": { AppState: appState, AppearanceState: appearance, PALETTES: { default: ["#000000"], ocean: ["#ffffff"] }, SCALE_MAX: 5, SCALE_MIN: .5, getScale: () => 1, setProfiles() {} },

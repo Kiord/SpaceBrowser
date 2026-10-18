@@ -1,4 +1,9 @@
 import {
+  GetCachingEnabled,
+  SetCachingEnabled,
+  GetCachedScans,
+  ClearCachedScan,
+  ClearAllCachedScans,
   GetDefaultProfile,
   GetDefaultSettingsPath,
   GetProfile,
@@ -8,7 +13,7 @@ import {
   SetSettingsPath,
 } from "./wailsjs/go/app/App.js";
 import { byId, queryAll } from "./dom.js";
-import { SIZE_UNITS, splitSizeIntoUnit } from "./format.js";
+import { SIZE_UNITS, splitSizeIntoUnit, formatSize } from "./format.js";
 import { addControlEventListeners, shortcutFromEvent } from "./controls.js";
 import { logError } from "./logging.js";
 import {
@@ -22,6 +27,8 @@ import {
 } from "./state.js";
 
 let redraw = async () => {};
+let cachedScansChanged = async () => {};
+let cacheListRequest = 0;
 let draftControlBindings = {};
 let capturingBindingButton = null;
 let activeSettingsPath = "";
@@ -100,6 +107,7 @@ export async function applyAppearance(appearance, redrawNow = true) {
 }
 
 function showSettingsTab(name) {
+  if (name === "caching") { void renderCachedScans(); void loadSessionCaching(); }
   stopControlBindingCapture();
   queryAll("[data-settings-tab]").forEach(tab => {
     const active = tab.dataset.settingsTab === name;
@@ -573,7 +581,6 @@ function populateGeneralForm(profile) {
   byId("settingsSkipHidden").checked = !!profile.skipHidden;
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
-  byId("settingsUseCache").checked = profile.useCache !== false;
   byId("settingsShowTooltips").checked = profile.showTooltips !== false;
   byId("settingsTooltipDelay").value = String(profile.tooltipDelayMs ?? 0);
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
@@ -741,7 +748,6 @@ async function saveSettings(event) {
     minFileSize,
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
-    useCache: byId("settingsUseCache").checked,
     showTooltips: byId("settingsShowTooltips").checked,
     tooltipDelayMs,
     allowDelete: byId("settingsAllowDelete").checked,
@@ -804,6 +810,9 @@ function useDefaultConfigPath() {
 
 export function initSettings(options) {
   redraw = options.redraw;
+  cachedScansChanged = options.cachedScansChanged || (async () => {});
+  byId("settingsCachingEnabled").addEventListener("change", changeSessionCaching);
+  byId("clearAllCachedScans").addEventListener("click", () => clearCachedScans());
   byId("settingsButton").addEventListener("click", openSettings);
   byId("settingsForm").addEventListener("submit", saveSettings);
   byId("settingsDialog").addEventListener("cancel", event => {
@@ -862,4 +871,52 @@ export function initSettings(options) {
     });
     slider.addEventListener("change", () => previewDraftPalette());
   }
+}
+
+
+export async function renderCachedScans() {
+  const request = ++cacheListRequest;
+  const list = byId("cachedScansList");
+  const status = byId("cachedScansStatus");
+  status.textContent = "Loading saved scans…";
+  try {
+    const scans = await GetCachedScans();
+    if (request !== cacheListRequest) return;
+    list.replaceChildren();
+    byId("clearAllCachedScans").disabled = scans.length === 0;
+    status.textContent = scans.length ? `${scans.length} saved scan${scans.length === 1 ? "" : "s"}` : "No saved scans.";
+    for (const scan of scans) {
+      const row = document.createElement("div"); row.className = "cached-scan-row";
+      const text = document.createElement("div");
+      const path = document.createElement("strong"); path.textContent = scan.path;
+      const date = document.createElement("span"); date.textContent = `Scanned ${new Date(scan.scannedAt).toLocaleString()}`;
+      const usage = document.createElement("span"); usage.textContent = `${formatSize(scan.diskBytes)} on disk · ${scan.loaded ? `${formatSize(scan.memoryBytes)} RAM (estimated)` : "Not loaded into RAM"}`;
+      text.append(path, date, usage);
+      const clear = document.createElement("button"); clear.type = "button"; clear.textContent = "Clear";
+      clear.setAttribute("aria-label", `Clear cached scan ${scan.path}`);
+      clear.addEventListener("click", () => clearCachedScans(scan.path));
+      row.append(text, clear); list.append(row);
+    }
+  } catch (error) { if (request === cacheListRequest) status.textContent = `Unable to load saved scans: ${error}`; }
+}
+
+async function clearCachedScans(path) {
+  try {
+    if (path === undefined) await ClearAllCachedScans(); else await ClearCachedScan(path);
+    await cachedScansChanged();
+    await renderCachedScans();
+  } catch (error) { byId("cachedScansStatus").textContent = `Unable to clear saved scans: ${error}`; }
+}
+
+
+async function loadSessionCaching() {
+  try { byId("settingsCachingEnabled").checked = await GetCachingEnabled(); }
+  catch (error) { byId("cachedScansStatus").textContent = String(error); }
+}
+async function changeSessionCaching() {
+  const checkbox = byId("settingsCachingEnabled");
+  checkbox.disabled = true;
+  try { await SetCachingEnabled(checkbox.checked); await cachedScansChanged(); }
+  catch (error) { byId("cachedScansStatus").textContent = String(error); }
+  finally { await loadSessionCaching(); checkbox.disabled = false; }
 }

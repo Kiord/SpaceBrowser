@@ -7,7 +7,7 @@ import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "
 import { logError } from "./logging.js";
 import { initLocationSelector, hideLocationSelector } from "./locations.js";
 import { initNavigation, navigateToSelected, updateNavButtons } from "./navigation.js";
-import { analyze, openLocation, initScan, updateScanVisibility } from "./scan.js";
+import { analyze, openLocation, initScan, updateScanVisibility, refreshScanJobs } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
 import { initTreemapView, redraw, resizeCanvas, repaintScanLabels } from "./treemap-view.js";
 import { getSelectedRects } from "./selection.js";
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   initTreemapView();
   initNavigation({ redraw, hideHome: hideLocationSelector });
-  initSettings({ redraw });
+  initSettings({ redraw, cachedScansChanged: refreshScanJobs });
   initFileActions({ redraw });
   initScan({ redraw, hideContextMenu, repaintScanLabels });
   initLocationSelector({ analyze: openLocation, visibilityChanged(homeVisible) {
@@ -88,6 +88,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   try {
     await loadSettingsState();
+    await refreshScanJobs();
   } catch (error) {
     logError("loading settings failed:", error);
   }

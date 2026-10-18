@@ -1,4 +1,4 @@
-import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
+import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, ClearCachedScan, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { AppState } from "./state.js";
 import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
@@ -92,7 +92,7 @@ function presentJobs() {
   pruneSavedViews();
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
-    job => enqueue(() => QueueScan(job.path))), AppState.scanRootPath || "");
+    job => enqueue(() => QueueScan(job.path)), releaseJob), AppState.scanRootPath || "");
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();
@@ -169,12 +169,22 @@ async function selectJob(id, reveal = true) {
   updateScanVisibility();
 }
 
+export async function refreshScanJobs() { return pollJobs(); }
+
+async function releaseJob(job) {
+  try { await ClearCachedScan(job.path); await pollJobs(); }
+  catch (error) { showErrorToast(error); }
+}
+
 async function pollJobs() {
   if (polling) return;
   polling = true;
   clearTimeout(pollTimer);
   try {
     jobs = await GetScanJobs();
+    if (selectedID != null && !jobs.some(job => job.id === selectedID)) {
+      selectedID = null; selectedKey = ""; selectionToken++; clearView(); clearScanWarning();
+    }
     presentJobs();
     const token = selectionToken;
     if (selectedID != null) await applyView(await GetScanJobView(selectedID), token);
@@ -186,7 +196,7 @@ async function pollJobs() {
   } catch (error) { logError("scan queue update failed:", error); }
   finally {
     polling = false;
-    if (jobs.some(pendingScan)) pollTimer = setTimeout(pollJobs, 250);
+    if (jobs.some(job => pendingScan(job) || job.saving)) pollTimer = setTimeout(pollJobs, 250);
   }
 }
 
@@ -213,8 +223,10 @@ export async function analyze() {
 export async function openLocation(requestedPath = byId("pathInput").value?.trim()) {
   const token = ++selectionToken;
   try {
-    const path = await ValidateScanPath(requestedPath);
     const latestJobs = await GetScanJobs();
+    const saved = latestJobs.find(job => pathKey(job.path) === pathKey(String(requestedPath || "")));
+    // Historical snapshots remain browsable when a drive is unplugged or a path is gone.
+    const path = saved?.path || await ValidateScanPath(requestedPath);
     if (token !== selectionToken) return;
     jobs = latestJobs;
     const related = jobs.filter(job => pathKey(job.path) === pathKey(path));

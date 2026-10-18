@@ -39,7 +39,7 @@ func TestSwitchingLocationsKeepsCompletedTreesWithoutCache(t *testing.T) {
 	app := newApp("")
 	defer app.scanCache.Close()
 	profile := app.GetProfile()
-	profile.UseCache = false
+	app.scanCache.SetEnabled(false)
 	if err := app.SetProfile(profile); err != nil {
 		t.Fatal(err)
 	}

@@ -10,13 +10,17 @@ import (
 )
 
 type ScanJobInfo struct {
-	ID       uint64          `json:"id"`
-	Path     string          `json:"path"`
-	State    string          `json:"state"`
-	Progress ScanProgress    `json:"progress"`
-	Report   *ScanReportInfo `json:"report,omitempty"`
-	Error    string          `json:"error,omitempty"`
-	Partial  bool            `json:"partial"`
+	ScannedAt  string          `json:"scannedAt,omitempty"`
+	Cached     bool            `json:"cached"`
+	Saving     bool            `json:"saving"`
+	CacheError string          `json:"cacheError,omitempty"`
+	ID         uint64          `json:"id"`
+	Path       string          `json:"path"`
+	State      string          `json:"state"`
+	Progress   ScanProgress    `json:"progress"`
+	Report     *ScanReportInfo `json:"report,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Partial    bool            `json:"partial"`
 }
 
 type ScanJobView struct {
@@ -28,6 +32,7 @@ type ScanJobView struct {
 }
 
 type scanJob struct {
+	coldEpoch  coldEpoch
 	snapshot   *treeStoreSnapshot
 	revision   uint64
 	info       ScanJobInfo
@@ -60,6 +65,7 @@ func (a *App) jobQueue() *scanJobQueue {
 	defer a.jobsMu.Unlock()
 	if a.jobs == nil {
 		a.jobs = &scanJobQueue{app: a}
+		a.loadColdJobs(a.jobs)
 	}
 	return a.jobs
 }
@@ -113,9 +119,6 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	ctx, cancel := context.WithCancel(base)
 	pause := &scanPause{}
 	profile := q.app.GetProfile()
-	if q.app.startupScanCacheDisabled(path) {
-		profile.UseCache = false
-	}
 	worker := &App{ctx: ctx, logger: q.app.logger, filesystem: q.app.filesystem, desktop: q.app.desktop,
 		locations: q.app.locations, scanCache: q.app.scanCache, profile: profile, initialPause: pause,
 		defaultSettingsPath: q.app.GetDefaultSettingsPath()}
@@ -124,7 +127,7 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 		worker.store.restoreState(previous)
 	}
 	q.nextID++
-	job := &scanJob{info: ScanJobInfo{ID: q.nextID, Path: path, State: "queued", Partial: len(targets) > 0}, worker: worker,
+	job := &scanJob{coldEpoch: q.app.coldCache.epoch(path), info: ScanJobInfo{ID: q.nextID, Path: path, State: "queued", Partial: len(targets) > 0}, worker: worker,
 		pause: pause, cancel: cancel, previous: previous, targets: targets, tracked: tracked}
 	q.jobs = append(q.jobs, job)
 	q.requested = job.info.ID
@@ -210,13 +213,42 @@ func (q *scanJobQueue) run(job *scanJob) {
 		tree, err = job.worker.GetFullTree(path)
 	}
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	defer func() {
+		var snapshot *treeStoreSnapshot
+		info := job.info
+		if info.State == "completed" {
+			job.info.Saving = q.app.GetCachingEnabled()
+			snapshot = job.snapshot
+		}
+		if snapshot != nil && q.app.coldCache != nil {
+			q.app.coldCache.writes.Add(1)
+		}
+		q.mu.Unlock()
+		if snapshot != nil {
+			if q.app.coldCache != nil {
+				defer q.app.coldCache.writes.Done()
+			}
+			if err := q.app.coldCache.save(info, snapshot, job.coldEpoch); err != nil {
+				q.app.logger.Warningf("could not save scan snapshot: %v", err)
+				q.mu.Lock()
+				job.info.CacheError = err.Error()
+				q.mu.Unlock()
+			}
+			q.mu.Lock()
+			job.info.Saving = false
+			q.mu.Unlock()
+		}
+	}()
+	if q.closed {
+		job.info.State = "cancelled"
+	}
 	job.info.Progress.ElapsedMilliseconds = job.pause.elapsed(job.startedAt, time.Now()).Milliseconds()
 	if job.info.State != "cancelled" {
 		if err != nil {
 			job.info.State, job.info.Error = "failed", err.Error()
 		} else {
 			job.info.State = "completed"
+			job.info.ScannedAt = scanTimestamp()
 			if tree != nil {
 				job.info.Report = tree.ScanReport
 			}
@@ -336,10 +368,6 @@ func (a *App) SelectScanJob(id uint64) (*ScanJobView, error) {
 		q.selected, q.viewKey = id, ""
 	}
 	q.requested = 0
-	for _, job := range q.jobs {
-		if job.info.ID == id {
-		}
-	}
 	view, err := q.viewLocked(id)
 	q.pruneLocked()
 	return view, err
@@ -361,6 +389,13 @@ func (q *scanJobQueue) viewLocked(id uint64) (*ScanJobView, error) {
 	for _, job := range q.jobs {
 		if job.info.ID != id {
 			continue
+		}
+		if job.info.Cached && job.snapshot == nil {
+			snapshot, err := q.app.coldCache.load(job.info.Path)
+			if err != nil {
+				return nil, fmt.Errorf("load saved scan (clear it or rescan): %w", err)
+			}
+			job.snapshot = snapshot
 		}
 		info := q.infoLocked(job)
 		if pendingJob(info.State) && info.Progress.LivePreview {

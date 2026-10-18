@@ -31,6 +31,7 @@ async function harness() {
     SetScanJobPaused: async (id, paused) => { calls.push(['pause', id, paused]); jobs[id-1].state = paused ? 'paused' : 'queued'; },
     CancelScanJob: async id => { calls.push(['cancel', id]); jobs[id-1].state = 'cancelled'; },
     ValidateScanPath: async path => path,
+    ClearCachedScan: async path => { for (let i=jobs.length-1;i>=0;i--) if (jobs[i].path === path) jobs.splice(i,1); },
     OpenPath: async path => calls.push(['open', path]),
   };
   const modules = {
@@ -229,4 +230,15 @@ test('switching completed locations preserves navigation without rescanning', as
   assert.equal(h.state.node_id, 42);
   assert.equal(h.element('scanLocationButton').hidden, true);
   assert.equal(h.calls.filter(call => call[0] === 'queue').length, queues);
+});
+
+
+test('saved snapshots display their scan date and open without starting a scan', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0);
+  Object.assign(h.jobs[0], { cached: true, scannedAt: '2026-10-18T10:00:00Z' });
+  await h.poll();
+  const count = h.calls.filter(call => call[0] === 'queue').length;
+  await h.ui.openLocation('/one');
+  assert.equal(h.calls.filter(call => call[0] === 'queue').length, count);
 });

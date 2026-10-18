@@ -237,7 +237,7 @@ func TestQueuedWorkerCannotUndoCacheDisable(t *testing.T) {
 		t.Run(fmt.Sprint(reenable), func(t *testing.T) {
 			a, path, release := queuedFixture(t)
 			profile := a.GetProfile()
-			profile.UseCache = true
+			a.scanCache.SetEnabled(true)
 			if err := a.SetProfile(profile); err != nil {
 				t.Fatal(err)
 			}
@@ -251,12 +251,12 @@ func TestQueuedWorkerCannotUndoCacheDisable(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("scan did not start")
 			}
-			profile.UseCache = false
+			a.scanCache.SetEnabled(false)
 			if err := a.SetProfile(profile); err != nil {
 				t.Fatal(err)
 			}
 			if reenable {
-				profile.UseCache = true
+				a.scanCache.SetEnabled(true)
 				if err := a.SetProfile(profile); err != nil {
 					t.Fatal(err)
 				}

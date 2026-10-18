@@ -31,6 +31,9 @@ func parseCommandLine(args []string) (commandLineOptions, error) {
 			case argument == "--version":
 				options.showVersion = true
 				continue
+			case argument == "--cache":
+				options.disableCache = false
+				continue
 			case argument == "--no-cache":
 				options.disableCache = true
 				continue
@@ -63,9 +66,6 @@ func parseCommandLine(args []string) (commandLineOptions, error) {
 		}
 		options.initialPath = argument
 	}
-	if options.disableCache && options.initialPath == "" && !options.showHelp && !options.showVersion {
-		return options, fmt.Errorf("--no-cache requires a startup scan path")
-	}
 
 	return options, nil
 }
@@ -85,7 +85,8 @@ func commandLineUsage(executable string) string {
 Launch SpaceBrowser and optionally begin scanning path.
 
 Options:
-      --no-cache        Disable caching for the startup scan
+      --no-cache        Disable saved-scan loading/saving for this session
+      --cache           Enable saved-scan caching (default)
   -v, --verbosity level  Logging verbosity: 0=critical, 1=error,
                          2=warning, 3=info, 4=debug, 5=trace (default 3)
   -h, --help             Show this help
