@@ -15,7 +15,10 @@
       <img src="https://img.shields.io/badge/license-MIT-blue?style=plastic" alt="MIT License">
     </a>
     <img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=plastic&logo=go&logoColor=white" alt="Go 1.27">
-
+    <a href="https://github.com/wailsapp/awesome-wails">
+      <img src="https://img.shields.io/badge/🕶-Awesome_Wails-2EA44F?style=plastic" alt="Awesome Wails">
+    </a>
+    <br>
    <img src="https://img.shields.io/badge/Windows-supported-0078D4?style=plastic&logo=windows&logoColor=white" alt="Windows">
     <img src="https://img.shields.io/badge/Linux-supported-FCC624?style=plastic&logo=linux&logoColor=black" alt="Linux">
     <img src="https://img.shields.io/badge/macOS-untested-555555?style=plastic&logo=apple&logoColor=white" alt="macOS">
