@@ -139,8 +139,6 @@ Options:
       --version          Show the SpaceBrowser version
 ```
 
-On Linux and macOS, use the corresponding executable name instead of `spacebrowser.exe`.
-
 </details>
 
 
