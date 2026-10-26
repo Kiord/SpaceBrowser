@@ -1767,7 +1767,7 @@ button:disabled:hover,
 .location-tile:hover { background: #fff; }
 .location-tile-removable { position: relative; }
 .location-tile-removable .location-card { padding-right: 30px; }
-.location-remove-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #666; font-size: 18px; line-height: 1; cursor: pointer; }
+.location-tile .location-remove-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #666; font-size: 18px; line-height: 1; cursor: pointer; }
 .location-remove-button:hover { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
 .tile-scan-status { padding: 0 10px 7px; }
 .tile-scan-status .scan-progress-bar { background: #8a68b8; border-radius: 1px; }
