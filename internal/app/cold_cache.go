@@ -189,12 +189,16 @@ func (c *coldCache) load(path string) (*treeStoreSnapshot, error) {
 		remaining int
 	}
 	var parents []frame
+	legacyScanDate, _ := time.Parse(time.RFC3339Nano, h.Info.ScannedAt)
 	for i := 0; i < h.RecordCount; i++ {
 		var record coldNode
 		if err = decoder.Decode(&record); err != nil {
 			return nil, err
 		}
 		node := &record.Node
+		if node.ScanTime == 0 && !legacyScanDate.IsZero() {
+			node.ScanTime = legacyScanDate.Unix()
+		}
 		if len(node.Children) != 0 || record.ChildCount < 0 || record.ChildCount > h.RecordCount-i-1 {
 			return nil, fmt.Errorf("invalid saved node")
 		}

@@ -309,6 +309,7 @@ func (s *TreeStore) replaceSubtreeLocked(nodeID int, scanned *Node, scannedFiles
 	target.SmallFileLimit = 0
 	target.FullPath = scanned.FullPath
 	target.ModTime = scanned.ModTime
+	target.ScanTime = scanned.ScanTime
 	target.LinkCount = scanned.LinkCount
 	target.EntryFiles = scannedFiles
 	target.EntryDirs = scannedDirs

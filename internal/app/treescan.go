@@ -37,6 +37,7 @@ type Node struct {
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
 	ModTime        int64  `json:"-"`
+	ScanTime       int64  `json:"scan_time,omitempty"`
 	LinkCount      uint64 `json:"-"` // maximum constituent link count for small-file aggregates
 	EntryFiles     int    `json:"-"`
 	EntryDirs      int    `json:"-"`
@@ -48,6 +49,7 @@ type Node struct {
 // ==============================
 
 type Scanner struct {
+	scanTime   int64
 	profile    *Profile
 	filesystem platform.ScannerFilesystem
 	sem        chan struct{} // worker tokens
@@ -118,6 +120,7 @@ func NewScannerWithFilesystem(p *Profile, maxWorkers int, filesystem platform.Sc
 		maxWorkers = runtime.NumCPU() * 4 // good starting point for NVMe; tune for HDDs
 	}
 	return &Scanner{
+		scanTime:            time.Now().Unix(),
 		profile:             p,
 		filesystem:          filesystem,
 		sem:                 make(chan struct{}, maxWorkers),
@@ -407,6 +410,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		FullPath:  abs,
 		Children:  make([]*Node, 0, 128),
 		ModTime:   modTime,
+		ScanTime:  s.scanTime,
 		EntryDirs: 1,
 	}
 	s.assignID(root)
@@ -540,7 +544,8 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					smallFiles = &Node{
 						ID: -1, ParentID: root.ID, Name: "[Small Files]",
 						IsSmallFiles: true, SmallFileLimit: s.profile.MinFileSize,
-						Depth: root.Depth + 1,
+						ScanTime: s.scanTime,
+						Depth:    root.Depth + 1,
 					}
 				}
 				child = smallFiles
@@ -553,6 +558,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 					IsFolder:  false,
 					Depth:     depth + 1,
 					ModTime:   info.ModTime().Unix(),
+					ScanTime:  s.scanTime,
 					LinkCount: usage.LinkCount,
 				}
 			}

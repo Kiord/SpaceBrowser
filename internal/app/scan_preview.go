@@ -47,10 +47,10 @@ type scanPreviewTree struct {
 }
 
 type previewNode struct {
-	parent, depth   int
-	name, path      string
-	size, modTime   int64
-	folder, pending bool
+	parent, depth           int
+	name, path              string
+	size, modTime, scanTime int64
+	folder, pending         bool
 }
 
 func newScanPreviewTree() *scanPreviewTree {
@@ -62,7 +62,7 @@ func (p *scanPreviewTree) add(node *Node) {
 		return
 	}
 	copy := previewNode{parent: node.ParentID, name: node.Name, path: node.FullPath,
-		size: node.Size, folder: node.IsFolder, depth: node.Depth, modTime: node.ModTime, pending: node.IsFolder}
+		size: node.Size, folder: node.IsFolder, depth: node.Depth, modTime: node.ModTime, scanTime: node.ScanTime, pending: node.IsFolder}
 	if copy.folder {
 		copy.size = 0
 	}
@@ -78,7 +78,7 @@ func (p *scanPreviewTree) smallFiles(parent int, size, count, limit int64, depth
 	}
 	p.mu.Lock()
 	p.small[parent] = Node{ID: -1, ParentID: parent, Name: "[Small Files]", IsSmallFiles: true,
-		Size: size, SmallFileCount: count, SmallFileLimit: limit, Depth: depth}
+		Size: size, SmallFileCount: count, SmallFileLimit: limit, Depth: depth, ScanTime: p.nodes[parent].scanTime}
 	p.revision++
 	p.mu.Unlock()
 }
@@ -118,7 +118,7 @@ func (p *scanPreviewTree) snapshotAfter(previousRevision uint64) (*Node, []*Node
 	nodes := make([]*Node, maxID+1)
 	for id, source := range p.nodes {
 		node := Node{ID: id, ParentID: source.parent, Depth: source.depth, Name: source.name,
-			FullPath: source.path, Size: source.size, ModTime: source.modTime, IsFolder: source.folder, ScanIncomplete: source.pending}
+			FullPath: source.path, Size: source.size, ModTime: source.modTime, ScanTime: source.scanTime, IsFolder: source.folder, ScanIncomplete: source.pending}
 		nodes[id] = &node
 	}
 	small := make([]Node, 0, len(p.small))

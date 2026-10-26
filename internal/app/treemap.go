@@ -50,7 +50,8 @@ type Rect struct {
 	DiskFree  int64 `json:"disk_free,omitempty"`
 
 	// on leaf rects
-	MTime int64 `json:"mtime"`
+	MTime    int64 `json:"mtime"`
+	ScanTime int64 `json:"scan_time,omitempty"`
 }
 
 // ComputeTreemapRects lays out the subtree rooted at 'root' into a W×H rectangle.
@@ -179,7 +180,8 @@ func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
 		DiskTotal: n.DiskTotal,
 		DiskFree:  n.DiskFree,
 
-		MTime: n.ModTime,
+		MTime:    n.ModTime,
+		ScanTime: n.ScanTime,
 	})
 	return idx
 }

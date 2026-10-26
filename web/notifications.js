@@ -114,6 +114,7 @@ function showRectToast(rect, rectIndex, clientX, clientY) {
   byId("rectToastName").textContent = nameIsPathSuffix ? name : "";
   byId("rectToastSize").textContent = `${formatSize(rect.size)} (${detailedByteSize(rect.size)})`;
   byId("rectToastCreated").textContent = `Modification date : ${rect.mtime ? formatModTime(rect.mtime) : "unavailable"}`;
+  byId("rectToastScanned").textContent = `Scan date : ${rect.scan_time ? new Date(rect.scan_time * 1000).toLocaleString() : "unavailable"}`;
   updateAssociatedIcon(rect);
   byId("rectToast").hidden = false;
   placeRectToast(clientX, clientY);
