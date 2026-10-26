@@ -193,7 +193,7 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 		return nil
 	}
 	scanner, previous := a.scanScanner, a.scanPreview
-	if !a.scanActive || a.scanResultPublished || scanner == nil || scanner.preview == nil || (!force && time.Since(a.scanPreviewAt) < time.Second) {
+	if !a.scanActive || a.scanResultPublished || scanner == nil || scanner.preview == nil || (!force && time.Since(a.scanPreviewAt) < 250*time.Millisecond) {
 		a.scanMu.RUnlock()
 		return previous
 	}
