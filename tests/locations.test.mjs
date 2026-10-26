@@ -7,7 +7,7 @@ async function renderLocation(capacity) {
     scrollIntoView() {}, ...eventTarget(), children: [], dataset: {}, attributes: {}, hidden: true,
     classList: { add() {} },
     style: { setProperty(name, value) { this[name] = value; } },
-    append(...children) { for (const child of children) child.parent = this; this.children.push(...children); },
+    append(...children) { for (const child of children) { child.remove(); child.parent = this; this.children.push(child); } },
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     replaceChildren() { this.children = []; },
     setAttribute(name, value) { this.attributes[name] = value; },
@@ -167,7 +167,8 @@ test('scan updates do not reset the cursor during a held-Control cycle', async (
 test('late volume discovery upgrades a saved-scan placeholder without losing controls', async () => {
   const pending = deferred();
   const make = () => ({ ...eventTarget(), children: [], dataset: {}, attributes: {}, style: { setProperty() {} },
-    append(...children) { this.children.push(...children); },
+    append(...children) { for (const child of children) { child.remove(); child.parent = this; this.children.push(child); } },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     replaceChildren(...children) { this.children = children; },
     setAttribute(key, value) { this.attributes[key] = value; } });
   const elements = new Map();
@@ -189,6 +190,34 @@ test('late volume discovery upgrades a saved-scan placeholder without losing con
   assert.match(details.children[1].textContent, /NTFS/);
   assert.ok(details.children[2]);
   assert.equal(tile.children[1], progress);
+});
+
+test('late volume discovery keeps folders below all volumes and cycling follows that order', async () => {
+  const pending = deferred();
+  const make = () => ({ ...eventTarget(), children: [], dataset: {}, attributes: {}, scrollIntoView() {},
+    append(...children) { for (const child of children) { child.remove(); child.parent = this; this.children.push(child); } },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
+    replaceChildren(...children) { this.children = []; this.append(...children); },
+    setAttribute(key, value) { this.attributes[key] = value; } });
+  const elements = new Map();
+  const byId = id => { if (!elements.has(id)) elements.set(id, make()); return elements.get(id); };
+  const opened = [];
+  const ui = await loadUI('locations.js', {
+    './wailsjs/go/app/App.js': { GetScanLocations: () => pending.promise },
+    './dom.js': { byId }, './logging.js': { logError() {} }, './format.js': { formatSize: String },
+  }, { document: { createElement: make } });
+  ui.initLocationSelector({ analyze: async path => opened.push(path) });
+  const jobs = [{ path: '/folder', state: 'completed' }, { path: '/disk', state: 'completed' }];
+  ui.setLocationScanJobs(jobs, null, '/disk');
+  pending.resolve([{ name: 'Disk', path: '/disk', kind: 'volume' }, { name: 'Other', path: '/other', kind: 'removable' }]);
+  await new Promise(resolve => setImmediate(resolve));
+  const paths = () => byId('locationList').children.map(tile => tile.children[0].dataset.path);
+  assert.deepEqual(paths(), ['/disk', '/other', '/folder']);
+  ui.cycleLocation(1);
+  ui.cycleLocation(1);
+  assert.deepEqual(opened, ['/other', '/folder']);
+  ui.setLocationScanJobs([...jobs, { path: '/new-folder', state: 'running' }], null);
+  assert.deepEqual(paths(), ['/disk', '/other', '/folder', '/new-folder']);
 });
 
 

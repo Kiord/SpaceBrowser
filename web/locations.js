@@ -108,6 +108,16 @@ function renderScanJobs() {
     }
     tile.status?.update(job);
   }
+  const ordered = [...tiles.entries()].sort(([, left], [, right]) =>
+    Number(left.location.kind === "folder") - Number(right.location.kind === "folder"));
+  const current = [...tiles.keys()];
+  if (ordered.some(([key], index) => key !== current[index])) {
+    tiles.clear();
+    for (const [key, tile] of ordered) {
+      tiles.set(key, tile);
+      byId("locationList").append(tile.element);
+    }
+  }
   if (tiles.size) byId("locationStatus").hidden = true;
 }
 
