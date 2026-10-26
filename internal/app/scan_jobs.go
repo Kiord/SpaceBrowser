@@ -213,30 +213,43 @@ func (q *scanJobQueue) run(job *scanJob) {
 		tree, err = job.worker.GetFullTree(path)
 	}
 	q.mu.Lock()
+	var included []*scanJob
 	defer func() {
-		var snapshot *treeStoreSnapshot
-		info := job.info
-		if info.State == "completed" {
-			job.info.Saving = q.app.GetCachingEnabled()
-			snapshot = job.snapshot
+		type save struct {
+			job      *scanJob
+			info     ScanJobInfo
+			snapshot *treeStoreSnapshot
+			epoch    coldEpoch
+			revision uint64
 		}
-		if snapshot != nil && q.app.coldCache != nil {
+		var saves []save
+		if job.info.State == "completed" {
+			included = append(included, job)
+		}
+		for _, target := range included {
+			target.info.Saving = q.app.GetCachingEnabled()
+			saves = append(saves, save{target, target.info, target.snapshot, target.coldEpoch, target.revision})
+		}
+		if len(saves) > 0 && q.app.coldCache != nil {
 			q.app.coldCache.writes.Add(1)
 		}
 		q.mu.Unlock()
-		if snapshot != nil {
+		if len(saves) > 0 {
 			if q.app.coldCache != nil {
 				defer q.app.coldCache.writes.Done()
 			}
-			if err := q.app.coldCache.save(info, snapshot, job.coldEpoch); err != nil {
-				q.app.logger.Warningf("could not save scan snapshot: %v", err)
+			for _, pending := range saves {
+				err := q.app.coldCache.save(pending.info, pending.snapshot, pending.epoch)
 				q.mu.Lock()
-				job.info.CacheError = err.Error()
+				if pending.job.revision == pending.revision {
+					pending.job.info.Saving = false
+					if err != nil {
+						q.app.logger.Warningf("could not save scan snapshot: %v", err)
+						pending.job.info.CacheError = err.Error()
+					}
+				}
 				q.mu.Unlock()
 			}
-			q.mu.Lock()
-			job.info.Saving = false
-			q.mu.Unlock()
 		}
 	}()
 	if q.closed {
@@ -266,6 +279,9 @@ func (q *scanJobQueue) run(job *scanJob) {
 	// Terminal jobs retain only a snapshot and lightweight metadata, never a worker.
 	if job.info.State == "completed" {
 		job.snapshot = job.worker.store.sharedSnapshot()
+		if !partial && job.worker.GetProfile().UpdateIncludedScans {
+			included = q.updateIncludedScansLocked(job)
+		}
 	} else {
 		job.snapshot = job.previous
 	}

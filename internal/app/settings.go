@@ -9,22 +9,23 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 15
+const settingsFileVersion = 16
 
 type persistedSettings struct {
-	Version           int                `json:"version"`
-	ExcludedPaths     []string           `json:"excludedPaths"`
-	SkipHidden        bool               `json:"skipHidden"`
-	MinFileSize       int64              `json:"minFileSize"`
-	FollowSymlinks    bool               `json:"followSymlinks"`
-	SkipNetworkFS     bool               `json:"skipNetworkFS"`
-	ShowTooltips      bool               `json:"showTooltips"`
-	TooltipDelayMS    int                `json:"tooltipDelayMs"`
-	AllowDelete       bool               `json:"allowDelete"`
-	DeletePermanently bool               `json:"deletePermanently"`
-	RescanOnDelete    bool               `json:"rescanOnDelete"`
-	Appearance        AppearanceSettings `json:"appearance"`
-	Controls          ControlSettings    `json:"controls"`
+	Version             int                `json:"version"`
+	ExcludedPaths       []string           `json:"excludedPaths"`
+	SkipHidden          bool               `json:"skipHidden"`
+	MinFileSize         int64              `json:"minFileSize"`
+	FollowSymlinks      bool               `json:"followSymlinks"`
+	SkipNetworkFS       bool               `json:"skipNetworkFS"`
+	ShowTooltips        bool               `json:"showTooltips"`
+	TooltipDelayMS      int                `json:"tooltipDelayMs"`
+	AllowDelete         bool               `json:"allowDelete"`
+	DeletePermanently   bool               `json:"deletePermanently"`
+	RescanOnDelete      bool               `json:"rescanOnDelete"`
+	UpdateIncludedScans bool               `json:"updateIncludedScans"`
+	Appearance          AppearanceSettings `json:"appearance"`
+	Controls            ControlSettings    `json:"controls"`
 }
 
 type persistedSettingsLocation struct {
@@ -125,6 +126,10 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		controls = defaultControlSettings()
 	}
 	showTooltips := saved.ShowTooltips
+	updateIncludedScans := saved.UpdateIncludedScans
+	if saved.Version < 16 {
+		updateIncludedScans = defaultProfile().UpdateIncludedScans
+	}
 	tooltipDelayMS := saved.TooltipDelayMS
 	if saved.Version < 10 {
 		showTooltips = defaultProfile().ShowTooltips
@@ -142,6 +147,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		AllowDelete:          allowDelete,
 		AllowPermanentDelete: deletePermanently,
 		RescanOnDelete:       rescanOnDelete,
+		UpdateIncludedScans:  updateIncludedScans,
 		Appearance:           appearance,
 		Controls:             controls,
 	}, filesystem)
@@ -149,19 +155,20 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 
 func saveSettings(path string, profile Profile) error {
 	saved := persistedSettings{
-		Version:           settingsFileVersion,
-		ExcludedPaths:     profile.ExcludedPaths,
-		SkipHidden:        profile.SkipHidden,
-		MinFileSize:       profile.MinFileSize,
-		FollowSymlinks:    profile.FollowSymlinks,
-		SkipNetworkFS:     profile.SkipNetworkFS,
-		ShowTooltips:      profile.ShowTooltips,
-		TooltipDelayMS:    profile.TooltipDelayMS,
-		AllowDelete:       profile.AllowDelete,
-		DeletePermanently: profile.AllowPermanentDelete,
-		RescanOnDelete:    profile.RescanOnDelete,
-		Appearance:        profile.Appearance,
-		Controls:          profile.Controls,
+		Version:             settingsFileVersion,
+		ExcludedPaths:       profile.ExcludedPaths,
+		SkipHidden:          profile.SkipHidden,
+		MinFileSize:         profile.MinFileSize,
+		FollowSymlinks:      profile.FollowSymlinks,
+		SkipNetworkFS:       profile.SkipNetworkFS,
+		ShowTooltips:        profile.ShowTooltips,
+		TooltipDelayMS:      profile.TooltipDelayMS,
+		AllowDelete:         profile.AllowDelete,
+		DeletePermanently:   profile.AllowPermanentDelete,
+		RescanOnDelete:      profile.RescanOnDelete,
+		UpdateIncludedScans: profile.UpdateIncludedScans,
+		Appearance:          profile.Appearance,
+		Controls:            profile.Controls,
 	}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {

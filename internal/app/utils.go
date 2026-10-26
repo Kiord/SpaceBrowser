@@ -19,6 +19,7 @@ type Profile struct {
 	AllowDelete          bool               `json:"allowDelete"`
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
+	UpdateIncludedScans  bool               `json:"updateIncludedScans"`
 	Appearance           AppearanceSettings `json:"appearance"`
 	Controls             ControlSettings    `json:"controls"`
 }
@@ -122,6 +123,7 @@ func defaultProfile() *Profile {
 		AllowDelete:          false,
 		AllowPermanentDelete: false,
 		RescanOnDelete:       true,
+		UpdateIncludedScans:  true,
 		Appearance:           defaultAppearanceSettings(),
 		Controls:             defaultControlSettings(),
 	}

@@ -9,6 +9,51 @@ import (
 	"testing"
 )
 
+func TestUpdateIncludedScansDefaultsMigrationAndPersistence(t *testing.T) {
+	if !defaultProfile().UpdateIncludedScans {
+		t.Fatal("included scans should update by default")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	profile := *defaultProfile()
+	for _, enabled := range []bool{false, true} {
+		profile.UpdateIncludedScans = enabled
+		if err := saveSettings(path, profile); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := loadSettings(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.UpdateIncludedScans != enabled {
+			t.Fatalf("loaded setting = %t, want %t", loaded.UpdateIncludedScans, enabled)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]json.RawMessage
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	saved["version"] = json.RawMessage("15")
+	delete(saved, "updateIncludedScans")
+	data, err = json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.UpdateIncludedScans {
+		t.Fatal("existing settings did not migrate to enabled")
+	}
+}
+
 func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "SpaceBrowser", "settings.json")
 	excludedPath := filepath.Join(t.TempDir(), "excluded")

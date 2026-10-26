@@ -2,6 +2,62 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eventTarget, loadUI } from "./helpers/ui.mjs";
 
+test("General included-folder setting loads, saves, cancels and restores defaults", async () => {
+  const elements = new Map();
+  const createElement = () => ({
+    ...eventTarget(), value: "", checked: false, selectedOptions: [], dataset: {}, style: {}, open: false,
+    get valueAsNumber() { return Number(this.value); },
+    append() {}, replaceChildren() {}, setAttribute() {},
+    querySelector(selector) { return selector === ".is-invalid" ? null : { textContent: "" }; },
+    classList: { add() {}, remove() {}, toggle() {} },
+    showModal() { this.open = true; }, close() { this.open = false; },
+  });
+  const byId = id => {
+    if (!elements.has(id)) elements.set(id, createElement());
+    return elements.get(id);
+  };
+  const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
+  const defaults = { appearance, minFileSize: 0, updateIncludedScans: true };
+  let profile = { ...defaults };
+  const saved = [];
+  const restore = { ...eventTarget(), dataset: { restoreSettings: "general" } };
+  const ui = await loadUI("settings.js", {
+    "./wailsjs/go/app/App.js": {
+      GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {},
+      GetDefaultProfile: async () => defaults, GetDefaultSettingsPath: async () => "settings.json", GetProfile: async () => profile,
+      GetSettingsPath: async () => "settings.json", PickSettingsPath() {}, SetSettingsPath() {},
+      SetProfile: async value => { saved.push(value); profile = value; },
+    },
+    "./dom.js": { byId, queryAll: selector => selector === "[data-restore-settings]" ? [restore] : [] },
+    "./format.js": { formatSize: String, SIZE_UNITS: { B: 1 }, splitSizeIntoUnit: value => ({ value, unit: "B" }) },
+    "./controls.js": { addControlEventListeners() {}, shortcutFromEvent() {} },
+    "./logging.js": { logError: (...args) => { throw new Error(args.join(" ")); } },
+    "./state.js": { AppState: { profile, defaultProfile: defaults }, AppearanceState: { ...appearance }, PALETTES: { default: ["#000000"] }, SCALE_MAX: 5, SCALE_MIN: .5, getScale: () => 1, setProfiles() {} },
+  }, {
+    document: { addEventListener() {}, createElement },
+    Option: function (label, value) { return { textContent: label, value, dataset: {} }; },
+  });
+  ui.initSettings({ redraw: async () => {} });
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  byId("settingsUpdateIncludedScans").checked = false;
+  await byId("cancelSettingsButton").emit("click");
+  assert.equal(saved.length, 0);
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  byId("settingsUpdateIncludedScans").checked = false;
+  await byId("settingsForm").emit("submit");
+  assert.equal(saved.at(-1).updateIncludedScans, false);
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsUpdateIncludedScans").checked, false);
+  await restore.emit("click");
+  await byId("confirmRestoreDefaultsButton").emit("click");
+  assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  assert.equal(saved.length, 1);
+  await byId("settingsForm").emit("submit");
+  assert.equal(saved.at(-1).updateIncludedScans, true);
+});
+
 test("appearance slider drafts are included in the live treemap preview", async () => {
   const values = new Map([
     ["settingsPalette", "ocean"],
