@@ -9,7 +9,8 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 	var directories map[string]*Node
 	for _, job := range q.jobs {
 		if job == source || job.info.State != "completed" ||
-			canonicalCachePath(job.info.Path) == canonicalCachePath(source.info.Path) {
+			(job.info.ID != 0 && job.info.ID == source.info.ID) ||
+			(!source.info.Partial && canonicalCachePath(job.info.Path) == canonicalCachePath(source.info.Path)) {
 			continue
 		}
 		switch {
@@ -56,6 +57,39 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 		updated = append(updated, job)
 	}
 	return updated
+}
+
+// Publish only the refreshed regions of a partial scan. Its other branches are
+// historical snapshots and must not overwrite more recent overlapping scans.
+func (q *scanJobQueue) updateRefreshedScansLocked(source *scanJob, paths []string) []*scanJob {
+	directories := indexCachedDirectories(source.snapshot.root)
+	seen := make(map[*scanJob]bool)
+	var updated []*scanJob
+	for _, path := range paths {
+		root := directories[canonicalCachePath(path)]
+		if root == nil {
+			continue
+		}
+		region := &scanJob{info: source.info, snapshot: &treeStoreSnapshot{root: root}}
+		region.info.Path = path
+		for _, job := range q.updateIncludedScansLocked(region) {
+			if !seen[job] {
+				seen[job] = true
+				updated = append(updated, job)
+			}
+		}
+	}
+	return updated
+}
+
+func setScanDate(root *Node, date int64) {
+	if root == nil {
+		return
+	}
+	root.ScanTime = date
+	for _, child := range root.Children {
+		setScanDate(child, date)
+	}
 }
 
 // Keep IDs for surviving paths so saved navigation remains valid across repeated

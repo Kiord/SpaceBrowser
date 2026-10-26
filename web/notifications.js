@@ -131,7 +131,8 @@ export function updateRectToast(event) {
     return;
   }
   if (rectIndex === hoveredRectIndex && !byId("rectToast").hidden) {
-    placeRectToast(event.clientX, event.clientY);
+    if (rect !== hoveredRect) showRectToast(rect, rectIndex, event.clientX, event.clientY);
+    else placeRectToast(event.clientX, event.clientY);
     return;
   }
 

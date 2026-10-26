@@ -279,8 +279,12 @@ func (q *scanJobQueue) run(job *scanJob) {
 	// Terminal jobs retain only a snapshot and lightweight metadata, never a worker.
 	if job.info.State == "completed" {
 		job.snapshot = job.worker.store.sharedSnapshot()
-		if !partial && job.worker.GetProfile().UpdateIncludedScans {
-			included = q.updateIncludedScansLocked(job)
+		if job.worker.GetProfile().UpdateIncludedScans {
+			if partial {
+				included = q.updateRefreshedScansLocked(job, refresh.refreshedPaths)
+			} else {
+				included = q.updateIncludedScansLocked(job)
+			}
 		}
 	} else {
 		job.snapshot = job.previous

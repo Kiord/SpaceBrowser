@@ -13,10 +13,11 @@ type FolderRefreshTarget struct {
 }
 
 type FolderRefreshResult struct {
-	FileCount  int             `json:"fileCount"`
-	DirCount   int             `json:"dirCount"`
-	NodeIDs    map[int]int     `json:"nodeIds"`
-	ScanReport *ScanReportInfo `json:"scanReport,omitempty"`
+	refreshedPaths []string
+	FileCount      int             `json:"fileCount"`
+	DirCount       int             `json:"dirCount"`
+	NodeIDs        map[int]int     `json:"nodeIds"`
+	ScanReport     *ScanReportInfo `json:"scanReport,omitempty"`
 }
 
 // RefreshFolders scans into detached trees and publishes the batch atomically.
@@ -190,5 +191,9 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	a.logScanReport(report)
 	reportInfo := a.persistScanReport(rootTarget.Path, started, time.Since(started), profile, report, int64(result.FileCount), int64(result.DirCount), totalSize)
 	a.logger.Infof("folder refresh completed in %s: %d folders", time.Since(started).Round(time.Millisecond), len(reduced))
-	return &FolderRefreshResult{FileCount: result.FileCount, DirCount: result.DirCount, NodeIDs: remapped, ScanReport: reportInfo}, nil
+	refreshedPaths := make([]string, 0, len(reduced))
+	for _, target := range reduced {
+		refreshedPaths = append(refreshedPaths, target.Path)
+	}
+	return &FolderRefreshResult{FileCount: result.FileCount, DirCount: result.DirCount, NodeIDs: remapped, ScanReport: reportInfo, refreshedPaths: refreshedPaths}, nil
 }

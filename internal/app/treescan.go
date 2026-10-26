@@ -712,6 +712,7 @@ func (s *Scanner) cloneCachedSubtree(source *Node, depth, parentID int, fileCoun
 			return nil
 		}
 		node := *cached
+		node.ScanTime = s.scanTime
 		node.ParentID = parent
 		node.Depth = currentDepth
 		node.Children = make([]*Node, 0, len(cached.Children))

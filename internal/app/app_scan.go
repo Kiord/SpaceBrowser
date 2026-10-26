@@ -286,7 +286,10 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t useCache=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS, useCache)
 	if useCache && cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
-		cachedRoot, cachedNodes := cachePlan.source.root, cachePlan.source.nodes
+		// A successful cache validation is a fresh scan. Keep previous snapshots
+		// immutable while publishing the new date throughout the validated tree.
+		cachedRoot, cachedNodes := cloneTreePreservingIDs(cachePlan.source.root, len(cachePlan.source.nodes))
+		setScanDate(cachedRoot, startedAt.Unix())
 		duration := time.Since(startedAt)
 		report := cachePlan.source.report
 		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, cachedRoot, cachedNodes, cachePlan.source.fileCount, cachePlan.source.dirCount, func() *ScanReportInfo {

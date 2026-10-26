@@ -18,6 +18,11 @@ test("rectangle tooltip shows its scan date below modification date", async () =
   assert.equal(byId("rectToastScanned").textContent, `Scan date : ${new Date(rect.scan_time * 1000).toLocaleString()}`);
   const html = await readFile(new URL("../web/index.html", import.meta.url), "utf8");
   assert.match(html, /id="rectToastCreated"><\/span>\s*<span id="rectToastScanned">/);
+  state.rects = [{ ...rect, scan_time: rect.scan_time + 100, size: 99 }];
+  ui.updateRectToast({ clientX: 11, clientY: 11 });
+  assert.equal(byId("rectToastScanned").textContent, `Scan date : ${new Date(state.rects[0].scan_time * 1000).toLocaleString()}`);
+  assert.equal(byId("rectToastSize").textContent, "99 (99 bytes)");
+  state.rects = [rect];
   ui.hideRectToast();
   delete rect.scan_time;
   ui.updateRectToast({ clientX: 10, clientY: 10 });
