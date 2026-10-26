@@ -10,6 +10,7 @@ const tiles = new Map();
 const knownLocations = new Map();
 let scanJobs = [];
 let createStatus;
+let removeLocation;
 let selectedPath = "";
 let cyclingPath = "";
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
@@ -52,11 +53,12 @@ export function cycleLocation(direction, continuing = false) {
   return true;
 }
 
-export function setLocationScanJobs(jobs, statusFactory, path = selectedPath) {
+export function setLocationScanJobs(jobs, statusFactory, path = selectedPath, onRemove) {
   selectedPath = path;
   for (const [key, tile] of tiles) tile.element.setAttribute("data-selected", String(key === pathKey(path)));
   scanJobs = jobs;
   createStatus = statusFactory;
+  removeLocation = onRemove;
   renderScanJobs();
 }
 
@@ -64,6 +66,10 @@ function renderScanJobs() {
   const currentPaths = new Set(scanJobs.map(job => pathKey(job.path)));
   for (const [key, tile] of tiles) {
     if (tile.status && !currentPaths.has(key)) { tile.status.element.remove(); tile.status = null; }
+    if (tile.location.kind === "folder" && !knownLocations.has(key) && !currentPaths.has(key)) {
+      tile.element.remove();
+      tiles.delete(key);
+    }
   }
   // A cancelled rescan must not hide the completed snapshot it restored.
   // Keep cancelled-only locations so their tile remains available to scan again.
@@ -81,6 +87,21 @@ function renderScanJobs() {
       addLocation(location);
     }
     const tile = tiles.get(key);
+    if (tile.location.kind === "folder" && removeLocation && !tile.remove) {
+      tile.remove = document.createElement("button");
+      tile.remove.type = "button";
+      tile.remove.className = "location-remove-button";
+      tile.remove.textContent = "×";
+      tile.remove.setAttribute("aria-label", `Remove ${job.path} and clear its cache`);
+      tile.remove.setAttribute("data-tooltip", "Remove location and clear cache");
+      tile.remove.addEventListener("click", async () => {
+        tile.remove.disabled = true;
+        try { await removeLocation({ path: tile.location.path }); }
+        finally { tile.remove.disabled = false; }
+      });
+      tile.element.append(tile.remove);
+      tile.element.classList.add("location-tile-removable");
+    }
     if (!tile.status && createStatus) {
       tile.status = createStatus();
       tile.element.append(tile.status.element);

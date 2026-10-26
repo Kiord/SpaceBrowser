@@ -1,4 +1,4 @@
-import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, ClearCachedScan, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
+import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, RemoveScanLocation, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { AppState } from "./state.js";
 import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
@@ -20,6 +20,7 @@ let selectionToken = 0;
 let nextSession = 0;
 let pollTimer = null;
 let polling = false;
+let pollRequested = false;
 let queueRequest = false;
 let emptyPath = "";
 const views = new Map();
@@ -92,7 +93,7 @@ function presentJobs() {
   pruneSavedViews();
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
-    job => enqueue(() => QueueScan(job.path)), releaseJob), AppState.scanRootPath || "");
+    job => enqueue(() => QueueScan(job.path))), AppState.scanRootPath || "", releaseJob);
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();
@@ -172,18 +173,22 @@ async function selectJob(id, reveal = true) {
 export async function refreshScanJobs() { return pollJobs(); }
 
 async function releaseJob(job) {
-  try { await ClearCachedScan(job.path); await pollJobs(); }
+  try { await RemoveScanLocation(job.path); await pollJobs(); }
   catch (error) { showErrorToast(error); }
 }
 
 async function pollJobs() {
-  if (polling) return;
+  if (polling) { pollRequested = true; return; }
   polling = true;
   clearTimeout(pollTimer);
   try {
     jobs = await GetScanJobs();
     if (selectedID != null && !jobs.some(job => job.id === selectedID)) {
       selectedID = null; selectedKey = ""; selectionToken++; clearView(); clearScanWarning();
+      emptyPath = "";
+      AppState.scanRootPath = "";
+      AppState.liveScanPreview = false;
+      showLocationSelector();
     }
     presentJobs();
     const token = selectionToken;
@@ -196,7 +201,10 @@ async function pollJobs() {
   } catch (error) { logError("scan queue update failed:", error); }
   finally {
     polling = false;
-    if (jobs.some(job => pendingScan(job) || job.saving)) pollTimer = setTimeout(pollJobs, 250);
+    if (pollRequested) {
+      pollRequested = false;
+      void pollJobs();
+    } else if (jobs.some(job => pendingScan(job) || job.saving)) pollTimer = setTimeout(pollJobs, 250);
   }
 }
 

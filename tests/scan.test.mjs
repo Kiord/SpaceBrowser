@@ -12,7 +12,7 @@ async function harness() {
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
   const jobs = [], calls = [], errors = [], timers = new Map();
-  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile;
+  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile;
   const view = id => {
     const job = jobs.find(job => job.id === id);
     return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds };
@@ -32,6 +32,7 @@ async function harness() {
     CancelScanJob: async id => { calls.push(['cancel', id]); jobs[id-1].state = 'cancelled'; },
     ValidateScanPath: async path => path,
     ClearCachedScan: async path => { for (let i=jobs.length-1;i>=0;i--) if (jobs[i].path === path) jobs.splice(i,1); },
+    RemoveScanLocation: async path => { calls.push(['remove', path]); await backend.ClearCachedScan(path); },
     OpenPath: async path => calls.push(['open', path]),
   };
   const modules = {
@@ -41,7 +42,7 @@ async function harness() {
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './logging.js': { logError: (...args) => errors.push(args) },
-    './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory) { tileJobs = value; factory(); } },
+    './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
     './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
@@ -49,6 +50,7 @@ async function harness() {
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
   return { ui, jobs, state, element, calls, errors, backend, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
+    removeTile: job => removeTile(job),
     pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
     cancelTile: () => cancelTile(jobs.find(job => job.id === selected)),
     async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); await fn(); },
@@ -56,6 +58,21 @@ async function harness() {
     complete(index) { this.preview(index); jobs[index].state = 'completed'; },
   };
 }
+
+test('removing the selected folder clears its view and cached location', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  h.preview(0);
+  await h.poll();
+  await h.removeTile(h.jobs[0]);
+  assert.equal(h.jobs.length, 0);
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.state.scanRootPath, '');
+  assert.equal(h.state.liveScanPreview, false);
+  assert.equal(h.state.homeVisible, true);
+  assert.equal(h.element('scanLocationButton').hidden, true);
+  assert.deepEqual(h.calls.at(-1), ['remove', '/one']);
+});
 
 test('selecting an unscanned location preserves the running scan and query input', async () => {
   const h = await harness();

@@ -1765,6 +1765,10 @@ button:disabled:hover,
 .location-tile { min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
 .location-tile .location-card { padding-top: 6px; padding-bottom: 6px; width: 100%; border: 0; box-shadow: none; background: transparent; }
 .location-tile:hover { background: #fff; }
+.location-tile-removable { position: relative; }
+.location-tile-removable .location-card { padding-right: 30px; }
+.location-remove-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #666; font-size: 18px; line-height: 1; cursor: pointer; }
+.location-remove-button:hover { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
 .tile-scan-status { padding: 0 10px 7px; }
 .tile-scan-status .scan-progress-bar { background: #8f9c8b; border-radius: 1px; }
 .tile-scan-status[data-complete="true"] .scan-progress-bar { background: #527eaf; }

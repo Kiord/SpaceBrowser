@@ -262,6 +262,16 @@ func (a *App) GetCachedScans() []CachedScanInfo {
 func (a *App) ClearCachedScan(path string) error { return a.clearCachedScans(path, false) }
 func (a *App) ClearAllCachedScans() error        { return a.clearCachedScans("", true) }
 func (a *App) clearCachedScans(path string, all bool) error {
+	return a.clearScanLocations(path, all, false)
+}
+
+// RemoveScanLocation also cancels and detaches pending work so a removed sidebar
+// tile cannot return when its worker finishes or writes its snapshot.
+func (a *App) RemoveScanLocation(path string) error {
+	return a.clearScanLocations(path, false, true)
+}
+
+func (a *App) clearScanLocations(path string, all, removeActive bool) error {
 	// Same order as navigation: filesystem, queue, then cache. Save never holds queue.
 	a.filesystemMu.Lock()
 	defer a.filesystemMu.Unlock()
@@ -302,7 +312,17 @@ func (a *App) clearCachedScans(path string, all bool) error {
 		if job.previous != nil && job.previous.root != nil && matches(job.previous.root.FullPath) {
 			job.previous = nil
 		}
-		if matches(job.info.Path) && !pendingJob(job.info.State) && job.worker == nil {
+		if matches(job.info.Path) && (removeActive || (!pendingJob(job.info.State) && job.worker == nil)) {
+			if removeActive && job.cancel != nil {
+				job.info.State = "cancelled"
+				job.cancel()
+			}
+			if q.running == job.info.ID {
+				q.running = 0
+			}
+			if q.requested == job.info.ID {
+				q.requested = 0
+			}
 			if q.selected == job.info.ID {
 				q.selected = 0
 				q.viewKey = ""
@@ -314,6 +334,9 @@ func (a *App) clearCachedScans(path string, all bool) error {
 	}
 	clear(q.jobs[len(kept):])
 	q.jobs = kept
+	if removeActive {
+		q.scheduleLocked()
+	}
 	// Drop acceleration references too, without invalidating other locations' views.
 	if all {
 		a.scanCache.Clear()

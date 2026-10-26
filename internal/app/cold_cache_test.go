@@ -86,6 +86,77 @@ func TestColdCacheRestartLazyLoadAndExplicitRelease(t *testing.T) {
 		t.Fatal("cleared scan returned after restart")
 	}
 }
+
+func TestRemoveScanLocationCancelsWorkAndCannotRestoreCache(t *testing.T) {
+	a, path, release := queuedFixture(t)
+	a.coldCache = &coldCache{dir: t.TempDir()}
+	other := t.TempDir()
+	for _, location := range []string{path, other} {
+		info := ScanJobInfo{Path: location, State: "completed", ScannedAt: scanTimestamp()}
+		if err := a.coldCache.save(info, coldFixture(location), a.coldCache.epoch(location)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, err := a.QueueScan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-a.filesystem.(*blockingReadDirPlatform).entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scan did not start")
+	}
+	q := a.jobQueue()
+	q.mu.Lock()
+	var running *scanJob
+	for _, candidate := range q.jobs {
+		if candidate.info.ID == job.ID {
+			running = candidate
+		}
+	}
+	q.mu.Unlock()
+	if _, err := a.SelectScanJob(job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.RemoveScanLocation(path); err != nil {
+		t.Fatal(err)
+	}
+	if a.store.sharedSnapshot().root != nil {
+		t.Fatal("selected folder view was retained")
+	}
+	if a.scanActive {
+		t.Fatal("removed scan still marks the app busy")
+	}
+	for _, info := range a.GetScanJobs() {
+		if info.Path == path {
+			t.Fatal("removed folder still has a job")
+		}
+	}
+	release()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		q.mu.Lock()
+		done := running.worker == nil
+		q.mu.Unlock()
+		if done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("cancelled worker did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	a.coldCache.writes.Wait()
+	headers := a.coldCache.headers()
+	if len(headers) != 1 || headers[0].Info.Path != other {
+		t.Fatalf("wrong cache retained: %+v", headers)
+	}
+	for _, info := range a.GetScanJobs() {
+		if info.Path == path {
+			t.Fatal("worker restored removed folder")
+		}
+	}
+}
 func TestColdCacheClearRejectsStaleWritesWithoutAffectingOtherPaths(t *testing.T) {
 	a := newApp(filepath.Join(t.TempDir(), "settings.json"))
 	defer a.Shutdown(nil)

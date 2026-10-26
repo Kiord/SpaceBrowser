@@ -5,8 +5,10 @@ import { loadUI, eventTarget, deferred } from "./helpers/ui.mjs";
 async function renderLocation(capacity) {
   const element = () => ({
     scrollIntoView() {}, ...eventTarget(), children: [], dataset: {}, attributes: {}, hidden: true,
+    classList: { add() {} },
     style: { setProperty(name, value) { this[name] = value; } },
-    append(...children) { this.children.push(...children); },
+    append(...children) { for (const child of children) child.parent = this; this.children.push(...children); },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     replaceChildren() { this.children = []; },
     setAttribute(name, value) { this.attributes[name] = value; },
   });
@@ -111,7 +113,40 @@ test('location cycling wraps in tile order and advances without waiting for open
   }
   h.ui.setLocationScanJobs([], null, '/missing');
   h.ui.cycleLocation(-1);
-  assert.equal(h.selectedPath(), '/folder-b');
+  assert.equal(h.selectedPath(), '/volume');
+});
+
+test('folder tile cross removes its location and cache without opening it', async () => {
+  const h = await renderLocation({ kind: 'volume' });
+  let jobs = [{ id: 1, path: '/volume/folder', state: 'running' }];
+  const removed = [];
+  const factory = () => ({ element: h.element(), update() {} });
+  const remove = async job => {
+    removed.push(job.path);
+    jobs = [];
+    h.ui.setLocationScanJobs(jobs, factory, '', remove);
+  };
+  h.ui.setLocationScanJobs(jobs, factory, '', remove);
+  const [volume, folder] = h.byId('locationList').children;
+  assert.equal(volume.children.some(child => child.className === 'location-remove-button'), false);
+  const cross = folder.children.find(child => child.className === 'location-remove-button');
+  assert.ok(cross);
+  assert.match(cross.attributes['aria-label'], /clear its cache/);
+  await cross.emit('click');
+  await folder.emit('click', { target: { closest: () => cross } });
+  assert.deepEqual(removed, ['/volume/folder']);
+  assert.deepEqual(h.byId('locationList').children, [volume]);
+  assert.equal(h.scans(), 0);
+});
+
+test('failed removal keeps the folder tile and re-enables its cross', async () => {
+  const h = await renderLocation({ kind: 'volume' });
+  h.ui.setLocationScanJobs([{ id: 1, path: '/folder', state: 'cancelled' }], null, '', async () => { throw new Error('clear failed'); });
+  const folder = h.byId('locationList').children[1];
+  const cross = folder.children.find(child => child.className === 'location-remove-button');
+  await assert.rejects(cross.emit('click'), /clear failed/);
+  assert.equal(cross.disabled, false);
+  assert.equal(h.byId('locationList').children[1], folder);
 });
 
 

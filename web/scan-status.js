@@ -27,7 +27,6 @@ export function updateScanStatus(refs, job) {
     refs.date.textContent = job.scannedAt ? `${job.cached ? "Saved scan" : "Scanned"} · ${new Date(job.scannedAt).toLocaleString()}${job.saving ? " · Saving…" : job.cacheError ? " · Not saved" : ""}` : "";
     refs.date.title = job.cacheError || (job.cached ? "Historical snapshot. Rescan to update it." : "");
   }
-  if (refs.release) refs.release.hidden = !done;
   refs.actions.hidden = false;
   if (refs.refresh) {
     refs.refresh.hidden = false;
@@ -44,7 +43,7 @@ export function updateScanStatus(refs, job) {
   refs.icon.setAttribute("d", paused ? "M8 4l12 8-12 8Z" : "M8 5v14M16 5v14");
 }
 
-export function createTileScanStatus(onPause, onCancel, onRefresh, onRelease) {
+export function createTileScanStatus(onPause, onCancel, onRefresh) {
   const container = document.createElement("div");
   container.className = "tile-scan-status";
   container.innerHTML = `<div class="compact-scan-label"><span data-scan="time"></span><span data-scan="percent"></span><span class="compact-scan-actions" data-scan="actions"><button type="button" data-scan="pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-scan="icon"></path></svg></button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan" data-tooltip="Cancel scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span>`;
@@ -62,15 +61,6 @@ export function createTileScanStatus(onPause, onCancel, onRefresh, onRelease) {
   refs.date = document.createElement("span");
   refs.date.className = "scan-snapshot-date";
   container.append(refs.date);
-  if (onRelease) {
-    refs.release = document.createElement("button");
-    refs.release.type = "button";
-    refs.release.textContent = "×";
-    refs.release.setAttribute("aria-label", "Clear cached scan");
-    refs.release.setAttribute("data-tooltip", "Clear cached scan");
-    refs.release.addEventListener("click", () => current?.state === "completed" && onRelease(current));
-    refs.actions.append(refs.release);
-  }
   let current;
   refs.refresh.addEventListener("click", () => current?.state === "completed" && onRefresh(current));
   refs.pause.addEventListener("click", () => pendingScan(current) && onPause(current));
