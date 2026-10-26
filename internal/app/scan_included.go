@@ -1,25 +1,48 @@
 package app
 
 // updateIncludedScansLocked publishes independent subtree snapshots only after a
-// successful full scan. Pending jobs keep ownership of their own results, and
+// successful full scan, also merging narrower scans into saved ancestors.
+// Pending jobs keep ownership of their own results, and
 // folders absent from the new tree (including excluded folders) stay unchanged.
 func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 	var updated []*scanJob
 	var directories map[string]*Node
 	for _, job := range q.jobs {
 		if job == source || job.info.State != "completed" ||
-			canonicalCachePath(job.info.Path) == canonicalCachePath(source.info.Path) ||
-			!cachePathWithin(job.info.Path, source.info.Path) {
+			canonicalCachePath(job.info.Path) == canonicalCachePath(source.info.Path) {
 			continue
 		}
-		if directories == nil {
-			directories = indexCachedDirectories(source.snapshot.root)
-		}
-		root := directories[canonicalCachePath(job.info.Path)]
-		if root == nil {
+		switch {
+		case cachePathWithin(job.info.Path, source.info.Path):
+			if directories == nil {
+				directories = indexCachedDirectories(source.snapshot.root)
+			}
+			root := directories[canonicalCachePath(job.info.Path)]
+			if root == nil {
+				continue
+			}
+			job.snapshot, job.nodeIDs = includedScanSnapshot(root, job.snapshot)
+		case cachePathWithin(source.info.Path, job.info.Path):
+			previous := job.snapshot
+			if previous == nil && job.info.Cached {
+				if q.app == nil || q.app.coldCache == nil {
+					continue
+				}
+				var err error
+				previous, err = q.app.coldCache.load(job.info.Path)
+				if err != nil {
+					q.app.logger.Warningf("could not update saved ancestor scan: %v", err)
+					continue
+				}
+			}
+			snapshot, ids := mergeIncludedScan(previous, source.snapshot.root)
+			if snapshot == nil {
+				continue
+			}
+			job.snapshot, job.nodeIDs = snapshot, ids
+		default:
 			continue
 		}
-		job.snapshot, job.nodeIDs = includedScanSnapshot(root, job.snapshot)
 		job.info.ScannedAt = source.info.ScannedAt
 		// A volume report includes unrelated paths; don't attribute it to a folder.
 		job.info.Report = nil
@@ -38,7 +61,34 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 // Keep IDs for surviving paths so saved navigation remains valid across repeated
 // background updates. Removed IDs are never reused. No mutable nodes are shared.
 func includedScanSnapshot(root *Node, previous *treeStoreSnapshot) (*treeStoreSnapshot, map[int]int) {
+	return scanSnapshotWithIDs(root, previous, false)
+}
+
+func mergeIncludedScan(previous *treeStoreSnapshot, root *Node) (*treeStoreSnapshot, map[int]int) {
+	if previous == nil || previous.root == nil {
+		return nil, nil
+	}
+	target := indexCachedDirectories(previous.root)[canonicalCachePath(root.FullPath)]
+	if target == nil {
+		return nil, nil
+	}
+	var store TreeStore
+	store.restoreState(previous)
+	// Detach before replacing: snapshots restored from older callers may not yet
+	// be marked shared even though this update must leave them immutable.
+	store.shared = true
+	files, dirs := subtreeEntryCounts(root)
+	if _, err := store.ReplaceSubtree(target.ID, root, files, dirs); err != nil {
+		return nil, nil
+	}
+	return scanSnapshotWithIDs(store.root, previous, true)
+}
+
+func scanSnapshotWithIDs(root *Node, previous *treeStoreSnapshot, keepFreeSpace bool) (*treeStoreSnapshot, map[int]int) {
 	snapshot := &treeStoreSnapshot{shared: true}
+	if keepFreeSpace && previous != nil {
+		snapshot.hasDiskUsage, snapshot.diskTotal, snapshot.diskFree = previous.hasDiskUsage, previous.diskTotal, previous.diskFree
+	}
 	previousIDs := make(map[string]int)
 	ids := make(map[int]int)
 	if previous != nil {
@@ -66,7 +116,7 @@ func includedScanSnapshot(root *Node, previous *treeStoreSnapshot) (*treeStoreSn
 			}
 		}
 		for _, child := range source.Children {
-			if !child.IsFreeSpace {
+			if keepFreeSpace || !child.IsFreeSpace {
 				node.Children = append(node.Children, clone(child, node.ID, depth+1))
 			}
 		}

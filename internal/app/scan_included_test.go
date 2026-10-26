@@ -6,6 +6,111 @@ import (
 	"testing"
 )
 
+func TestNarrowerScanUpdatesSavedAncestor(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		enabled, restart bool
+	}{
+		{"loaded", true, false}, {"unloaded", true, true}, {"disabled", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := filepath.Join(t.TempDir(), "settings.json")
+			a := newApp(settings)
+			t.Cleanup(func() { a.Shutdown(nil) })
+			a.scanCache.SetEnabled(false)
+			a.profile.MinFileSize = 0
+			a.profile.UpdateIncludedScans = tc.enabled
+			c := filepath.Join(t.TempDir(), "A", "B", "C")
+			d := filepath.Join(c, "D")
+			if err := os.MkdirAll(d, 0700); err != nil {
+				t.Fatal(err)
+			}
+			write := func(path string) {
+				t.Helper()
+				if err := os.WriteFile(path, []byte("data"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(filepath.Join(d, "old"))
+			write(filepath.Join(c, "sibling"))
+			first, err := a.QueueScan(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := waitJob(t, a, first.ID, "completed")
+			if _, err := a.SelectScanJob(first.ID); err != nil {
+				t.Fatal(err)
+			}
+			original := a.store.sharedSnapshot()
+			if tc.restart {
+				a.coldCache.writes.Wait()
+				a.Shutdown(nil)
+				a = newApp(settings)
+				a.scanCache.SetEnabled(false)
+				a.profile.MinFileSize = 0
+				first.ID = a.GetScanJobs()[0].ID
+			}
+			if err := os.Remove(filepath.Join(d, "old")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(d, "nested"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			write(filepath.Join(d, "new"))
+			write(filepath.Join(d, "nested", "new"))
+			second, err := a.QueueScan(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			completed := waitJob(t, a, second.ID, "completed")
+			view, err := a.SelectScanJob(first.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantFiles := 2
+			if tc.enabled {
+				wantFiles = 3
+			}
+			if view.Tree.FileCount != wantFiles {
+				t.Fatalf("ancestor files=%d want %d", view.Tree.FileCount, wantFiles)
+			}
+			if tc.enabled && view.Job.ScannedAt != completed.ScannedAt {
+				t.Fatal("ancestor timestamp was not updated")
+			}
+			if !tc.enabled && view.Job.ScannedAt != before.ScannedAt {
+				t.Fatal("disabled update changed timestamp")
+			}
+			paths := map[string]bool{}
+			for _, node := range a.store.nodes {
+				if node != nil {
+					paths[node.FullPath] = true
+				}
+			}
+			if !paths[filepath.Join(c, "sibling")] || paths[filepath.Join(d, "new")] != tc.enabled || paths[filepath.Join(d, "old")] == tc.enabled {
+				t.Fatalf("incorrect ancestor subtree: %v", paths)
+			}
+			if original.files != 2 {
+				t.Fatal("previous snapshot was mutated")
+			}
+			a.coldCache.writes.Wait()
+			saved, err := a.coldCache.load(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved.files != wantFiles {
+				t.Fatal("ancestor update was not persisted")
+			}
+			if tc.enabled {
+				for _, h := range a.coldCache.headers() {
+					if h.Info.Path == c && h.Info.ScannedAt != completed.ScannedAt {
+						t.Fatal("saved ancestor timestamp is stale")
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestBroaderScanUpdatesIncludedFolder(t *testing.T) {
 	for _, enabled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "enabled", false: "disabled"}[enabled], func(t *testing.T) {
@@ -199,5 +304,26 @@ func TestIncludedScanSnapshotPreservesSmallFilesAndRemapsIDs(t *testing.T) {
 	next, nextIDs := includedScanSnapshot(root, snapshot)
 	if next.nodes[1].FullPath != file.FullPath || next.nodes[2] != nil || next.nodes[3].FullPath != filepath.Join(path, "added") || nextIDs[2] != -1 {
 		t.Fatal("later update reused a removed ID or changed a surviving ID")
+	}
+}
+
+func TestMergeIncludedScanPreservesVolumeAndSibling(t *testing.T) {
+	path := t.TempDir()
+	d := &Node{ID: 1, ParentID: 0, FullPath: filepath.Join(path, "D"), IsFolder: true, Size: 10, EntryFiles: 1, EntryDirs: 1}
+	sibling := &Node{ID: 2, ParentID: 0, FullPath: filepath.Join(path, "sibling"), Size: 20}
+	free := &Node{ID: -1, ParentID: 0, IsFreeSpace: true, Size: 100}
+	root := &Node{ID: 0, ParentID: -1, FullPath: path, IsFolder: true, Size: 30, EntryFiles: 2, EntryDirs: 2, DiskTotal: 1000, Children: []*Node{free, sibling, d}}
+	previous := &treeStoreSnapshot{root: root, nodes: []*Node{root, d, sibling}, files: 2, dirs: 2, hasDiskUsage: true, diskTotal: 1000, diskFree: 100}
+	replacement := &Node{ID: 0, FullPath: d.FullPath, IsFolder: true, Size: 40, EntryFiles: 2, EntryDirs: 1,
+		Children: []*Node{{ID: -1, IsSmallFiles: true, SmallFileCount: 2, Size: 40}}}
+	next, ids := mergeIncludedScan(previous, replacement)
+	if next == nil || next.files != 3 || next.dirs != 2 || next.root.Size != 60 || next.nodes[1].Size != 40 || ids[2] != 2 {
+		t.Fatalf("incorrect merge: %+v %v", next, ids)
+	}
+	if !next.hasDiskUsage || next.diskTotal != 1000 || next.diskFree != 100 || !next.root.Children[0].IsFreeSpace {
+		t.Fatal("volume free space was lost")
+	}
+	if next.nodes[2].Size != 20 || root.Size != 30 || d.Size != 10 {
+		t.Fatal("sibling changed or old snapshot mutated")
 	}
 }
