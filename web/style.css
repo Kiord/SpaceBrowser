@@ -7,6 +7,91 @@ html, body {
   background: #fff;
 }
 
+/* Shared scrollbars for panels, menus, text fields, and both scroll axes. */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #bdbdb9 #efefed;
+}
+
+/* Keep content widths steady when a scrollable area starts overflowing. */
+.location-selector,
+.settings-body,
+.context-menu,
+.palette-combobox-menu,
+.custom-palette-colors,
+.delete-confirm-path,
+.path-suggestions,
+textarea {
+  scrollbar-gutter: stable;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  /* Non-auto standard colors override the detailed WebView scrollbar styles. */
+  * { scrollbar-color: auto; }
+
+  *::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+    background: #efefed;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #efefed;
+    border: 1px solid #d0d0cc;
+    box-shadow: inset 1px 1px 0 #e2e2df;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    min-width: 32px;
+    min-height: 32px;
+    background-color: #d8d8d5;
+    /* Four-pixel spacing keeps every grip line aligned at common display scales. */
+    background-image: repeating-linear-gradient(to bottom, #999995 0 1px, #fff 1px 2px, transparent 2px 4px);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 8px 10px;
+    border: 1px solid #999995;
+    border-radius: 1px;
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #c1c1bd;
+  }
+
+  *::-webkit-scrollbar-thumb:horizontal { background-image: repeating-linear-gradient(to right, #999995 0 1px, #fff 1px 2px, transparent 2px 4px); background-size: 10px 8px; }
+  *::-webkit-scrollbar-thumb:hover { background-color: #ccc; border-color: #858585; }
+  *::-webkit-scrollbar-thumb:active { background-color: #bebebe; box-shadow: inset 1px 1px 0 #aaa; }
+
+  *::-webkit-scrollbar-button { display: none; }
+
+  *::-webkit-scrollbar-button:single-button {
+    width: 16px;
+    height: 16px;
+    background-color: #f6f6f6;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 12px 12px;
+    border: 1px solid #c9c9c9;
+    border-radius: 2px;
+    box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.10);
+  }
+
+  *::-webkit-scrollbar-button:single-button:start:decrement,
+  *::-webkit-scrollbar-button:single-button:end:increment { display: block; }
+
+  *::-webkit-scrollbar-button:single-button:hover { background-color: #fff; border-color: #aaa; }
+  *::-webkit-scrollbar-button:single-button:active { background-color: #e8e8e8; box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
+  *::-webkit-scrollbar-button:vertical:decrement { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 7 3-3 3 3' fill='none' stroke='%2340403c' stroke-width='2'/%3E%3C/svg%3E"); }
+  *::-webkit-scrollbar-button:vertical:increment { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 5 3 3 3-3' fill='none' stroke='%2340403c' stroke-width='2'/%3E%3C/svg%3E"); }
+  *::-webkit-scrollbar-button:horizontal:decrement { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m7 3-3 3 3 3' fill='none' stroke='%2340403c' stroke-width='2'/%3E%3C/svg%3E"); }
+  *::-webkit-scrollbar-button:horizontal:increment { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m5 3 3 3-3 3' fill='none' stroke='%2340403c' stroke-width='2'/%3E%3C/svg%3E"); }
+  *::-webkit-scrollbar-corner { background: #f6f6f6; border: 1px solid #c9c9c9; }
+
+  @media (forced-colors: active) {
+    *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: Canvas; border-color: CanvasText; box-shadow: none; }
+    *::-webkit-scrollbar-thumb { background: ButtonText; border-color: Canvas; box-shadow: none; }
+    *::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:active { background: Highlight; border-color: Canvas; box-shadow: none; }
+    *::-webkit-scrollbar-button:single-button { background-color: ButtonFace; border-color: ButtonText; box-shadow: none; }
+  }
+}
+
 /* Suppress platform-native mouse focus rings while retaining a consistent
    indicator when the user navigates buttons with the keyboard. */
 button:focus {
@@ -937,7 +1022,6 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   gap: 11px;
   min-height: 0;
   overflow: auto;
-  scrollbar-gutter: stable;
   padding: 14px;
 }
 
@@ -1227,7 +1311,6 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   gap: 5px;
   max-height: 148px;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .custom-palette-color {
@@ -1299,11 +1382,11 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   gap: 9px;
 }
 
-.range-field input[type="range"] {
+input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 18px;
+  height: 24px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1333,49 +1416,61 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 .location-selector-actions .browse-button { display: grid; place-items: center; }
 .location-selector-actions .browse-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; }
 
-.range-field input[type="range"]::-webkit-slider-runnable-track {
-  height: 5px;
-  background: #e6e6e6;
-  border: 1px solid #aaa;
-  border-radius: 2px;
-}
-
-.range-field input[type="range"]::-moz-range-track {
-  height: 5px;
+input[type="range"]::-webkit-slider-runnable-track {
   box-sizing: border-box;
-  background: #e6e6e6;
-  border: 1px solid #aaa;
-  border-radius: 2px;
+  height: 8px;
+  background: #efefed;
+  border: 1px solid #d0d0cc;
+  border-radius: 1px;
+  box-shadow: inset 1px 1px 0 #e2e2df;
 }
 
-.range-field input[type="range"]::-webkit-slider-thumb {
+input[type="range"]::-moz-range-track {
+  height: 8px;
+  box-sizing: border-box;
+  background: #efefed;
+  border: 1px solid #d0d0cc;
+  border-radius: 1px;
+  box-shadow: inset 1px 1px 0 #e2e2df;
+}
+
+input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 11px;
-  height: 16px;
-  margin-top: -6.5px;
-  background: #f6f6f6;
-  border: 1px solid #777;
-  border-radius: 2px;
-  box-shadow: 0 1px 2px #0002;
-}
-
-.range-field input[type="range"]::-moz-range-thumb {
   box-sizing: border-box;
-  width: 11px;
-  height: 16px;
-  background: #f6f6f6;
-  border: 1px solid #777;
-  border-radius: 2px;
-  box-shadow: 0 1px 2px #0002;
+  width: 16px;
+  height: 18px;
+  margin-top: -6px;
+  background-color: #d8d8d5;
+  background-image: repeating-linear-gradient(to right, #999995 0 1px, #fff 1px 2px, transparent 2px 4px);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px 8px;
+  border: 1px solid #999995;
+  border-radius: 1px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #c1c1bd;
 }
 
-.range-field input[type="range"]:hover::-webkit-slider-thumb { background: #fff; border-color: #444; }
-.range-field input[type="range"]:hover::-moz-range-thumb { background: #fff; border-color: #444; }
-.range-field input[type="range"]:active::-webkit-slider-thumb { background: #dcdcdc; }
-.range-field input[type="range"]:active::-moz-range-thumb { background: #dcdcdc; }
+input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 18px;
+  background-color: #d8d8d5;
+  background-image: repeating-linear-gradient(to right, #999995 0 1px, #fff 1px 2px, transparent 2px 4px);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px 8px;
+  border: 1px solid #999995;
+  border-radius: 1px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #c1c1bd;
+}
 
-.range-field input[type="range"]:focus-visible {
+input[type="range"]:hover::-webkit-slider-thumb { background-color: #ccc; border-color: #858585; }
+input[type="range"]:hover::-moz-range-thumb { background-color: #ccc; border-color: #858585; }
+input[type="range"]:active::-webkit-slider-thumb { background-color: #bebebe; box-shadow: inset 1px 1px 0 #aaa; }
+input[type="range"]:active::-moz-range-thumb { background-color: #bebebe; box-shadow: inset 1px 1px 0 #aaa; }
+
+input[type="range"]:focus-visible {
   outline: 1px solid #666;
   outline-offset: 2px;
   border-radius: 2px;
@@ -1815,7 +1910,7 @@ button:disabled:hover,
 .container.workspace[data-sidebar-collapsed="true"] { grid-template-columns: 0 minmax(0, 1fr); }
 .workspace[data-sidebar-collapsed="true"] > .location-selector { display: none; }
 .workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.workspace > .location-selector { position: static; display: block; padding: 12px; border-right: 1px solid #c9c9c9; background: #f7f7f7; overflow: auto; scrollbar-width: thin; scrollbar-color: #aaa #f3f3f3; }
+.workspace > .location-selector { position: static; display: block; padding: 12px; border-right: 1px solid #c9c9c9; background: #f7f7f7; overflow: auto; }
 .workspace .location-selector-panel { width: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .workspace .location-selector-header { gap: 8px; margin-bottom: 12px; }
 .workspace .location-selector-header h1 { font-size: 14px; }
@@ -1842,7 +1937,7 @@ button:disabled:hover,
 .workspace .location-tile[data-selected="true"]:hover { background: #e2eef5; border-color: #52758c; }
 .path-query { position: relative; flex: 1; min-width: 0; }
 .path-query #pathInput { width: 100%; }
-.path-suggestions { position: absolute; top: calc(100% + 3px); left: 0; right: 0; max-height: 240px; overflow: auto; scrollbar-width: thin; padding: 3px; background: #fff; color: #333; border: 1px solid #aaa; border-radius: 2px; box-shadow: 0 2px 5px #0002; z-index: 30; font: 12px "Segoe UI", sans-serif; }
+.path-suggestions { position: absolute; top: calc(100% + 3px); left: 0; right: 0; max-height: 240px; overflow: auto; padding: 3px; background: #fff; color: #333; border: 1px solid #aaa; border-radius: 2px; box-shadow: 0 2px 5px #0002; z-index: 30; font: 12px "Segoe UI", sans-serif; }
 .path-suggestions[hidden] { display: none; }
 .path-suggestions [role="option"] { padding: 5px 7px; white-space: nowrap; cursor: pointer; }
 .path-suggestions [role="option"]:hover, .path-suggestions [aria-selected="true"] { background: #e5edf3; }
