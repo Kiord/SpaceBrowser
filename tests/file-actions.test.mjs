@@ -244,11 +244,13 @@ test('folder refresh menu supports one or multiple folders only', async () => {
   h.select(folder);
   h.ui.showContextMenu(0, 0);
   assert.equal(h.menuItem('refresh').hidden, false);
+  assert.equal(h.byId('label-refresh').textContent, 'Rescan folder');
   await h.action('refresh');
   assert.deepEqual(h.calls, [['refresh']]);
   h.select([folder, { node_id: 2, is_folder: true, full_path: 'D:\\b' }]);
   h.ui.showContextMenu(0, 0);
   assert.equal(h.menuItem('refresh').hidden, false);
+  assert.equal(h.byId('label-refresh').textContent, 'Rescan selected folders');
   h.state.rects[1].is_folder = false;
   h.ui.showContextMenu(0, 0);
   assert.equal(h.menuItem('refresh').hidden, true);

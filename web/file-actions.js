@@ -231,7 +231,7 @@ export function showContextMenu(x, y) {
     refresh.classList.toggle("disabled", !!AppState.scanInProgress);
     refresh.hidden = !selected.length || selected.some(item => !item.is_folder || isPassiveRect(item));
     const label = refresh.querySelector("span");
-    if (label) label.textContent = multiple ? "Refresh selected folders" : "Refresh folder";
+    if (label) label.textContent = multiple ? "Rescan selected folders" : "Rescan folder";
   }
   const properties = menu.querySelector('[data-action="properties"]');
   const chooser = menu.querySelector('[data-action="open-with"]');
