@@ -325,8 +325,8 @@ html.keyboard-navigation button:focus {
 .location-refresh-button {
   position: relative;
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -356,13 +356,18 @@ html.keyboard-navigation button:focus {
 }
 
 .location-refresh-button svg {
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1;
   display: block;
 }
+
+.location-add-button { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 32px; margin-top: 7px; padding: 0; color: #555; background: #f6f6f6; border: 1px solid #c9c9c9; border-radius: 2px; box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.1); cursor: pointer; }
+.location-add-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; }
+.location-add-button:hover:not(:disabled) { background: #fff; border-color: #aaa; }
+.location-add-button:active:not(:disabled) { background: #e8e8e8; box-shadow: inset 0 1px 2px #0002; }
 
 .location-selector [data-tooltip] {
   position: relative;
@@ -1870,26 +1875,37 @@ button:disabled:hover,
 .controls #compactCancelScanButton:disabled { color: #999; background: #f2f2f2; border-color: #d5d5d5; }
 .compact-scan-label { align-items: center; min-height: 18px; }
 
-/* Home owns per-location controls; the toolbar shows only the selected job. */
-.location-tile { min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
-.location-tile .location-card { padding-top: 6px; padding-bottom: 6px; width: 100%; border: 0; box-shadow: none; background: transparent; }
+/* Each location owns a clearly labelled row of scan actions. */
+.location-tile { display: grid; grid-template-rows: 44px minmax(0, 1fr); box-sizing: border-box; height: 130px; min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
+.location-tile:has(.location-disk-bar) { grid-template-rows: 70px minmax(0, 1fr); height: 156px; }
+.location-tile .location-card { box-sizing: border-box; min-height: 0; padding-top: 4px; padding-bottom: 4px; width: 100%; height: 100%; border: 0; box-shadow: none; background: transparent; }
 .location-tile:hover { background: #fff; }
 .location-tile-removable { position: relative; }
 .location-tile-removable .location-card { padding-right: 30px; }
 .location-tile .location-remove-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #666; font-size: 18px; line-height: 1; cursor: pointer; }
 .location-remove-button:hover { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
-.tile-scan-status { padding: 0 10px 7px; }
+.tile-scan-status { display: grid; grid-template-rows: 18px 10px minmax(0, 1fr) 30px; min-height: 0; padding: 0 10px 7px; }
+.tile-scan-status > .compact-scan-label,
+.tile-scan-status > .compact-scan-progress,
+.tile-scan-status > .scan-snapshot-date { margin-left: 44px; }
+.tile-scan-status > .compact-scan-label { grid-row: 1; margin-bottom: 0; }
+.tile-scan-status > .compact-scan-progress { grid-row: 2; }
+.tile-scan-status > .scan-snapshot-date { grid-row: 3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-scan-status .scan-progress-bar { background: #8a68b8; border-radius: 1px; }
 .tile-scan-status[data-complete="true"] .scan-progress-bar { background: #6c4b91; }
 .tile-scan-status .compact-scan-label { font-size: 11px; }
-.tile-scan-status button { display: grid; place-items: center; width: 20px; height: 18px; padding: 0; border: 1px solid #c9c9c9; border-radius: 2px; background: #f6f6f6; color: #333; cursor: pointer; }
-.tile-scan-status .scan-cancel-button { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
-.tile-scan-status button:hover:not(:disabled) { background: #fff; }
+.tile-scan-actions { grid-row: 4; display: flex; justify-content: flex-end; gap: 7px; }
+.tile-scan-status button { box-sizing: border-box; min-width: 64px; height: 30px; padding: 0 12px; font: 12px "Segoe UI", sans-serif; border: 1px solid #c9c9c9; border-radius: 2px; background: #f6f6f6; color: #333; box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.1); cursor: pointer; }
+.tile-scan-status .tile-scan-primary { flex: 1; }
+.tile-scan-status .scan-cancel-button { color: #76534f; }
+.tile-scan-status button:hover:not(:disabled) { background: #fff; border-color: #aaa; }
+.tile-scan-status .scan-cancel-button:hover:not(:disabled) { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
+.tile-scan-status button:active:not(:disabled) { background: #e8e8e8; box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
 .tile-scan-status button:disabled { color: #999; background: #f2f2f2; border-color: #d5d5d5; cursor: not-allowed; box-shadow: none; }
+.tile-scan-status [hidden] { display: none; }
 
 .controls { height: 43px; min-height: 43px; }
 .controls > .input-group > button, .controls .right-group > button, .controls .home-section > button { height: 28px; box-sizing: border-box; }
-.tile-scan-status { padding-left: 54px; }
 .tile-scan-status[data-state="paused"] .scan-progress-bar,
 .compact-scan-status[data-state="paused"] #compactScanBar { background: #b0a0c2; }
 .tile-scan-status[hidden] { display: none; }
@@ -1912,9 +1928,9 @@ button:disabled:hover,
 .workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .workspace > .location-selector { position: static; display: block; padding: 12px; border-right: 1px solid #c9c9c9; background: #f7f7f7; overflow: auto; }
 .workspace .location-selector-panel { width: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.workspace .location-selector-header { gap: 8px; margin-bottom: 12px; }
-.workspace .location-selector-header h1 { font-size: 14px; }
-.workspace .location-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
+.workspace .location-selector-header { align-items: center; justify-content: flex-start; gap: 8px; margin-bottom: 12px; }
+.workspace .location-selector-header h1 { margin: 0; font-size: 14px; }
+.workspace .location-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
 .workspace .location-tile[data-selected="true"] { border-color: #63879c; background: #edf4f8; box-shadow: inset 3px 0 #63879c; }
 .query-toolbar .input-group { max-width: 620px; min-width: 0; margin-left: 0; margin-right: 16px; }
 .query-toolbar { min-height: 40px; }
@@ -1925,8 +1941,9 @@ button:disabled:hover,
 .empty-location[hidden] { display: none; }
 .empty-location h1 { margin: 0; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
 .empty-location p { margin: 0; font-size: 12px; color: #777; }
-.empty-location button { font: 12px "Segoe UI", sans-serif; padding: 6px 12px; color: #333; background: #f6f6f6; border: 1px solid #aaa; border-radius: 2px; cursor: pointer; }
-.empty-location button:hover { background: #fff; border-color: #777; }
+.empty-location button { box-sizing: border-box; min-width: 100px; height: 32px; padding: 0 18px; font: 12px "Segoe UI", sans-serif; color: #333; background: #f6f6f6; border: 1px solid #c9c9c9; border-radius: 2px; box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.1); cursor: pointer; }
+.empty-location button:hover { background: #fff; border-color: #aaa; }
+.empty-location button:active { background: #e8e8e8; box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
 .workspace .scan-warning-popover { right: 0; left: auto; }
 @media (max-width: 800px) { .container.workspace { grid-template-columns: 230px minmax(0, 1fr); } }
 

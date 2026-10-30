@@ -7,7 +7,7 @@ import { AppState } from "./state.js";
 
 export async function chooseFolder({ focusInput = true } = {}) {
   if (AppState.pickingFolderDialogIsOpen) return "";
-  const buttons = [byId("triggerFolderSelectButton")];
+  const buttons = [byId("triggerFolderSelectButton"), byId("addFolderButton")];
   const previousDisabledStates = buttons.map(button => button.disabled);
   try {
     buttons.forEach(button => { button.disabled = true; });
@@ -33,7 +33,11 @@ export async function chooseFolder({ focusInput = true } = {}) {
   }
 }
 
-export function initFolderPicker() {
+export function initFolderPicker({ onAdd } = {}) {
   initPathAutocomplete();
   byId("triggerFolderSelectButton").addEventListener("click", () => chooseFolder());
+  byId("addFolderButton").addEventListener("click", async () => {
+    const path = await chooseFolder({ focusInput: false });
+    if (path) await onAdd?.(path);
+  });
 }

@@ -83,9 +83,7 @@
       <section id="locationSelector" class="location-selector" aria-labelledby="locationSelectorTitle">
         <div class="location-selector-panel">
           <header class="location-selector-header">
-            <div>
-              <h1 id="locationSelectorTitle">Locations</h1>
-            </div>
+            <h1 id="locationSelectorTitle">Locations</h1>
             <button id="refreshLocationsButton" class="location-refresh-button" type="button" aria-label="Refresh locations" data-tooltip="Refresh locations">
               <!-- Teenyicons refresh icon, MIT licensed; see THIRD_PARTY_NOTICES.md. -->
               <svg viewBox="0 0 15 15" fill="none" aria-hidden="true" focusable="false">
@@ -95,6 +93,9 @@
           </header>
           <div id="locationList" class="location-list"></div>
           <p id="locationStatus" class="location-status" role="status">Finding available locations...</p>
+          <button id="addFolderButton" class="location-add-button" type="button" aria-label="Add folder" title="Add folder">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"></path></svg>
+          </button>
         </div>
       </section>
     <main class="workspace-main">
@@ -108,8 +109,8 @@
       <canvas id="maskCanvas" style="display: none"></canvas>
         <section id="emptyLocation" class="empty-location">
           <h1 id="emptyLocationTitle">Choose a location</h1>
-          <p id="emptyLocationHint">Select a location on the left, or enter a path above to scan.</p>
-          <button id="scanLocationButton" type="button" hidden>Scan this location</button>
+          <p id="emptyLocationHint">Choose a tile or add a folder.</p>
+          <button id="scanLocationButton" type="button" aria-label="Scan selected location" hidden>Scan</button>
         </section>
       </div>
     </main>

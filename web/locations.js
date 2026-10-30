@@ -8,6 +8,7 @@ let loadGeneration = 0;
 let visibilityChanged = () => {};
 const tiles = new Map();
 const knownLocations = new Map();
+const addedFolders = new Map();
 let scanJobs = [];
 let createStatus;
 let removeLocation;
@@ -70,10 +71,19 @@ export function setLocationScanJobs(jobs, statusFactory, path = selectedPath, on
   renderScanJobs();
 }
 
+export function rememberLocation(path) {
+  const key = pathKey(path);
+  if (knownLocations.has(key) || tiles.has(key)) return;
+  const location = { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path, kind: "folder" };
+  addedFolders.set(key, location);
+  knownLocations.set(key, location);
+  addLocation(location);
+  renderScanJobs();
+}
+
 function renderScanJobs() {
   const currentPaths = new Set(scanJobs.map(job => pathKey(job.path)));
   for (const [key, tile] of tiles) {
-    if (tile.status && !currentPaths.has(key)) { tile.status.element.remove(); tile.status = null; }
     if (tile.location.kind === "folder" && !knownLocations.has(key) && !currentPaths.has(key)) {
       tile.element.remove();
       tiles.delete(key);
@@ -94,7 +104,9 @@ function renderScanJobs() {
       const location = knownLocations.get(key) || { path: job.path, name: job.path.split(/[\\/]/).filter(Boolean).at(-1) || job.path, kind: "folder" };
       addLocation(location);
     }
-    const tile = tiles.get(key);
+  }
+  for (const [key, tile] of tiles) {
+    const job = displayedJobs.get(key) || { path: tile.location.path, state: "idle" };
     if (tile.location.kind === "folder" && removeLocation && !tile.remove) {
       tile.remove = document.createElement("button");
       tile.remove.type = "button";
@@ -102,10 +114,16 @@ function renderScanJobs() {
       tile.remove.textContent = "×";
       tile.remove.setAttribute("aria-label", `Remove ${job.path} and clear its cache`);
       tile.remove.setAttribute("data-tooltip", "Remove location and clear cache");
-      tile.remove.addEventListener("click", async () => {
-        tile.remove.disabled = true;
-        try { await removeLocation({ path: tile.location.path }); }
-        finally { tile.remove.disabled = false; }
+      const removeButton = tile.remove;
+      removeButton.addEventListener("click", async () => {
+        removeButton.disabled = true;
+        try {
+          if (await removeLocation({ path: tile.location.path }) === false) return;
+          addedFolders.delete(key);
+          knownLocations.delete(key);
+          renderScanJobs();
+        }
+        finally { removeButton.disabled = false; }
       });
       tile.element.append(tile.remove);
       tile.element.classList.add("location-tile-removable");
@@ -212,6 +230,9 @@ async function loadLocations() {
       : [];
     knownLocations.clear();
     for (const location of usable) { knownLocations.set(pathKey(location.path), location); addLocation(location); }
+    for (const [key, location] of addedFolders) {
+      if (!knownLocations.has(key)) { knownLocations.set(key, location); addLocation(location); }
+    }
     renderScanJobs();
     status.hidden = tiles.size > 0;
     status.textContent = tiles.size > 0

@@ -6,7 +6,7 @@ import { pushBrowserHistoryEntry, remapNavigation, updateNavButtons } from "./na
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logError } from "./logging.js";
-import { hideLocationSelector, showLocationSelector, setLocationScanJobs } from "./locations.js";
+import { hideLocationSelector, showLocationSelector, setLocationScanJobs, rememberLocation } from "./locations.js";
 import { pendingScan, createTileScanStatus } from "./scan-status.js";
 
 let redraw = async () => {};
@@ -60,13 +60,12 @@ export function updateScanVisibility() {
   const pending = pendingScan(job);
   byId("emptyLocation").hidden = AppState.node_id != null;
   byId("scanLocationButton").hidden = AppState.node_id != null || !emptyPath || pending;
-  byId("scanLocationButton").textContent = "Scan this location";
   byId("emptyLocationTitle").textContent = emptyPath || "Choose a location";
   byId("emptyLocationHint").textContent = pending
-    ? (AppState.scanPaused ? "Scan paused. Resume it from the sidebar." : "Scanning… the treemap will appear as files are found.")
+    ? (AppState.scanPaused ? "Resume from its tile." : "Scanning…")
     : emptyPath
-    ? "No scan available. Start a scan to explore this location."
-    : "Select a location on the left, or enter a path above to scan.";
+    ? "No scan yet."
+    : "Choose a tile or add a folder.";
 }
 
 async function changePause(job) {
@@ -173,8 +172,19 @@ async function selectJob(id, reveal = true) {
 export async function refreshScanJobs() { return pollJobs(); }
 
 async function releaseJob(job) {
-  try { await RemoveScanLocation(job.path); await pollJobs(); }
-  catch (error) { showErrorToast(error); }
+  try {
+    await RemoveScanLocation(job.path);
+    if (selectedID == null && pathKey(job.path) === pathKey(AppState.scanRootPath || "")) {
+      emptyPath = "";
+      AppState.scanRootPath = "";
+      clearView();
+      clearScanWarning();
+      showLocationSelector();
+    }
+    await pollJobs();
+    return true;
+  }
+  catch (error) { showErrorToast(error); return false; }
 }
 
 async function pollJobs() {
@@ -237,6 +247,7 @@ export async function openLocation(requestedPath = byId("pathInput").value?.trim
     const path = saved?.path || await ValidateScanPath(requestedPath);
     if (token !== selectionToken) return;
     jobs = latestJobs;
+    rememberLocation(path);
     const related = jobs.filter(job => pathKey(job.path) === pathKey(path));
     const match = [...related].reverse().find(job => job.state !== "cancelled" && job.state !== "failed");
     if (match) { await selectJob(match.id); await pollJobs(); return; }
@@ -306,7 +317,9 @@ export function initScan(options) {
   hideContextMenu = options.hideContextMenu;
   byId("analyzeButton").addEventListener("click", analyze);
   byId("scanLocationButton").addEventListener("click", () => {
-    if (emptyPath) return enqueue(() => QueueScan(emptyPath));
+    if (emptyPath && !pendingScan(jobs.find(job => job.id === selectedID))) {
+      return enqueue(() => QueueScan(emptyPath));
+    }
   });
   byId("viewScanReportButton").addEventListener("click", openScanReport);
   addControlEventListeners(event => {

@@ -1,7 +1,5 @@
 import { formatDuration } from "./format.js";
 
-export const refreshScanIcon = '<svg viewBox="0 0 15 15" aria-hidden="true"><path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5"></path></svg>';
-
 export const pendingScan = job => ["queued", "running", "paused"].includes(job?.state);
 
 export function updateScanStatus(refs, job) {
@@ -9,61 +7,54 @@ export function updateScanStatus(refs, job) {
   const done = job.state === "completed";
   const paused = job.state === "paused";
   const queued = job.state === "queued";
+  const idle = job.state === "idle" || job.state === "cancelled";
   const active = pendingScan(job);
-  refs.container.hidden = job.state === "cancelled";
+  refs.container.hidden = false;
   refs.container.setAttribute("data-state", job.state);
   refs.container.setAttribute("data-complete", String(done));
-  refs.time.textContent = done ? `Done in ${(progress.elapsedMilliseconds / 1000).toFixed(1)}s`
+  refs.label.hidden = idle;
+  refs.time.textContent = done ? `Done in ${((progress.elapsedMilliseconds || 0) / 1000).toFixed(1)}s`
     : queued ? "Queued" : paused ? `Paused · ${formatDuration(progress.elapsedMilliseconds || 0)}`
-    : job.state === "failed" ? "Scan failed" : job.state === "cancelled" ? "Cancelled" : formatDuration(progress.elapsedMilliseconds || 0);
+    : job.state === "failed" ? "Scan failed" : formatDuration(progress.elapsedMilliseconds || 0);
   const fraction = done ? 1 : Math.max(0, Math.min(0.96, (progress.fraction || 0) * 0.96));
-  refs.progress.hidden = false;
+  refs.progress.hidden = idle;
   refs.percent.textContent = `${Math.floor(fraction * 100)}%`;
   refs.percent.hidden = !active || queued;
   refs.bar.style.setProperty("--scan-progress", `${fraction * 100}%`);
   refs.progress.setAttribute("aria-valuenow", String(Math.floor(fraction * 100)));
-  if (refs.date) {
-    refs.date.hidden = !done || !job.scannedAt;
-    refs.date.textContent = job.scannedAt ? `${job.cached ? "Saved scan" : "Scanned"} · ${new Date(job.scannedAt).toLocaleString()}${job.saving ? " · Saving…" : job.cacheError ? " · Not saved" : ""}` : "";
-    refs.date.title = job.cacheError || (job.cached ? "Historical snapshot. Rescan to update it." : "");
-  }
-  refs.actions.hidden = false;
-  if (refs.refresh) {
-    refs.refresh.hidden = false;
-    refs.refresh.disabled = !done;
-  }
-  refs.pause.hidden = false;
-  refs.pause.disabled = !active;
-  refs.cancel.hidden = false;
-  refs.cancel.disabled = !active;
-  const label = paused ? "Continue scan" : "Pause scan";
-  refs.pause.setAttribute("aria-label", label);
-  refs.pause.setAttribute("data-tooltip", label);
-  refs.pause.setAttribute("aria-pressed", String(paused));
-  refs.icon.setAttribute("d", paused ? "M8 4l12 8-12 8Z" : "M8 5v14M16 5v14");
+  refs.date.hidden = !done || !job.scannedAt;
+  refs.date.textContent = job.scannedAt ? `${new Date(job.scannedAt).toLocaleString()}${job.saving ? " · Saving…" : job.cacheError ? " · Not saved" : ""}` : "";
+  refs.date.title = job.cacheError || (job.cached ? "Saved scan" : "");
+  const action = done ? "Rescan" : paused ? "Resume" : job.state === "running" ? "Pause" : job.state === "failed" ? "Retry" : "Scan";
+  refs.primary.textContent = action;
+  refs.primary.setAttribute("aria-label", `${action} ${job.path || "location"}`);
+  refs.primary.hidden = queued;
+  refs.cancel.hidden = !active;
 }
 
-export function createTileScanStatus(onPause, onCancel, onRefresh) {
+export function createTileScanStatus(onPause, onCancel, onScan) {
   const container = document.createElement("div");
   container.className = "tile-scan-status";
-  container.innerHTML = `<div class="compact-scan-label"><span data-scan="time"></span><span data-scan="percent"></span><span class="compact-scan-actions" data-scan="actions"><button type="button" data-scan="pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path data-scan="icon"></path></svg></button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan" data-tooltip="Cancel scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg></button></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span>`;
+  container.innerHTML = `<div class="compact-scan-label" data-scan="label"><span data-scan="time"></span><span data-scan="percent"></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span><span class="scan-snapshot-date" data-scan="date"></span><div class="tile-scan-actions"><button type="button" class="tile-scan-primary" data-scan="primary">Scan</button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan">Cancel</button></div>`;
   const refs = { container };
-  for (const name of ["time", "percent", "actions", "pause", "icon", "progress", "bar"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
-  refs.cancel = container.querySelector('[data-scan="cancel"]');
-  refs.refresh = document.createElement("button");
-  refs.refresh.type = "button";
-  refs.refresh.disabled = true;
-  refs.refresh.setAttribute("aria-label", "Rescan location");
-  refs.refresh.setAttribute("data-tooltip", "Rescan location");
-  refs.refresh.innerHTML = refreshScanIcon;
-  refs.refresh.className = "scan-refresh-button";
-  refs.actions.append(refs.refresh);
-  refs.date = document.createElement("span");
-  refs.date.className = "scan-snapshot-date";
-  container.append(refs.date);
-  let current;
-  refs.refresh.addEventListener("click", () => current?.state === "completed" && onRefresh(current));
-  refs.pause.addEventListener("click", () => pendingScan(current) && onPause(current));
-  refs.cancel.addEventListener("click", () => pendingScan(current) && onCancel(current));
-  return { element: container, update(job) { current = job; updateScanStatus(refs, job); } };
+  for (const name of ["label", "time", "percent", "progress", "bar", "date", "primary", "cancel"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
+  let current, busy = false;
+  const render = () => {
+    if (!current) return;
+    updateScanStatus(refs, current);
+    refs.primary.disabled = refs.cancel.disabled = busy;
+  };
+  const perform = async handler => {
+    if (busy || !current) return;
+    busy = true;
+    render();
+    try { await handler(current); }
+    finally { busy = false; render(); }
+  };
+  refs.primary.addEventListener("click", () => {
+    if (current?.state === "queued") return;
+    return perform(job => ["running", "paused"].includes(job.state) ? onPause(job) : onScan(job));
+  });
+  refs.cancel.addEventListener("click", () => pendingScan(current) && perform(onCancel));
+  return { element: container, update(job) { current = job; render(); } };
 }

@@ -42,7 +42,7 @@ async function harness() {
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './logging.js': { logError: (...args) => errors.push(args) },
-    './locations.js': { hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
+    './locations.js': { rememberLocation() {}, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
     './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
@@ -50,6 +50,7 @@ async function harness() {
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
   return { ui, jobs, state, element, calls, errors, backend, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
+    scanTile: () => refreshTile({ path: state.scanRootPath, state: 'idle' }),
     removeTile: job => removeTile(job),
     pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
     cancelTile: () => cancelTile(jobs.find(job => job.id === selected)),
@@ -70,7 +71,7 @@ test('removing the selected folder clears its view and cached location', async (
   assert.equal(h.state.scanRootPath, '');
   assert.equal(h.state.liveScanPreview, false);
   assert.equal(h.state.homeVisible, true);
-  assert.equal(h.element('scanLocationButton').hidden, true);
+  assert.equal(h.element('emptyLocationTitle').textContent, 'Choose a location');
   assert.deepEqual(h.calls.at(-1), ['remove', '/one']);
 });
 
@@ -87,6 +88,15 @@ test('selecting an unscanned location preserves the running scan and query input
   await h.ui.openLocation('/one');
   assert.equal(h.state.node_id, 7);
   assert.equal(h.element('pathInput').value, '/draft');
+});
+
+test('removing a selected unscanned folder clears its empty view', async () => {
+  const h = await harness();
+  await h.ui.openLocation('/new-folder');
+  await h.removeTile({ path: '/new-folder' });
+  assert.equal(h.state.scanRootPath, '');
+  assert.equal(h.element('emptyLocationTitle').textContent, 'Choose a location');
+  assert.equal(h.jobs.length, 0);
 });
 
 test('late location validation cannot replace the latest sidebar selection', async () => {
@@ -155,7 +165,7 @@ test('cancelled location requires an explicit scan action', async () => {
   await h.ui.openLocation();
   assert.equal(h.jobs.length, 1);
   assert.equal(h.state.homeVisible, true);
-  await h.element("scanLocationButton").handlers.click();
+  await h.scanTile();
   assert.equal(h.jobs.length, 2);
   assert.equal(h.jobs[0].state, 'cancelled');
   assert.equal(h.jobs[1].state, 'running');
@@ -226,8 +236,23 @@ test('opening a never-scanned tile does not scan until explicitly requested', as
   const h = await harness(); h.state.homeVisible = true;
   await h.ui.openLocation();
   assert.equal(h.jobs.length, 0); assert.equal(h.state.homeVisible, true);
-  await h.element("scanLocationButton").handlers.click();
+  await h.scanTile();
   assert.equal(h.jobs.length, 1); assert.equal(h.state.homeVisible, false);
+});
+
+test('central Scan starts the selected empty location and hides while scanning', async () => {
+  const h = await harness();
+  const button = h.element('scanLocationButton');
+  assert.equal(button.hidden, true);
+  h.element('pathInput').value = '/draft-path';
+  await h.ui.openLocation('/selected-folder');
+  assert.equal(button.hidden, false);
+  await button.handlers.click();
+  assert.deepEqual(h.calls.find(call => call[0] === 'queue'), ['queue', '/selected-folder']);
+  assert.equal(h.element('pathInput').value, '/draft-path');
+  assert.equal(button.hidden, true);
+  await button.handlers.click();
+  assert.equal(h.jobs.length, 1);
 });
 
 
@@ -245,7 +270,6 @@ test('switching completed locations preserves navigation without rescanning', as
   assert.equal(h.state.node_id, 24);
   await h.ui.openLocation('/one');
   assert.equal(h.state.node_id, 42);
-  assert.equal(h.element('scanLocationButton').hidden, true);
   assert.equal(h.calls.filter(call => call[0] === 'queue').length, queues);
 });
 

@@ -85,7 +85,7 @@ test('bubbling button clicks do not open a tile again or activate it from scan c
 test('folder jobs get a separate tile with progress but no disk usage bar', async () => {
   const h = await renderLocation({ diskTotal: 100, diskFree: 50 });
   const updates = [];
-  const factory = () => ({ element: h.element(), update: job => updates.push(job.state) });
+  const factory = () => ({ element: h.element(), update: job => { if (job.path === '/volume/folder') updates.push(job.state); } });
   h.ui.setLocationScanJobs([{ id: 1, path: '/volume/folder', state: 'running' }], factory);
   const tiles = h.byId('locationList').children;
   assert.equal(tiles.length, 2);
@@ -245,10 +245,38 @@ test('cancelling a rescan restores the saved snapshot tile status and timestamp'
   assert.equal(updates.at(-1), restarted);
 });
 
-test('a cancelled first scan still supplies the hidden status for its location', async () => {
+test('a cancelled first scan keeps its location available to scan again', async () => {
   const h = await renderLocation({});
   const updates = [];
   const cancelled = { id: 1, path: '/volume', state: 'cancelled' };
   h.ui.setLocationScanJobs([cancelled], () => ({ element: h.element(), update: job => updates.push(job) }));
   assert.deepEqual(updates, [cancelled]);
+});
+
+test('unscanned volumes retain their Scan action after refreshing locations', async () => {
+  const h = await renderLocation({ kind: 'volume' });
+  const updates = [];
+  h.ui.setLocationScanJobs([], () => ({ element: h.element(), update: job => updates.push(job) }));
+  assert.equal(updates.at(-1).path, '/volume');
+  assert.equal(updates.at(-1).state, 'idle');
+  await h.byId('refreshLocationsButton').emit('click');
+  assert.equal(h.byId('locationList').children[0].children.length, 2);
+  assert.equal(updates.at(-1).state, 'idle');
+});
+
+test('adding a folder keeps it available without scanning, survives refresh, and can be removed', async () => {
+  const h = await renderLocation({ kind: 'volume' });
+  const updates = [], removed = [];
+  h.ui.setLocationScanJobs([], () => ({ element: h.element(), update: job => updates.push(job) }), '', async job => removed.push(job.path));
+  h.ui.rememberLocation('/new-folder');
+  h.ui.rememberLocation('/new-folder');
+  assert.equal(h.byId('locationList').children.length, 2);
+  assert.equal(h.scans(), 0);
+  assert.equal(updates.at(-1).state, 'idle');
+  await h.byId('refreshLocationsButton').emit('click');
+  const folder = h.byId('locationList').children[1];
+  assert.equal(folder.children[0].dataset.path, '/new-folder');
+  await folder.children.find(child => child.className === 'location-remove-button').emit('click');
+  assert.deepEqual(removed, ['/new-folder']);
+  assert.equal(h.byId('locationList').children.length, 1);
 });

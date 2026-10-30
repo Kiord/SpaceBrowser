@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateNavButtons();
     updateScanVisibility();
   } });
-  initFolderPicker();
+  initFolderPicker({ onAdd: openLocation });
   initZoom({ redraw });
   const locationsCollapsed = () => byId("workspace").getAttribute("data-sidebar-collapsed") === "true";
   const setLocationsCollapsed = async collapsed => {
