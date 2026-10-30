@@ -181,7 +181,7 @@
   <div id="toast">Copied path</div>  
 
   <div id="rectToast" class="rect-toast" role="tooltip" hidden>
-    <div class="rect-toast-icon" aria-hidden="true">
+    <div id="rectToastIcon" class="rect-toast-icon" aria-hidden="true">
       <img id="rectToastAssociatedIcon" class="is-hidden" alt="">
       <svg id="rectToastFallbackIcon" viewBox="0 0 24 24" aria-hidden="true">
         <path id="rectToastFallbackShape" d="M3 8V5h7l2 3h9v11H3z"></path>
@@ -189,10 +189,12 @@
       </svg>
     </div>
     <div class="rect-toast-details">
-      <div class="rect-toast-path"><span id="rectToastPathPrefix"></span><strong id="rectToastName"></strong></div>
+      <div id="rectToastPath" class="rect-toast-path"><span id="rectToastPathPrefix"></span><strong id="rectToastName"></strong></div>
       <span id="rectToastSize"></span>
       <span id="rectToastCreated"></span>
       <span id="rectToastScanned"></span>
+      <span id="rectToastCreationDate" hidden></span>
+      <span id="rectToastCounts" hidden></span>
     </div>
   </div>
 
@@ -267,6 +269,18 @@
               <span>ms</span>
             </label>
           </div>
+          <details class="tooltip-fields-settings">
+            <summary>Tooltip contents</summary>
+            <div class="tooltip-fields-grid">
+              <label class="settings-check"><input id="settingsTooltipIcon" type="checkbox" checked><span>Icon</span></label>
+              <label class="settings-check"><input id="settingsTooltipPath" type="checkbox" checked><span>Path</span></label>
+              <label class="settings-check"><input id="settingsTooltipSize" type="checkbox" checked><span>Size</span></label>
+              <label class="settings-check"><input id="settingsTooltipModificationDate" type="checkbox" checked><span>Modification date</span></label>
+              <label class="settings-check"><input id="settingsTooltipScanDate" type="checkbox" checked><span>Scan date</span></label>
+              <label class="settings-check"><input id="settingsTooltipCreationDate" type="checkbox"><span>Creation date</span></label>
+              <label class="settings-check tooltip-counts-option"><input id="settingsTooltipCounts" type="checkbox"><span>Files and folders (direct/cumulative)</span></label>
+            </div>
+          </details>
           <section class="deletion-settings" aria-labelledby="deletionSettingsTitle">
             <h3 id="deletionSettingsTitle">Deletion</h3>
             <label class="settings-check">

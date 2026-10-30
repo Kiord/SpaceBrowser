@@ -523,6 +523,8 @@ html.keyboard-navigation button:focus {
   display: none;
 }
 
+.rect-toast [hidden] { display: none !important; }
+
 .rect-toast-icon {
   flex: 0 0 auto;
   width: 30px;
@@ -1447,6 +1449,18 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 
 .tooltip-settings-row .settings-check {
   margin-left: 0;
+}
+
+.tooltip-fields-settings { margin: -7px 0 12px 154px; color: #555; font-size: 12px; }
+.tooltip-fields-settings summary { width: fit-content; cursor: pointer; padding: 4px 0; }
+.tooltip-fields-settings summary:focus-visible { outline: 1px solid #666; outline-offset: 2px; }
+.tooltip-fields-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 8px 0; }
+.tooltip-fields-grid .settings-check { margin-left: 0; }
+.tooltip-fields-grid input { margin: 0; flex-shrink: 0; }
+.tooltip-counts-option { grid-column: 1 / -1; }
+@media (max-width: 560px) {
+  .tooltip-fields-settings { margin-left: 0; }
+  .tooltip-fields-grid { grid-template-columns: 1fr; }
 }
 
 .tooltip-delay-field {

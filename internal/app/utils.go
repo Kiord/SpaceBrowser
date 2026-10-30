@@ -16,12 +16,27 @@ type Profile struct {
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
 	ShowTooltips         bool               `json:"showTooltips"`
 	TooltipDelayMS       int                `json:"tooltipDelayMs"`
+	TooltipFields        TooltipFields      `json:"tooltipFields"`
 	AllowDelete          bool               `json:"allowDelete"`
 	AllowPermanentDelete bool               `json:"allowPermanentDelete"`
 	RescanOnDelete       bool               `json:"rescanOnDelete"`
 	UpdateIncludedScans  bool               `json:"updateIncludedScans"`
 	Appearance           AppearanceSettings `json:"appearance"`
 	Controls             ControlSettings    `json:"controls"`
+}
+
+type TooltipFields struct {
+	Icon             bool `json:"icon"`
+	Path             bool `json:"path"`
+	Size             bool `json:"size"`
+	ModificationDate bool `json:"modificationDate"`
+	ScanDate         bool `json:"scanDate"`
+	Counts           bool `json:"counts"`
+	CreationDate     bool `json:"creationDate"`
+}
+
+func defaultTooltipFields() TooltipFields {
+	return TooltipFields{Icon: true, Path: true, Size: true, ModificationDate: true, ScanDate: true}
 }
 
 type AppearanceSettings struct {
@@ -120,6 +135,7 @@ func defaultProfile() *Profile {
 		SkipNetworkFS:        true,
 		ShowTooltips:         true,
 		TooltipDelayMS:       0,
+		TooltipFields:        defaultTooltipFields(),
 		AllowDelete:          false,
 		AllowPermanentDelete: false,
 		RescanOnDelete:       true,

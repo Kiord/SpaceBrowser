@@ -39,6 +39,11 @@ let draggedColorIndex = -1;
 
 const MAX_CUSTOM_THEMES = 32;
 const MAX_THEME_COLORS = 32;
+const TOOLTIP_FIELD_DEFAULTS = Object.freeze({
+  icon: true, path: true, size: true, modificationDate: true, scanDate: true,
+  creationDate: false, counts: false,
+});
+const tooltipFieldId = name => `settingsTooltip${name[0].toUpperCase()}${name.slice(1)}`;
 const BUILTIN_PALETTE_LABELS = Object.freeze({
   default: "Default",
   spacemonger: "SpaceMonger 1.4",
@@ -584,6 +589,9 @@ function populateGeneralForm(profile) {
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
   byId("settingsShowTooltips").checked = profile.showTooltips !== false;
   byId("settingsTooltipDelay").value = String(profile.tooltipDelayMs ?? 0);
+  for (const [name, enabled] of Object.entries(TOOLTIP_FIELD_DEFAULTS)) {
+    byId(tooltipFieldId(name)).checked = profile.tooltipFields?.[name] ?? enabled;
+  }
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
   byId("settingsAllowPermanentDelete").checked = !!profile.allowPermanentDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
@@ -752,6 +760,7 @@ async function saveSettings(event) {
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
     showTooltips: byId("settingsShowTooltips").checked,
     tooltipDelayMs,
+    tooltipFields: Object.fromEntries(Object.keys(TOOLTIP_FIELD_DEFAULTS).map(name => [name, byId(tooltipFieldId(name)).checked])),
     allowDelete: byId("settingsAllowDelete").checked,
     allowPermanentDelete: byId("settingsAllowPermanentDelete").checked,
     rescanOnDelete: byId("settingsRescanOnDelete").checked,

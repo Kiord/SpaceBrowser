@@ -1,4 +1,4 @@
-import { GetAssociatedIcon } from "./wailsjs/go/app/App.js";
+import { GetAssociatedIcon, GetTooltipDetails } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { detailedByteSize, formatSize } from "./format.js";
 import { AppState } from "./state.js";
@@ -14,6 +14,15 @@ let tooltipTimer = null;
 const associatedIconCache = new Map();
 const maximumAssociatedIconCacheSize = 256;
 let toastRevision = 0;
+let detailsRevision = 0;
+const tooltipDefaults = { icon: true, path: true, size: true, modificationDate: true, scanDate: true };
+const tooltipFieldIds = {
+  icon: "rectToastIcon", path: "rectToastPath", size: "rectToastSize",
+  modificationDate: "rectToastCreated", scanDate: "rectToastScanned", creationDate: "rectToastCreationDate",
+  counts: "rectToastCounts",
+};
+const countText = value => Number.isFinite(value) ? value.toLocaleString() : "unavailable";
+const dateText = value => value ? new Date(value * 1000).toLocaleString() : "unavailable";
 
 export const mousePosition = { x: 0, y: 0 };
 
@@ -94,6 +103,7 @@ function placeRectToast(x, y) {
 }
 
 export function hideRectToast() {
+  detailsRevision++;
   clearTimeout(tooltipTimer);
   tooltipTimer = null;
   pendingRectIndex = -1;
@@ -104,8 +114,14 @@ export function hideRectToast() {
 }
 
 function showRectToast(rect, rectIndex, clientX, clientY) {
+  const revision = ++detailsRevision;
+  const session = AppState.navSession;
   hoveredRect = rect;
   hoveredRectIndex = rectIndex;
+  const fields = { ...tooltipDefaults, ...AppState.profile?.tooltipFields };
+  for (const [field, id] of Object.entries(tooltipFieldIds)) {
+    byId(id).hidden = !fields[field] || (field === "counts" && !rect.is_folder);
+  }
   const name = String(rect.name || "");
   const fullPath = String(rect.full_path);
   const suffix = fullPath.slice(-name.length);
@@ -113,11 +129,28 @@ function showRectToast(rect, rectIndex, clientX, clientY) {
   byId("rectToastPathPrefix").textContent = nameIsPathSuffix ? fullPath.slice(0, -name.length) : fullPath;
   byId("rectToastName").textContent = nameIsPathSuffix ? name : "";
   byId("rectToastSize").textContent = `${formatSize(rect.size)} (${detailedByteSize(rect.size)})`;
-  byId("rectToastCreated").textContent = `Modification date : ${rect.mtime ? new Date(rect.mtime * 1000).toLocaleString() : "unavailable"}`;
-  byId("rectToastScanned").textContent = `Scan date : ${rect.scan_time ? new Date(rect.scan_time * 1000).toLocaleString() : "unavailable"}`;
-  updateAssociatedIcon(rect);
-  byId("rectToast").hidden = false;
+  byId("rectToastCreated").textContent = `Modification date : ${dateText(rect.mtime)}`;
+  byId("rectToastScanned").textContent = `Scan date : ${dateText(rect.scan_time)}`;
+  byId("rectToastCreationDate").textContent = "Creation date : Loading…";
+  byId("rectToastCounts").textContent = "Files and folders : Loading…";
+  if (fields.icon) updateAssociatedIcon(rect);
+  byId("rectToast").hidden = !Object.entries(tooltipFieldIds).some(([, id]) => !byId(id).hidden);
   placeRectToast(clientX, clientY);
+  if (fields.creationDate || (rect.is_folder && fields.counts)) {
+    const stillCurrent = () => revision === detailsRevision && hoveredRect === rect
+      && AppState.rects?.[rectIndex] === rect && AppState.navSession === session;
+    Promise.resolve(GetTooltipDetails(rect.node_id, rect.full_path, !!fields.creationDate)).then(details => {
+      if (!stillCurrent()) return;
+      byId("rectToastCreationDate").textContent = `Creation date : ${dateText(details.creationTime)}`;
+      byId("rectToastCounts").textContent = `${countText(details.directFiles)}/${countText(details.recursiveFiles)} files, ${countText(details.directFolders)}/${countText(details.recursiveFolders)} folders${details.incomplete ? " (scan in progress)" : ""}`;
+      placeRectToast(mousePosition.x || clientX, mousePosition.y || clientY);
+    }).catch(() => {
+      if (!stillCurrent()) return;
+      byId("rectToastCreationDate").textContent = "Creation date : unavailable";
+      byId("rectToastCounts").textContent = "Files and folders : unavailable";
+      placeRectToast(mousePosition.x || clientX, mousePosition.y || clientY);
+    });
+  }
 }
 
 export function updateRectToast(event) {

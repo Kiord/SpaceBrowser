@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 16
+const settingsFileVersion = 18
 
 type persistedSettings struct {
 	Version             int                `json:"version"`
@@ -20,6 +20,7 @@ type persistedSettings struct {
 	SkipNetworkFS       bool               `json:"skipNetworkFS"`
 	ShowTooltips        bool               `json:"showTooltips"`
 	TooltipDelayMS      int                `json:"tooltipDelayMs"`
+	TooltipFields       TooltipFields      `json:"tooltipFields"`
 	AllowDelete         bool               `json:"allowDelete"`
 	DeletePermanently   bool               `json:"deletePermanently"`
 	RescanOnDelete      bool               `json:"rescanOnDelete"`
@@ -131,6 +132,24 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		updateIncludedScans = defaultProfile().UpdateIncludedScans
 	}
 	tooltipDelayMS := saved.TooltipDelayMS
+	tooltipFields := saved.TooltipFields
+	if saved.Version < 17 {
+		tooltipFields = defaultTooltipFields()
+	} else if saved.Version == 17 {
+		var legacy struct {
+			TooltipFields struct {
+				RecursiveFiles   bool
+				RecursiveFolders bool
+				DirectFiles      bool
+				DirectFolders    bool
+			}
+		}
+		if err := json.Unmarshal(data, &legacy); err != nil {
+			return Profile{}, fmt.Errorf("decode tooltip fields: %w", err)
+		}
+		fields := legacy.TooltipFields
+		tooltipFields.Counts = fields.RecursiveFiles || fields.RecursiveFolders || fields.DirectFiles || fields.DirectFolders
+	}
 	if saved.Version < 10 {
 		showTooltips = defaultProfile().ShowTooltips
 		tooltipDelayMS = defaultProfile().TooltipDelayMS
@@ -144,6 +163,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		SkipNetworkFS:        saved.SkipNetworkFS,
 		ShowTooltips:         showTooltips,
 		TooltipDelayMS:       tooltipDelayMS,
+		TooltipFields:        tooltipFields,
 		AllowDelete:          allowDelete,
 		AllowPermanentDelete: deletePermanently,
 		RescanOnDelete:       rescanOnDelete,
@@ -163,6 +183,7 @@ func saveSettings(path string, profile Profile) error {
 		SkipNetworkFS:       profile.SkipNetworkFS,
 		ShowTooltips:        profile.ShowTooltips,
 		TooltipDelayMS:      profile.TooltipDelayMS,
+		TooltipFields:       profile.TooltipFields,
 		AllowDelete:         profile.AllowDelete,
 		DeletePermanently:   profile.AllowPermanentDelete,
 		RescanOnDelete:      profile.RescanOnDelete,
