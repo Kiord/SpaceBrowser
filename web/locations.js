@@ -21,6 +21,14 @@ function addLocation(location) {
   if (existing) {
     existing.location = location;
     existing.element.replaceChildren(locationButton(location));
+    if (existing.remove) {
+      if (location.kind === "folder") existing.element.append(existing.remove);
+      else {
+        // A saved-scan placeholder may become a volume after discovery finishes.
+        existing.remove = null;
+        existing.element.classList.remove("location-tile-removable");
+      }
+    }
     if (existing.status) existing.element.append(existing.status.element);
     return;
   }

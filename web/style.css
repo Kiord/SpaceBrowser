@@ -1715,7 +1715,7 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 .controls .compact-scan-status[hidden] { display: none; }
 .compact-scan-meter { flex: 0 0 clamp(200px, 19vw, 260px); width: clamp(200px, 19vw, 260px); padding-top: 2px; }
 .compact-scan-label { display: flex; justify-content: space-between; gap: 8px; line-height: 13px; margin-bottom: 2px; }
-.compact-scan-progress { display: block; position: relative; height: 8px; border: 1px solid #c9c9c9; border-radius: 2px; overflow: hidden; background: #f4f4f2; }
+.compact-scan-progress { display: block; position: relative; box-sizing: border-box; height: 10px; flex-shrink: 0; border: 1px solid #c9c9c9; border-radius: 2px; overflow: hidden; background: #f4f4f2; }
 /* Details and warnings share a fixed slot beside the meter. */
 
 .scan-status-section .scan-warning-indicator { grid-area: 1 / 2; justify-content: center; }

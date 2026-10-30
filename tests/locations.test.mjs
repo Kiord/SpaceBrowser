@@ -167,6 +167,7 @@ test('scan updates do not reset the cursor during a held-Control cycle', async (
 test('late volume discovery upgrades a saved-scan placeholder without losing controls', async () => {
   const pending = deferred();
   const make = () => ({ ...eventTarget(), children: [], dataset: {}, attributes: {}, style: { setProperty() {} },
+    classList: { values: new Set(), add(value) { this.values.add(value); }, remove(value) { this.values.delete(value); }, contains(value) { return this.values.has(value); } },
     append(...children) { for (const child of children) { child.remove(); child.parent = this; this.children.push(child); } },
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
     replaceChildren(...children) { this.children = children; },
@@ -179,8 +180,9 @@ test('late volume discovery upgrades a saved-scan placeholder without losing con
   }, { document: { createElement: make } });
   ui.initLocationSelector({ analyze: async () => {} });
   const progress = make();
-  ui.setLocationScanJobs([{ id: 1, path: 'D:\\', state: 'completed', cached: true }], () => ({ element: progress, update() {} }));
+  ui.setLocationScanJobs([{ id: 1, path: 'D:\\', state: 'completed', cached: true }], () => ({ element: progress, update() {} }), '', async () => {});
   const tile = byId('locationList').children[0];
+  assert.equal(tile.classList.contains('location-tile-removable'), true);
   pending.resolve([{ name: 'Data', path: 'D:\\', kind: 'volume', iconUrl: 'data:image/png;base64,icon', filesystem: 'NTFS', diskTotal: 100, diskFree: 20 }]);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(byId('locationList').children.length, 1);
@@ -190,6 +192,8 @@ test('late volume discovery upgrades a saved-scan placeholder without losing con
   assert.match(details.children[1].textContent, /NTFS/);
   assert.ok(details.children[2]);
   assert.equal(tile.children[1], progress);
+  assert.equal(tile.classList.contains('location-tile-removable'), false);
+  assert.equal(tile.children.some(child => child.className === 'location-remove-button'), false);
 });
 
 test('late volume discovery keeps folders below all volumes and cycling follows that order', async () => {
