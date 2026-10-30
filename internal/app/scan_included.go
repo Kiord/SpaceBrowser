@@ -48,7 +48,10 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 		// A volume report includes unrelated paths; don't attribute it to a folder.
 		job.info.Report = nil
 		job.info.Error, job.info.CacheError = "", ""
-		job.info.Progress = ScanProgress{Fraction: 1, FileCount: int64(job.snapshot.files), DirCount: int64(job.snapshot.dirs)}
+		// Updating a region does not measure a new scan of this whole location.
+		// Retain the duration of its original scan when saving the updated tree.
+		job.info.Progress = ScanProgress{Fraction: 1, FileCount: int64(job.snapshot.files), DirCount: int64(job.snapshot.dirs),
+			ElapsedMilliseconds: job.info.Progress.ElapsedMilliseconds}
 		job.revision++
 		if q.selected == job.info.ID {
 			// Prevent navigation from saving the old foreground tree over this update.

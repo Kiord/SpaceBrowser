@@ -52,7 +52,7 @@ func TestColdCacheRestartLazyLoadAndExplicitRelease(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "settings.json")
 	a := newApp(config)
 	path := t.TempDir()
-	info := ScanJobInfo{Path: path, State: "completed", ScannedAt: scanTimestamp()}
+	info := ScanJobInfo{Path: path, State: "completed", ScannedAt: scanTimestamp(), Progress: ScanProgress{ElapsedMilliseconds: 12345}}
 	if err := a.coldCache.save(info, coldFixture(path), a.coldCache.epoch(path)); err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +61,9 @@ func TestColdCacheRestartLazyLoadAndExplicitRelease(t *testing.T) {
 	jobs := restarted.GetScanJobs()
 	if len(jobs) != 1 || !jobs[0].Cached {
 		t.Fatalf("jobs: %+v", jobs)
+	}
+	if jobs[0].Progress.ElapsedMilliseconds != info.Progress.ElapsedMilliseconds {
+		t.Fatalf("saved duration was lost after restart: %+v", jobs[0].Progress)
 	}
 	if restarted.jobs.jobs[0].snapshot != nil {
 		t.Fatal("loaded tree before selection")
@@ -72,6 +75,9 @@ func TestColdCacheRestartLazyLoadAndExplicitRelease(t *testing.T) {
 	view, err := restarted.SelectScanJob(jobs[0].ID)
 	if err != nil || view.Tree == nil {
 		t.Fatalf("view: %+v %v", view, err)
+	}
+	if view.Job.Progress.ElapsedMilliseconds != info.Progress.ElapsedMilliseconds {
+		t.Fatalf("loading the snapshot changed its duration: %+v", view.Job.Progress)
 	}
 	if !restarted.GetCachedScans()[0].Loaded || restarted.scanActive {
 		t.Fatal("opening historical snapshot started a scan or failed to load")

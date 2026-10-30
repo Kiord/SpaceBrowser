@@ -6,6 +6,79 @@ import (
 	"testing"
 )
 
+func TestSnapshotDurationSurvivesOverlappingScans(t *testing.T) {
+	for _, ancestor := range []bool{false, true} {
+		for _, loaded := range []bool{false, true} {
+			name := map[bool]string{false: "descendant", true: "ancestor"}[ancestor] + map[bool]string{false: "/unloaded", true: "/loaded"}[loaded]
+			t.Run(name, func(t *testing.T) {
+				config := filepath.Join(t.TempDir(), "settings.json")
+				rootPath := t.TempDir()
+				childPath := filepath.Join(rootPath, "child")
+				if err := os.Mkdir(childPath, 0700); err != nil {
+					t.Fatal(err)
+				}
+				filePath := filepath.Join(childPath, "file")
+				if err := os.WriteFile(filePath, []byte("data"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				child := &Node{ID: 1, ParentID: 0, FullPath: childPath, IsFolder: true,
+					Children: []*Node{{ID: 2, ParentID: 1, FullPath: filePath, Size: 4}}}
+				root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, Children: []*Node{child}}
+				savedRoot, scanPath := child, rootPath
+				if ancestor {
+					savedRoot, scanPath = root, childPath
+				}
+				snapshot, _ := includedScanSnapshot(savedRoot, nil)
+				info := ScanJobInfo{Path: savedRoot.FullPath, State: "completed", ScannedAt: "2026-01-01T00:00:00Z",
+					Progress: ScanProgress{ElapsedMilliseconds: 12345, Fraction: 1}}
+				original := newApp(config)
+				if err := original.coldCache.save(info, snapshot, original.coldCache.epoch(info.Path)); err != nil {
+					t.Fatal(err)
+				}
+				original.Shutdown(nil)
+				a := newApp(config)
+				t.Cleanup(func() { a.Shutdown(nil) })
+				a.scanCache.SetEnabled(false)
+				a.profile.MinFileSize = 0
+				a.profile.UpdateIncludedScans = true
+				savedID := a.GetScanJobs()[0].ID
+				if loaded {
+					if _, err := a.SelectScanJob(savedID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				job, err := a.QueueScan(scanPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				completed := waitJob(t, a, job.ID, "completed")
+				view, err := a.SelectScanJob(savedID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if view.Job.ScannedAt != completed.ScannedAt || view.Job.Progress.ElapsedMilliseconds != 12345 {
+					t.Fatalf("updated snapshot lost its original duration: %+v", view.Job)
+				}
+				a.coldCache.writes.Wait()
+				restarted := newApp(config)
+				t.Cleanup(func() { restarted.Shutdown(nil) })
+				found := false
+				for _, saved := range restarted.GetScanJobs() {
+					if saved.Path == info.Path {
+						found = true
+						if saved.Progress.ElapsedMilliseconds != 12345 {
+							t.Fatalf("restarting lost the saved duration: %+v", saved)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("updated snapshot was not saved")
+				}
+			})
+		}
+	}
+}
+
 func TestNarrowerScanUpdatesSavedAncestor(t *testing.T) {
 	for _, tc := range []struct {
 		name             string

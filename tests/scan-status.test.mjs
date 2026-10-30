@@ -7,6 +7,20 @@ const element = () => ({ hidden: false, attributes: {}, textContent: "", disable
   style: { setProperty(name, value) { this[name] = value; } } });
 
 const states = { idle: "Scan", running: "Pause", paused: "Resume", queued: "Scan", completed: "Rescan", cancelled: "Scan", failed: "Retry" };
+test("saved scans show their recorded duration and omit unavailable legacy timing", async () => {
+  const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String } });
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "primary", "cancel"].map(name => [name, element()]));
+  for (const [cached, elapsedMilliseconds, text] of [
+    [true, 12345, "Done in 12.3s"],
+    [true, 0, "Done"],
+    [true, undefined, "Done"],
+    [false, 0, "Done in 0.0s"],
+  ]) {
+    ui.updateScanStatus(refs, { state: "completed", cached, progress: { elapsedMilliseconds } });
+    assert.equal(refs.time.textContent, text);
+  }
+});
+
 for (const [state, action] of Object.entries(states)) {
   test("tile presents the appropriate action for " + state, async () => {
     const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: ms => ms + "ms" } });

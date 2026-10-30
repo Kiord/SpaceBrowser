@@ -13,7 +13,9 @@ export function updateScanStatus(refs, job) {
   refs.container.setAttribute("data-state", job.state);
   refs.container.setAttribute("data-complete", String(done));
   refs.label.hidden = idle;
-  refs.time.textContent = done ? `Done in ${((progress.elapsedMilliseconds || 0) / 1000).toFixed(1)}s`
+  const completedTime = job.cached && !progress.elapsedMilliseconds
+    ? "Done" : `Done in ${((progress.elapsedMilliseconds || 0) / 1000).toFixed(1)}s`;
+  refs.time.textContent = done ? completedTime
     : queued ? "Queued" : paused ? `Paused · ${formatDuration(progress.elapsedMilliseconds || 0)}`
     : job.state === "failed" ? "Scan failed" : formatDuration(progress.elapsedMilliseconds || 0);
   const fraction = done ? 1 : Math.max(0, Math.min(0.96, (progress.fraction || 0) * 0.96));
