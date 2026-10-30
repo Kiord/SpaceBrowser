@@ -16,7 +16,7 @@ async function harness() {
   }, { setTimeout: fn => { timers.set(++next, fn); return next; }, clearTimeout: id => timers.delete(id),
     document: { createElement: () => ({ ...eventTarget(), setAttribute() {}, scrollIntoView() {} }) } });
   ui.initPathAutocomplete();
-  return { input, list, requests,
+  return { input, list, requests, close: ui.closePathAutocomplete, pendingTimers: () => timers.size,
     async type(query) { input.value = query; await input.emit("input"); const fn = [...timers.values()].at(-1); timers.clear(); return { pending: fn() }; },
     async key(key) { let prevented = false; await input.emit("keydown", { key, preventDefault() { prevented = true; } }); return prevented; } };
 }
@@ -33,6 +33,27 @@ test("autocomplete ignores stale results and accepts keyboard selection without 
   assert.equal(await h.key('Enter'), true);
   assert.equal(h.input.value, '/bravo/');
   assert.equal(h.list.hidden, true);
+});
+
+test("launching a scan can dismiss suggestions and invalidate pending autocomplete work", async () => {
+  const h = await harness();
+  const first = await h.type('/a');
+  h.requests[0].resolve(['/alpha/']); await first.pending;
+  assert.equal(h.list.hidden, false);
+  h.close();
+  assert.equal(h.list.hidden, true);
+  assert.equal(h.list.children.length, 0);
+  assert.equal(h.input.getAttribute('aria-expanded'), 'false');
+  const second = await h.type('/b');
+  h.close();
+  h.requests[1].resolve(['/beta/']); await second.pending;
+  assert.equal(h.list.hidden, true);
+  assert.equal(h.list.children.length, 0);
+  h.input.value = '/scheduled';
+  await h.input.emit('input');
+  assert.equal(h.pendingTimers(), 1);
+  h.close();
+  assert.equal(h.pendingTimers(), 0);
 });
 
 test("Tab completes the first folder and blur or Escape dismiss pending suggestions", async () => {

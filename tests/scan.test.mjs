@@ -13,6 +13,7 @@ async function harness() {
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
   const jobs = [], calls = [], errors = [], timers = new Map();
   let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile;
+  let autocompleteCloses = 0;
   const view = id => {
     const job = jobs.find(job => job.id === id);
     return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds };
@@ -41,6 +42,7 @@ async function harness() {
     './navigation.js': { pushBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping, fallback) { state.node_id = mapping[state.node_id] ?? fallback; } },
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
+    './path-autocomplete.js': { closePathAutocomplete() { autocompleteCloses++; } },
     './logging.js': { logError: (...args) => errors.push(args) },
     './locations.js': { rememberLocation() {}, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
     './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
@@ -48,7 +50,7 @@ async function harness() {
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
-  return { ui, jobs, state, element, calls, errors, backend, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
+  return { ui, jobs, state, element, calls, errors, backend, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
     scanTile: () => refreshTile({ path: state.scanRootPath, state: 'idle' }),
     removeTile: job => removeTile(job),
@@ -129,6 +131,17 @@ test('explicit scan opens its view and leaves progress on the sidebar', async ()
   h.preview(0); await h.poll();
   assert.equal(h.state.fileCount, 3);
   assert.equal(h.state.homeVisible, false);
+});
+
+test('starting a scan closes path suggestions before submitting the request', async () => {
+  const h = await harness();
+  const queue = h.backend.QueueScan;
+  h.backend.QueueScan = path => {
+    assert.equal(h.autocompleteCloses(), 1);
+    return queue(path);
+  };
+  await h.ui.analyze();
+  assert.equal(h.autocompleteCloses(), 1);
 });
 
 test('opening a paused tile shows its snapshot without resuming or enqueueing', async () => {

@@ -1,6 +1,12 @@
 import { SuggestFolders } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 
+let dismissSuggestions = () => {};
+
+export function closePathAutocomplete() {
+  dismissSuggestions();
+}
+
 export function initPathAutocomplete() {
   const input = byId("pathInput"), list = byId("pathSuggestions");
   let timer, generation = 0, paths = [], active = -1;
@@ -12,6 +18,7 @@ export function initPathAutocomplete() {
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
   };
+  dismissSuggestions = close;
   const choose = index => {
     const path = paths[index];
     if (!path) return;

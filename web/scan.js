@@ -8,6 +8,7 @@ import { hideRectToast, showErrorToast } from "./notifications.js";
 import { logError } from "./logging.js";
 import { hideLocationSelector, showLocationSelector, setLocationScanJobs, rememberLocation } from "./locations.js";
 import { pendingScan, createTileScanStatus } from "./scan-status.js";
+import { closePathAutocomplete } from "./path-autocomplete.js";
 
 let redraw = async () => {};
 let repaintScanLabels = () => {};
@@ -221,6 +222,7 @@ async function pollJobs() {
 async function enqueue(request) {
   if (queueRequest) return;
   queueRequest = true;
+  closePathAutocomplete();
   const previous = captureView();
   try {
     const job = await request();
