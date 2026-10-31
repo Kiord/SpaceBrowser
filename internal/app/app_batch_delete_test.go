@@ -128,6 +128,15 @@ func TestBatchDeletionContinuesAfterFailureAndRequiresRefresh(t *testing.T) {
 	if result.Failures[0].Path != desktop.fail || result.FileCount != 2 {
 		t.Fatalf("incorrect failure accounting: %+v", result)
 	}
+	if desktop.permanentCalls != 0 {
+		t.Fatal("failed recycling fell back to permanent deletion")
+	}
+	if data, err := os.ReadFile(desktop.fail); err != nil || string(data) != "file" {
+		t.Fatalf("failed recycling changed the target: %q, %v", data, err)
+	}
+	if path, err := app.store.NodePath(targets["folder-other"].NodeID); err != nil || path != desktop.fail {
+		t.Fatalf("failed recycling removed the target from the tree: %q, %v", path, err)
+	}
 }
 
 func TestBatchDeletionKeepsConfirmedModeWhenSettingsChange(t *testing.T) {
