@@ -1,15 +1,16 @@
 import { initLocationShortcuts } from "./location-shortcuts.js";
 import { DefaultPath, GetInitialScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
-import { hideContextMenu, initFileActions, openRectWithDefault } from "./file-actions.js";
+import { hideContextMenu, initFileActions, openRectWithDefault, runFileAction } from "./file-actions.js";
+import { initFileList, clearFileList, refreshFileList, syncFileListSelection } from "./file-list.js";
 import { initFolderPicker } from "./folder-picker.js";
 import { addControlEventListeners, eventMatchesShortcut, shortcutCanRun } from "./controls.js";
 import { logError } from "./logging.js";
 import { initLocationSelector, hideLocationSelector } from "./locations.js";
-import { initNavigation, navigateToSelected, updateNavButtons } from "./navigation.js";
+import { initNavigation, navigateToSelected, updateNavButtons, visit } from "./navigation.js";
 import { analyze, openLocation, initScan, updateScanVisibility, refreshScanJobs } from "./scan.js";
 import { initSettings, loadSettingsState } from "./settings.js";
-import { initTreemapView, redraw, resizeCanvas, repaintScanLabels } from "./treemap-view.js";
+import { initTreemapView, redraw, resizeCanvas, repaintScanLabels, selectListItem } from "./treemap-view.js";
 import { getSelectedRects } from "./selection.js";
 import { initZoom } from "./zoom.js";
 import { AppState } from "./state.js";
@@ -31,13 +32,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   analyzeButton.removeAttribute("title");
   analyzeButton.dataset.tooltip = "Scan folder";
 
-  initTreemapView();
+  initFileList({ selectItem: selectListItem, visit, runAction: runFileAction, resize() { resizeCanvas(); void redraw(); } });
+  initTreemapView({ viewChanged: refreshFileList, selectionChanged: syncFileListSelection });
   initNavigation({ redraw, hideHome: hideLocationSelector });
   initSettings({ redraw, cachedScansChanged: refreshScanJobs });
   initFileActions({ redraw });
-  initScan({ redraw, hideContextMenu, repaintScanLabels });
+  initScan({ redraw, hideContextMenu, repaintScanLabels, clearFileList });
   initLocationSelector({ analyze: openLocation, visibilityChanged(homeVisible) {
     AppState.homeVisible = homeVisible;
+    if (homeVisible) clearFileList();
     updateNavButtons();
     updateScanVisibility();
   } });

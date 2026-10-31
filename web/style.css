@@ -1971,4 +1971,18 @@ button:disabled:hover,
 .cached-scan-row span { font-size:11px; color:#777; }
 
 .scan-snapshot-date[hidden] { display:none; }
+
+.file-list-panel { flex: 0 0 32%; min-height: 150px; max-height: 38vh; padding: 8px 12px; border-top: 1px solid #bbb; display: flex; flex-direction: column; gap: 5px; background: #fafafa; font-size: 12px; }
+.file-list-panel[hidden] { display: none; }
+.file-list-panel header, .file-list-panel footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.file-list-panel h2 { margin: 0 auto 0 0; font-size: 13px; }
+.file-list-panel p { margin: 0; }
+.file-list-scroll { min-height: 0; flex: 1; overflow: auto; }
+.file-list-panel table { width: 100%; border-collapse: collapse; text-align: left; }
+.file-list-panel th { position: sticky; top: 0; background: #eee; }
+.file-list-panel td, .file-list-panel th { padding: 3px 6px; border-bottom: 1px solid #ddd; }
+.file-list-panel td:last-child { white-space: nowrap; }
+.file-list-panel button, .file-list-panel select { font: inherit; }
+.file-list-panel td button { border: 0; background: transparent; color: #254c68; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.file-list-panel :focus-visible { outline: 2px solid #146baf; outline-offset: 2px; }
 .cached-scan-row button { padding:3px 8px; border:1px solid #aaa; border-radius:2px; background:#fafafa; color:#444; cursor:pointer; font:inherit; }

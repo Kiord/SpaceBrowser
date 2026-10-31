@@ -101,7 +101,7 @@
     <main class="workspace-main">
       <span id="currentLocation" class="current-location" aria-live="polite">No location selected</span>
       <div class="treemap-canvas-stack">
-      <canvas id="colorCanvas"></canvas>
+      <canvas id="colorCanvas" aria-label="Disk usage treemap; use the files and folders list for keyboard browsing"></canvas>
       <canvas id="hoverCanvas" aria-hidden="true"></canvas>
       <canvas id="flashCanvas" aria-hidden="true"></canvas>
       <canvas id="idCanvas" style="display: none"></canvas>
@@ -113,6 +113,24 @@
           <button id="scanLocationButton" type="button" aria-label="Scan selected location" hidden>Scan</button>
         </section>
       </div>
+      <section id="fileList" class="file-list-panel" aria-labelledby="fileListTitle" hidden>
+        <header>
+          <h2 id="fileListTitle">Files and folders</h2>
+          <button id="fileListParent" type="button">Parent folder</button>
+          <label>Sort <select id="fileListSort"><option value="size">Largest first</option><option value="name">Name</option></select></label>
+          <button id="fileList-open" type="button" disabled>Show in folder</button>
+          <button id="fileList-refresh" type="button" disabled>Rescan</button>
+          <button id="fileList-restore" type="button" disabled>Restore</button>
+          <button id="fileList-properties" type="button" disabled>Properties</button>
+          <button id="fileList-delete" type="button" disabled>Delete</button>
+        </header>
+        <p id="fileListSelection" role="status">No items selected</p>
+        <div class="file-list-scroll"><table aria-label="Contents of the current folder">
+          <thead><tr><th scope="col">Select</th><th scope="col">Name</th><th scope="col">Size</th></tr></thead>
+          <tbody id="fileListRows"></tbody>
+        </table></div>
+        <footer><button id="fileListPrevious" type="button" disabled>Previous page</button><button id="fileListNext" type="button" disabled>Next page</button><span id="fileListStatus" role="status"></span></footer>
+      </section>
     </main>
   </div>
   <ul id="contextMenu" class="context-menu">

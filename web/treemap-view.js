@@ -1,4 +1,4 @@
-import { getSelectedRect, getSelectedRects, isPassiveRect, selectRect, selectionIds } from "./selection.js";
+import { getSelectedRect, getSelectedRects, isPassiveRect, selectRect, selectItem, selectionIds } from "./selection.js";
 export { getSelectedRect, getSelectedRects, isPassiveRect } from "./selection.js";
 import { LayoutWithBoxPadding } from "./wailsjs/go/app/App.js";
 import { hideContextMenu, openRectWithDefault, showContextMenu } from "./file-actions.js";
@@ -9,6 +9,8 @@ import { logDebug, logWarning } from "./logging.js";
 import { AppState, AppearanceState, FONT_SIZE, activePalette, getScale } from "./state.js";
 
 let redrawGeneration = 0;
+let viewChanged = async () => {};
+let selectionChanged = () => {};
 let requestedHoverRectIndex = -1;
 let renderedHoverRectIndex = -1;
 let hoverAnimationFrame = null;
@@ -86,6 +88,7 @@ export async function redraw() {
   logDebug(`treemap draw: ${(performance.now() - drawStartedAt).toFixed(1)} ms`);
 
   updateNavButtons();
+  await viewChanged();
 }
 
 function drawTreemap(rects) {
@@ -432,9 +435,18 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
 export function selectRectByIndex(rectIndex, options = {}) {
   const changed = selectRect(rectIndex, options);
+  repaintSelection(changed);
+}
+
+export function selectListItem(item, options = {}) {
+  repaintSelection(selectItem(item, options));
+}
+
+function repaintSelection(changed) {
   for (let i = 0; i < AppState.rects.length; i++) {
     if (changed.has(AppState.rects[i].node_id)) reDrawRectByIndex(i);
   }
+  selectionChanged();
 }
 
 function reDrawRectByIndex(idx) {
@@ -535,7 +547,9 @@ function strokeRoundedRect(ctx, x, y, w, h) {
   ctx.stroke();
 }
 
-export function initTreemapView() {
+export function initTreemapView(options = {}) {
+  viewChanged = options.viewChanged || (async () => {});
+  selectionChanged = options.selectionChanged || (() => {});
   AppState.colorCanvas = document.getElementById("colorCanvas");
   AppState.hoverCanvas = document.getElementById("hoverCanvas");
   AppState.flashCanvas = document.getElementById("flashCanvas");
