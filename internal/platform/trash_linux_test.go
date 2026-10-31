@@ -168,6 +168,48 @@ func TestLinuxPermanentlyDeletesTrashItemAndMetadata(t *testing.T) {
 	}
 }
 
+func TestLinuxTrashDeletionRejectsMetadataAndPreservesPayload(t *testing.T) {
+	for _, directory := range []bool{false, true} {
+		name := "file"
+		if directory {
+			name = "directory"
+		}
+		t.Run(name, func(t *testing.T) {
+			dataHome := t.TempDir()
+			t.Setenv("XDG_DATA_HOME", dataHome)
+			root := filepath.Join(dataHome, "Trash")
+			files, info := filepath.Join(root, "files"), filepath.Join(root, "info")
+			for _, path := range []string{files, info} {
+				if err := os.MkdirAll(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			payload := filepath.Join(files, "item")
+			contentPath := payload
+			if directory {
+				if err := os.Mkdir(payload, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				contentPath = filepath.Join(payload, "child.txt")
+			}
+			metadata := filepath.Join(info, "item.trashinfo")
+			for path, content := range map[string]string{contentPath: "payload", metadata: "metadata"} {
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := (Linux{}).DeleteTrashItemPermanently(metadata); err == nil {
+				t.Error("direct Trash metadata deletion was accepted")
+			}
+			for path, want := range map[string]string{contentPath: "payload", metadata: "metadata"} {
+				if data, err := os.ReadFile(path); err != nil || string(data) != want {
+					t.Errorf("metadata selection changed %q: %q, %v", path, data, err)
+				}
+			}
+		})
+	}
+}
+
 func TestLinuxEmptyTrashContinuesAfterSuccessfulNoOp(t *testing.T) {
 	dataHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataHome)

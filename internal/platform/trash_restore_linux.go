@@ -99,17 +99,10 @@ func (Linux) DeleteTrashItemPermanently(p string) error {
 			return removeTrashPaths(root, []string{clean}, nil)
 		}
 		return removeTrashPaths(root, []string{clean}, []string{filepath.Join(root, "info", parts[1]+".trashinfo")})
-	case "info":
-		if len(parts) != 2 || !strings.HasSuffix(parts[1], ".trashinfo") {
-			return fmt.Errorf("the selected path is protected Trash metadata")
-		}
-		name := strings.TrimSuffix(parts[1], ".trashinfo")
-		if name == "" || name == "." || name == ".." {
-			return fmt.Errorf("invalid Trash metadata name")
-		}
-		return removeTrashPaths(root, []string{filepath.Join(root, "files", name)}, []string{clean})
 	default:
-		return fmt.Errorf("the selected path is protected Trash metadata")
+		// Selecting a small .trashinfo file does not confirm deletion of its
+		// paired payload. Metadata is only cleaned up with a selected payload.
+		return fmt.Errorf("the selected path is protected Trash metadata; select its data item instead")
 	}
 }
 

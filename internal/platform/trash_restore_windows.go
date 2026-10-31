@@ -90,15 +90,20 @@ func (Windows) DeleteTrashItemPermanently(p string) error {
 	if err != nil {
 		return err
 	}
+	return deleteWindowsTrashItem(clean, root, parts)
+}
+
+func deleteWindowsTrashItem(clean, root string, parts []string) error {
 	dataPath, infoPath, direct, pairErr := windowsRecyclePair(root, parts)
 	if pairErr != nil {
 		return pairErr
 	}
+	// A metadata selection must never expand into deleting its paired data.
+	// Only a selected $R payload may remove both itself and its $I sidecar.
+	if !strings.EqualFold(parts[1][:2], "$R") {
+		return fmt.Errorf("the selected path is protected Recycle Bin metadata; select its data item instead")
+	}
 	if !direct {
-		// Only descendants of the data item are deletable, never metadata descendants.
-		if !strings.EqualFold(parts[1][:2], "$R") {
-			return fmt.Errorf("the selected path is protected Recycle Bin metadata")
-		}
 		return removeTrashPaths(root, []string{clean}, nil)
 	}
 	return removeTrashPaths(root, []string{dataPath}, []string{infoPath})
