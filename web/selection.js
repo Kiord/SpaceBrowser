@@ -15,7 +15,15 @@ export function isPassiveRect(rect) {
 export function getSelectedRects() {
   if (AppState.homeVisible) return [];
   const ids = selectionIds();
-  return (AppState.rects || []).filter(rect => ids.has(rect.node_id) && !isPassiveRect(rect));
+  const selected = (AppState.rects || []).filter(rect => ids.has(rect.node_id) && !isPassiveRect(rect));
+  const found = new Set(selected.map(rect => rect.node_id));
+  for (const rect of AppState.breadcrumbRects || []) {
+    if (ids.has(rect.node_id) && !found.has(rect.node_id) && !isPassiveRect(rect)) {
+      selected.push(rect);
+      found.add(rect.node_id);
+    }
+  }
+  return selected;
 }
 
 export function getSelectedRect() {

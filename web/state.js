@@ -27,6 +27,7 @@ export const AppState = {
   maskCtx: null,
 
   rects: [],
+  breadcrumbRects: [],
   parentRectIndexes: new Int32Array(),
   selectedNodeIds: new Set(),
   profile: null,

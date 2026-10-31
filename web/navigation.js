@@ -8,6 +8,7 @@ import { AppState } from "./state.js";
 const HISTORY_STATE_KEY = "spacebrowserNavigation";
 let redraw = async () => {};
 let hideHome = () => {};
+let navigationChanged = () => {};
 let historyAliases = new Map();
 let aliasSession;
 
@@ -107,6 +108,7 @@ export async function toggleFreeSpace(event) {
 }
 
 export function updateNavButtons() {
+  navigationChanged();
   byId("currentLocation").textContent = AppState.rects?.[0]?.full_path || AppState.scanRootPath || "No location selected";
   if (AppState.homeVisible) {
     byId("rootButton").disabled = true;
@@ -169,6 +171,7 @@ function handleNavigationShortcut(event) {
 export function initNavigation(options) {
   redraw = options.redraw;
   hideHome = options.hideHome || (() => {});
+  navigationChanged = options.navigationChanged || (() => {});
   replaceBrowserHistoryEntry(null, -1);
   byId("rootButton").addEventListener("click", goToRoot);
   byId("parentButton").addEventListener("click", goToParent);

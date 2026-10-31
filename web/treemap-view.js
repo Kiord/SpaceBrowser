@@ -437,6 +437,15 @@ export function selectRectByIndex(rectIndex, options = {}) {
   }
 }
 
+export function selectBreadcrumb(rect) {
+  const changed = new Set(selectionIds());
+  AppState.selectedNodeIds = new Set([rect.node_id]);
+  changed.add(rect.node_id);
+  AppState.rects.forEach((item, index) => {
+    if (changed.has(item.node_id)) reDrawRectByIndex(index);
+  });
+}
+
 function reDrawRectByIndex(idx) {
   const r = AppState.rects?.[idx];
   if (!r || r.w <= 0 || r.h <= 0) return;

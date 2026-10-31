@@ -1971,4 +1971,13 @@ button:disabled:hover,
 .cached-scan-row span { font-size:11px; color:#777; }
 
 .scan-snapshot-date[hidden] { display:none; }
+
+.breadcrumbs-toggle { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; white-space: nowrap; font-size: 12px; color: #000; cursor: pointer; }
+.breadcrumbs-toggle input { margin: 0; accent-color: #000; }
+.breadcrumbs { display: flex; flex: 0 0 25px; align-items: center; min-width: 0; box-sizing: border-box; padding: 0 8px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: thin; color: #000; background: #fff; font: 12px "Segoe UI", sans-serif; }
+.breadcrumbs[hidden] { display: none; }
+.breadcrumbs > * { flex: 0 0 auto; }
+.breadcrumbs button { display: inline-block; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: #fff; color: #000; font: inherit; line-height: 20px; cursor: pointer; }
+.breadcrumbs button:hover { text-decoration: underline; }
+.breadcrumbs button:focus-visible { outline: 1px solid #000; outline-offset: 1px; }
 .cached-scan-row button { padding:3px 8px; border:1px solid #aaa; border-radius:2px; background:#fafafa; color:#444; cursor:pointer; font:inherit; }

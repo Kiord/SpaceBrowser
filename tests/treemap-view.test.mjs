@@ -34,6 +34,20 @@ async function harness() {
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
 
+test("breadcrumb context selection replaces the group and repaints visible selections", async () => {
+  const h = await harness();
+  h.state.rects = [rect(2), rect(3)];
+  h.state.selectedNodeIds = new Set([2, 3]);
+  const ancestor = { ...rect(1), full_path: '/ancestor', is_folder: true };
+  h.state.breadcrumbRects = [ancestor];
+  h.ui.selectBreadcrumb(ancestor);
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+  assert.equal(h.ui.getSelectedRect().full_path, '/ancestor');
+  assert.equal(h.painted.filter(item => item.name === 'tmp').length, 2);
+  h.ui.selectBreadcrumb(ancestor);
+  assert.deepEqual([...h.state.selectedNodeIds], [1]);
+});
+
 test("live labels coalesce frames, crop compositing and skip unchanged markers", async () => {
   const h = await harness();
   Object.assign(h.state, { liveScanPreview: true, scanDots: '.', scanPaused: true,

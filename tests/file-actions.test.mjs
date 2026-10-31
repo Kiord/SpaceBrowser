@@ -57,6 +57,22 @@ test("cancelling confirmation never invokes deletion", async () => {
   assert.equal(h.calls.length, 0);
 });
 
+test("breadcrumb context actions use an ancestor outside the visible treemap", async () => {
+  const h = await harness();
+  h.state.node_id = 3;
+  h.state.breadcrumbRects = [{ node_id: 2, parent_id: 0, is_folder: true, full_path: 'D:\\ancestor', size: 100 }];
+  h.state.selectedNodeIds = new Set([2]);
+  await h.action('copy');
+  assert.deepEqual(h.calls.at(-1), ['copy', 'D:\\ancestor']);
+  await h.action('goto');
+  assert.deepEqual(h.calls.at(-1), ['visit', 2]);
+  await h.action('delete');
+  const run = h.confirm(); await h.started;
+  assert.deepEqual(h.calls.at(-1), ['delete', 2]);
+  h.pending.resolve({ fileCount: 9, dirCount: 2, rescanRequired: false });
+  await run;
+});
+
 test("confirmation keeps its original target and prevents duplicate submissions", async () => {
   const h = await harness();
   await h.action("delete");
