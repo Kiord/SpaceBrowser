@@ -16,6 +16,9 @@ let flashAnimationFrame = null;
 let previousLayoutScope = "";
 let previousLayoutSession;
 let previousVisibleNodes = new Set();
+let scanLabelsFrame = null;
+let scanLabelsRects;
+let scanLabelsSignature = "";
 
 function flashNewRects(rects) {
   if (flashAnimationFrame != null) cancelAnimationFrame(flashAnimationFrame);
@@ -317,10 +320,18 @@ export function scanStatusMarker(rect) {
 }
 
 export function repaintScanLabels() {
-  if (!AppState.liveScanPreview) return;
-  AppState.rects.forEach((rect, index) => {
-    if (rect.w >= pxI(40) && rect.h >= pxI(FONT_SIZE + 4) &&
-        (rect.scan_incomplete || rect.is_small_files)) reDrawRectByIndex(index);
+  if (!AppState.liveScanPreview || scanLabelsFrame != null) return;
+  scanLabelsFrame = requestAnimationFrame(() => {
+    scanLabelsFrame = null;
+    if (!AppState.liveScanPreview) return;
+    const signature = `${AppState.scanDots}:${AppState.scanPaused}:${AppState.fileCount}:${AppState.dirCount}`;
+    if (scanLabelsRects === AppState.rects && scanLabelsSignature === signature) return;
+    scanLabelsRects = AppState.rects;
+    scanLabelsSignature = signature;
+    AppState.rects.forEach((rect, index) => {
+      if (rect.w >= pxI(40) && rect.h >= pxI(FONT_SIZE + 4) &&
+          (rect.scan_incomplete || rect.is_small_files || rect.is_free_space)) reDrawRectByIndex(index);
+    });
   });
 }
 
@@ -429,12 +440,18 @@ export function selectRectByIndex(rectIndex, options = {}) {
 function reDrawRectByIndex(idx) {
   const r = AppState.rects?.[idx];
   if (!r || r.w <= 0 || r.h <= 0) return;
+  const pad = Math.ceil(pxF(1));
+  const x = Math.max(0, Math.floor(r.x) - pad), y = Math.max(0, Math.floor(r.y) - pad);
+  const w = Math.min(AppState.tmpCanvas.width, Math.ceil(r.x + r.w) + pad) - x;
+  const h = Math.min(AppState.tmpCanvas.height, Math.ceil(r.y + r.h) + pad) - y;
+  if (w <= 0 || h <= 0) return;
 
   // 1) draw rect into tmp
+  AppState.tmpCtx.clearRect(x, y, w, h);
   drawRect(r, /*writeId*/false, AppState.tmpCtx, -1);
 
   // 2) mask: start with rect, punch out child rects (r.children are rect indices)
-  AppState.maskCtx.clearRect(0, 0, AppState.maskCanvas.width, AppState.maskCanvas.height);
+  AppState.maskCtx.clearRect(x, y, w, h);
   AppState.maskCtx.fillStyle = 'rgba(0,0,0,1)';
   fillRoundedRect(AppState.maskCtx, r.x, r.y, r.w, r.h);
 
@@ -450,10 +467,10 @@ function reDrawRectByIndex(idx) {
 
   // 3) apply mask & blit
   AppState.tmpCtx.globalCompositeOperation = 'destination-in';
-  AppState.tmpCtx.drawImage(AppState.maskCanvas, 0, 0);
+  AppState.tmpCtx.drawImage(AppState.maskCanvas, x, y, w, h, x, y, w, h);
   AppState.tmpCtx.globalCompositeOperation = 'source-over';
 
-  AppState.colorCtx.drawImage(AppState.tmpCanvas, 0, 0);
+  AppState.colorCtx.drawImage(AppState.tmpCanvas, x, y, w, h, x, y, w, h);
   scheduleHoverRender();
 }
 

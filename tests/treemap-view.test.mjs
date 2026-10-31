@@ -34,6 +34,26 @@ async function harness() {
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
 
+test("live labels coalesce frames, crop compositing and skip unchanged markers", async () => {
+  const h = await harness();
+  Object.assign(h.state, { liveScanPreview: true, scanDots: '.', scanPaused: true,
+    rects: Array.from({ length: 100 }, (_, i) => ({ ...rect(i), parent_id: 999, w: 60, h: 20, is_folder: true, scan_incomplete: true, name: 'pending' })) });
+  const clears = [], blits = [];
+  h.state.maskCtx.clearRect = (...args) => clears.push(args);
+  h.state.colorCtx.drawImage = (...args) => blits.push(args);
+  h.ui.repaintScanLabels(); h.ui.repaintScanLabels();
+  assert.equal(blits.length, 0);
+  h.advanceFrame(16);
+  assert.equal(blits.length, 100);
+  assert.ok(clears.every(([, , w, height]) => w < 100 && height < 30));
+  assert.ok(blits.every(args => args.length === 9 && args[3] < 100 && args[4] < 30));
+  h.ui.repaintScanLabels(); h.advanceFrame(16);
+  assert.equal(blits.length, 100);
+  h.state.scanDots = '..';
+  h.ui.repaintScanLabels(); h.advanceFrame(16);
+  assert.equal(blits.length, 200);
+});
+
 test("moving between display densities keeps layout scale and zoom synchronized", async () => {
   const h = await harness();
   h.state.zoomFactor = 1.5;
