@@ -260,6 +260,7 @@ test('completed refresh remapping is consumed once across tile reselection', asy
   assert.deepEqual([...h.state.selectedNodeIds], [2]);
   h.element('pathInput').value = '/two';
   await h.ui.analyze(); h.complete(1); await h.poll();
+  h.jobs[0].revision++; // backend saves the completed snapshot on switching away
   await h.ui.openLocation('/one');
   assert.equal(h.state.node_id, 2);
   assert.deepEqual([...h.state.selectedNodeIds], [2]);
