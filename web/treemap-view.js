@@ -467,6 +467,7 @@ export function resizeCanvas() {
   const width  = containerRect.width;
   const height = containerRect.height;
   const dpr = window.devicePixelRatio || 1;
+  AppState.scale = getScale() * (AppState.zoomFactor || 1);
 
   for (const c of [AppState.colorCanvas, AppState.hoverCanvas, AppState.flashCanvas, AppState.idCanvas, AppState.tmpCanvas, AppState.maskCanvas]) {
     c.width  = Math.max(1, Math.floor(width  * dpr));

@@ -3,6 +3,7 @@ import test from "node:test";
 import { deferred, eventTarget, loadUI, noop } from "./helpers/ui.mjs";
 
 async function harness() {
+  const window = { ...eventTarget(), devicePixelRatio: 1 };
   const requests = [], painted = [], actions = [];
   let time = 1000, frameId = 0;
   const frames = new Map();
@@ -25,13 +26,28 @@ async function harness() {
     "./navigation.js": { navigateToSelected: () => actions.push(["visit"]), updateNavButtons: noop },
     "./notifications.js": { hideRectToast: noop, initNotifications: noop },
     "./logging.js": { logDebug: noop, logWarning: noop },
-    "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0, boxPadding: 5 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => 1 },
+    "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0, boxPadding: 5 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => Math.max(1, window.devicePixelRatio) },
   }, { performance: { now: () => time }, cancelAnimationFrame: id => frames.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
-    window: { ...eventTarget(), devicePixelRatio: 1 }, document: { getElementById: id => state[id] } });
-  return { ui, state, requests, painted, actions, frames, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
+    window, document: { getElementById: id => state[id] } });
+  return { ui, state, requests, painted, actions, frames, window, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
 }
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
+
+test("moving between display densities keeps layout scale and zoom synchronized", async () => {
+  const h = await harness();
+  h.state.zoomFactor = 1.5;
+  h.window.devicePixelRatio = 2;
+  h.ui.resizeCanvas();
+  assert.equal(h.state.colorCanvas.width, 1600);
+  assert.equal(h.state.scale, 3);
+  const redraw = h.ui.redraw();
+  assert.equal(h.requests[0].args[3], 3);
+  h.requests[0].resolve([]); await redraw;
+  h.window.devicePixelRatio = 1;
+  h.ui.resizeCanvas();
+  assert.equal(h.state.scale, 1.5);
+});
 
 test("an older layout response cannot overwrite or paint over the latest redraw", async () => {
   const h = await harness();
