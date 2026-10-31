@@ -26,7 +26,7 @@ test("General included-folder setting loads, saves, cancels and restores default
       GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {},
       GetDefaultProfile: async () => defaults, GetDefaultSettingsPath: async () => "settings.json", GetProfile: async () => profile,
       GetSettingsPath: async () => "settings.json", PickSettingsPath() {}, SetSettingsPath() {},
-      SetProfile: async value => { saved.push(value); profile = value; },
+      SaveSettings: async (value, path) => { if (path === '/blocked') throw new Error('cannot relocate settings'); saved.push(value); profile = value; return { profile: value, path }; },
     },
     "./dom.js": { byId, queryAll: selector => selector === "[data-restore-settings]" ? [restore] : [] },
     "./format.js": { formatSize: String, SIZE_UNITS: { B: 1 }, splitSizeIntoUnit: value => ({ value, unit: "B" }) },
@@ -70,6 +70,17 @@ test("General included-folder setting loads, saves, cancels and restores default
   assert.equal(saved.length, 1);
   await byId("settingsForm").emit("submit");
   assert.equal(saved.at(-1).updateIncludedScans, true);
+  await byId("settingsButton").emit("click");
+  byId("settingsAllowPermanentDelete").checked = true;
+  byId("settingsConfigPath").value = '/blocked';
+  await byId("settingsForm").emit("submit");
+  assert.equal(saved.length, 2);
+  assert.equal(profile.allowPermanentDelete, false);
+  assert.equal(byId("settingsDialog").open, true);
+  assert.match(byId("settingsError").textContent, /cannot relocate/);
+  await byId("cancelSettingsButton").emit("click");
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsAllowPermanentDelete").checked, false);
 });
 
 test("appearance slider drafts are included in the live treemap preview", async () => {
@@ -93,7 +104,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
   const appState = { node_id: 0, profile: { appearance }, defaultProfile: { appearance } };
   const ui = await loadUI("settings.js", {
-    "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SetProfile() {}, SetSettingsPath() {} },
+    "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SaveSettings() {} },
     "./dom.js": { byId, queryAll: () => [] },
     "./format.js": { formatSize: String, SIZE_UNITS: {}, splitSizeIntoUnit() {} },
     "./controls.js": { addControlEventListeners() {}, shortcutFromEvent() {} },

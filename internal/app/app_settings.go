@@ -61,22 +61,50 @@ func (a *App) GetDefaultSettingsPath() string {
 	return a.defaultSettingsPath
 }
 
-func (a *App) SetSettingsPath(path string) error {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return fmt.Errorf("settings path cannot be empty")
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve settings path: %w", err)
-	}
-	path = filepath.Clean(absPath)
-	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		return fmt.Errorf("settings path points to a directory")
-	} else if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("inspect settings path: %w", err)
-	}
+type SavedSettings struct {
+	Profile Profile `json:"profile"`
+	Path    string  `json:"path"`
+}
 
+// Publish the profile and its location together, only after persistence succeeds.
+// A failed relocation may leave an unreferenced file at the requested location;
+// it never changes the active profile, its old file, or the active location.
+func (a *App) SaveSettings(profile Profile, path string) (SavedSettings, error) {
+	profile, err := normalizeProfileWithFilesystem(profile, a.filesystem)
+	if err != nil {
+		return SavedSettings{}, err
+	}
+	path, err = resolveSettingsPath(path)
+	if err != nil {
+		return SavedSettings{}, err
+	}
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	moving := canonicalCachePath(path) != canonicalCachePath(a.settingsPath)
+	if moving && a.defaultSettingsPath == "" {
+		return SavedSettings{}, fmt.Errorf("default settings location is unavailable")
+	}
+	locator := filepath.Join(filepath.Dir(a.defaultSettingsPath), "settings-location.json")
+	if canonicalCachePath(path) == canonicalCachePath(locator) {
+		return SavedSettings{}, fmt.Errorf("the settings location file is reserved")
+	}
+	if err := saveSettings(path, profile); err != nil {
+		return SavedSettings{}, fmt.Errorf("save settings: %w", err)
+	}
+	if moving {
+		if err := saveSettingsLocation(a.defaultSettingsPath, path); err != nil {
+			return SavedSettings{}, err
+		}
+	}
+	a.profile, a.settingsPath = profile, path
+	return SavedSettings{Profile: profile, Path: path}, nil
+}
+
+func (a *App) SetSettingsPath(path string) error {
+	path, err := resolveSettingsPath(path)
+	if err != nil {
+		return err
+	}
 	a.settingsMu.Lock()
 	defer a.settingsMu.Unlock()
 	if path == a.settingsPath {
@@ -93,6 +121,24 @@ func (a *App) SetSettingsPath(path string) error {
 	}
 	a.settingsPath = path
 	return nil
+}
+
+func resolveSettingsPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("settings path cannot be empty")
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve settings path: %w", err)
+	}
+	path = filepath.Clean(absPath)
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return "", fmt.Errorf("settings path points to a directory")
+	} else if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("inspect settings path: %w", err)
+	}
+	return path, nil
 }
 
 func (a *App) PickSettingsPath() (string, error) {

@@ -9,8 +9,7 @@ import {
   GetProfile,
   GetSettingsPath,
   PickSettingsPath,
-  SetProfile,
-  SetSettingsPath,
+  SaveSettings,
 } from "./wailsjs/go/app/App.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit, formatSize } from "./format.js";
@@ -781,15 +780,11 @@ async function saveSettings(event) {
   error.textContent = "";
   if (saveButton) saveButton.disabled = true;
   try {
-    await SetProfile(profile);
-    const requestedSettingsPath = byId("settingsConfigPath").value;
-    if (requestedSettingsPath && requestedSettingsPath !== activeSettingsPath) {
-      await SetSettingsPath(requestedSettingsPath);
-      activeSettingsPath = requestedSettingsPath;
-    }
-    AppState.profile = profile;
+    const saved = await SaveSettings(profile, byId("settingsConfigPath").value || activeSettingsPath);
+    activeSettingsPath = saved.path;
+    AppState.profile = saved.profile;
     dialog.close();
-    await applyAppearance(profile.appearance);
+    await applyAppearance(saved.profile.appearance);
   } catch (saveError) {
     error.textContent = String(saveError || "Unable to save settings.");
   } finally {

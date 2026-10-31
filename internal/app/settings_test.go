@@ -402,6 +402,58 @@ func TestSettingsPathCanBeRelocated(t *testing.T) {
 	}
 }
 
+func TestSaveSettingsRelocationFailureKeepsActiveSettings(t *testing.T) {
+	for _, stage := range []string{"destination", "locator"} {
+		t.Run(stage, func(t *testing.T) {
+			root := t.TempDir()
+			oldPath := filepath.Join(root, "default", "settings.json")
+			a := newAppWithPaths(oldPath, oldPath)
+			defer a.Shutdown(nil)
+			before := a.GetProfile()
+			if err := a.SetProfile(before); err != nil {
+				t.Fatal(err)
+			}
+			newPath := filepath.Join(root, "new", "settings.json")
+			blocked := newPath
+			if stage == "locator" {
+				blocked = filepath.Join(filepath.Dir(oldPath), "settings-location.json")
+			}
+			if err := os.MkdirAll(blocked, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			draft := before
+			draft.AllowPermanentDelete = true
+			if _, err := a.SaveSettings(draft, newPath); err == nil {
+				t.Fatal("failed relocation accepted")
+			}
+			if a.GetProfile().AllowPermanentDelete || a.GetSettingsPath() != oldPath {
+				t.Fatal("failed save changed active settings")
+			}
+			loaded, err := loadSettings(oldPath)
+			if err != nil || loaded.AllowPermanentDelete {
+				t.Fatalf("failed save changed old file: %+v, %v", loaded, err)
+			}
+		})
+	}
+}
+
+func TestSaveSettingsCommitsProfileAndLocationTogether(t *testing.T) {
+	root := t.TempDir()
+	oldPath, newPath := filepath.Join(root, "default", "settings.json"), filepath.Join(root, "new", "settings.json")
+	a := newAppWithPaths(oldPath, oldPath)
+	defer a.Shutdown(nil)
+	draft := a.GetProfile()
+	draft.SkipHidden = true
+	result, err := a.SaveSettings(draft, newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadSettings(configuredSettingsPath(oldPath))
+	if err != nil || !loaded.SkipHidden || !a.GetProfile().SkipHidden || result.Path != newPath || a.GetSettingsPath() != newPath {
+		t.Fatalf("incoherent settings commit: %+v, %v", result, err)
+	}
+}
+
 func TestVersionTwoSettingsGainDefaultDeletionSettings(t *testing.T) {
 	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	legacy := []byte(`{
