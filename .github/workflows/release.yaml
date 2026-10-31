@@ -71,9 +71,7 @@ jobs:
       - name: Read release version
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "TAG_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          go run ./tools/release-version "$GITHUB_REF_NAME" >> "$GITHUB_ENV"
 
       - name: Set application version from tag
         shell: bash
@@ -98,7 +96,7 @@ jobs:
           wix build packaging/windows/SpaceBrowser.wxs packaging/windows/SetupUI.wxs `
             -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext `
             -arch x64 `
-            -d "AppVersion=$env:VERSION" `
+            -d "AppVersion=$env:MSI_VERSION" `
             -d "ExecutablePath=$executablePath" `
             -d "IconPath=$iconPath" `
             -o "dist/SpaceBrowser-$env:TAG_VERSION-windows-x64.msi"
