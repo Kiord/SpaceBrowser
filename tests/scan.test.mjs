@@ -245,6 +245,26 @@ test('partial refresh requests collapse children and carry navigation and select
   assert.deepEqual(Array.from(request[2]), [1,2,0]);
 });
 
+test('completed refresh remapping is consumed once across tile reselection', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0); await h.poll();
+  h.state.node_id = 1;
+  h.state.selectedNodeIds = new Set([1]);
+  h.jobs[0].nodeIds = { 1: 2, 2: 1 };
+  h.jobs[0].revision++;
+  await h.ui.refreshScanJobs();
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [2]);
+  await h.ui.openLocation('/one');
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [2]);
+  h.element('pathInput').value = '/two';
+  await h.ui.analyze(); h.complete(1); await h.poll();
+  await h.ui.openLocation('/one');
+  assert.equal(h.state.node_id, 2);
+  assert.deepEqual([...h.state.selectedNodeIds], [2]);
+});
+
 test('opening a never-scanned tile does not scan until explicitly requested', async () => {
   const h = await harness(); h.state.homeVisible = true;
   await h.ui.openLocation();

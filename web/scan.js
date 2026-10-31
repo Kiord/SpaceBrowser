@@ -30,10 +30,12 @@ const reportedFailures = new Set();
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
 
 const captureView = () => ({ node_id: AppState.node_id, scanRootPath: AppState.scanRootPath,
+  scanViewKey: AppState.scanViewKey || "",
   navHistory: [...AppState.navHistory], navIndex: AppState.navIndex, selectedNodeIds: new Set(selectionIds()),
   fileCount: AppState.fileCount, dirCount: AppState.dirCount, jobID: selectedID, homeVisible: AppState.homeVisible });
 
 function clearView() {
+  AppState.scanViewKey = "";
   AppState.node_id = null;
   AppState.rects = [];
   AppState.navHistory = [];
@@ -126,7 +128,7 @@ async function applyView(view, token) {
     pushBrowserHistoryEntry(view.tree.rootId, 0);
   }
   if (view.job.state === "completed") {
-    if (view.nodeIds) {
+    if (view.nodeIds && AppState.scanViewKey !== view.key) {
       remapNavigation(view.nodeIds, view.tree.rootId);
       AppState.selectedNodeIds = new Set([...selectionIds()].map(id => view.nodeIds[id] ?? id).filter(id => id >= 0));
     }
@@ -135,6 +137,7 @@ async function applyView(view, token) {
     showScanWarning(view.job.report);
     previousViews.delete(selectedID);
   }
+  AppState.scanViewKey = view.key;
   applyJobState(view.job);
   await redraw();
 }
