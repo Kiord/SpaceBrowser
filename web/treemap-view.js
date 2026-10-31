@@ -447,6 +447,10 @@ function reDrawRectByIndex(idx) {
   if (w <= 0 || h <= 0) return;
 
   // 1) draw rect into tmp
+  AppState.tmpCtx.save();
+  AppState.tmpCtx.beginPath();
+  AppState.tmpCtx.rect(x, y, w, h);
+  AppState.tmpCtx.clip();
   AppState.tmpCtx.clearRect(x, y, w, h);
   drawRect(r, /*writeId*/false, AppState.tmpCtx, -1);
 
@@ -469,6 +473,7 @@ function reDrawRectByIndex(idx) {
   AppState.tmpCtx.globalCompositeOperation = 'destination-in';
   AppState.tmpCtx.drawImage(AppState.maskCanvas, x, y, w, h, x, y, w, h);
   AppState.tmpCtx.globalCompositeOperation = 'source-over';
+  AppState.tmpCtx.restore();
 
   AppState.colorCtx.drawImage(AppState.tmpCanvas, x, y, w, h, x, y, w, h);
   scheduleHoverRender();
