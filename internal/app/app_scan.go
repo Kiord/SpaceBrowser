@@ -151,6 +151,7 @@ func (a *App) beginScan(path string) (context.Context, uint64) {
 	a.scanRootPath = path
 	a.scanPreview = nil
 	a.scanPreviewAt = time.Time{}
+	a.scanPreviewInterval = 0
 	a.scanResultPublished = false
 	a.scanCancel = cancel
 	a.scanStartedAt = time.Now()

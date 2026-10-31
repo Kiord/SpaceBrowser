@@ -306,6 +306,27 @@ func TestUnchangedForcedPreviewDoesNotReplacePublishedTree(t *testing.T) {
 	}
 }
 
+func TestAdaptivePreviewThrottleDefersChangesButAllowsForcedPublication(t *testing.T) {
+	preview := newScanPreviewTree()
+	preview.add(&Node{ID: 0, ParentID: -1, IsFolder: true})
+	scanner := NewScannerWithFilesystem(&Profile{}, 0, platform.Impl)
+	scanner.preview = preview
+	a := &App{scanActive: true, scanGeneration: 1, scanScanner: scanner}
+	first := a.publishScanPreview(1, true)
+	preview.add(&Node{ID: 1, ParentID: 0, Size: 10})
+	a.scanPreviewInterval = scanPreviewInterval(100_000, 0)
+	a.scanPreviewAt = time.Now().Add(-300 * time.Millisecond)
+	if a.GetScanPreview(1) != first {
+		t.Fatal("large preview rebuilt at the small-scan cadence")
+	}
+	if next := a.publishScanPreview(1, true); next == first || next.Revision <= first.Revision {
+		t.Fatal("forced publication was throttled")
+	}
+	if scanPreviewInterval(1, 300*time.Millisecond) < time.Second || scanPreviewInterval(1_000_000, time.Second) != 2*time.Second {
+		t.Fatal("preview cost or maximum delay ignored")
+	}
+}
+
 func BenchmarkUnchangedScanPreview(b *testing.B) {
 	preview := newScanPreviewTree()
 	preview.add(&Node{ID: 0, ParentID: -1, IsFolder: true})

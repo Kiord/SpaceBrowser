@@ -184,6 +184,12 @@ func (a *App) GetScanPreview(generation uint64) *TreeInfo {
 	return a.publishScanPreview(generation, false)
 }
 
+func scanPreviewInterval(nodeCount int, assemblyTime time.Duration) time.Duration {
+	// Keep small scans responsive, and bound repeated full-tree work to a
+	// quarter of the polling budget as snapshots become larger or slower.
+	return min(2*time.Second, max(250*time.Millisecond, time.Duration(nodeCount/25_000)*250*time.Millisecond, assemblyTime*4))
+}
+
 func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 	a.previewMu.Lock()
 	defer a.previewMu.Unlock()
@@ -193,7 +199,7 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 		return nil
 	}
 	scanner, previous := a.scanScanner, a.scanPreview
-	if !a.scanActive || a.scanResultPublished || scanner == nil || scanner.preview == nil || (!force && time.Since(a.scanPreviewAt) < 250*time.Millisecond) {
+	if !a.scanActive || a.scanResultPublished || scanner == nil || scanner.preview == nil || (!force && time.Since(a.scanPreviewAt) < max(250*time.Millisecond, a.scanPreviewInterval)) {
 		a.scanMu.RUnlock()
 		return previous
 	}
@@ -202,7 +208,9 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 	if previous != nil {
 		previousRevision = previous.Revision
 	}
+	started := time.Now()
 	root, nodes, revision := scanner.preview.snapshotAfter(previousRevision)
+	interval := scanPreviewInterval(len(nodes), time.Since(started))
 	files, dirs := scanner.LiveCounts()
 	a.scanMu.Lock()
 	defer a.scanMu.Unlock()
@@ -219,5 +227,6 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 	a.store.Replace(root, nodes, int(files), int(dirs))
 	a.scanPreview = &TreeInfo{RootID: root.ID, FileCount: int(files), DirCount: int(dirs), Revision: revision}
 	a.scanPreviewAt = time.Now()
+	a.scanPreviewInterval = interval
 	return a.scanPreview
 }

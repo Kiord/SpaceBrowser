@@ -44,6 +44,7 @@ type App struct {
 	previewMu           sync.Mutex
 	scanPreview         *TreeInfo
 	scanPreviewAt       time.Time
+	scanPreviewInterval time.Duration
 	scanRootPath        string
 	scanResultPublished bool
 	scanPrevious        *treeStoreSnapshot
