@@ -26,7 +26,15 @@ setup
 test -x "$test_home/.local/lib/spacebrowser/spacebrowser"
 test -f "$XDG_DATA_HOME/applications/spacebrowser.desktop"
 test -f "$XDG_DATA_HOME/kio/servicemenus/spacebrowser.desktop"
-grep -F '%%' "$XDG_DATA_HOME/kio/servicemenus/spacebrowser.desktop" >/dev/null
+service="$XDG_DATA_HOME/kio/servicemenus/spacebrowser.desktop"
+# A background click is represented by Dolphin as one directory URL, just
+# like a selected folder. Do not bury this action in the Actions submenu.
+grep -Fx 'MimeType=inode/directory;' "$service" >/dev/null
+grep -Fx 'X-KDE-Priority=TopLevel' "$service" >/dev/null
+grep -Fx 'X-KDE-RequiredNumberOfUrls=1' "$service" >/dev/null
+grep -Fx 'X-KDE-Protocols=file' "$service" >/dev/null
+grep -E '^Exec=.* -- %f$' "$service" >/dev/null
+grep -F '%%' "$service" >/dev/null
 folder="$test_home/a folder & (special) --no-cache"
 mkdir "$folder"
 env HOME="$test_home" bash "$XDG_DATA_HOME/nautilus/scripts/Scan with SpaceBrowser" "$folder"

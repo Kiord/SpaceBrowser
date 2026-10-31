@@ -54,7 +54,9 @@ fi
 
 if [[ $choices == *'Add Scan with SpaceBrowser to the file manager'* ]]; then
     mkdir -p -- "$(dirname -- "$service")" "$(dirname -- "$nautilus")"
-    printf '[Desktop Entry]\nType=Service\nMimeType=inode/directory;\nActions=scan;\nX-KDE-RequiredNumberOfUrls=1\nX-KDE-Protocols=file\n\n[Desktop Action scan]\nName=Scan with SpaceBrowser\nIcon=drive-harddisk\nExec=%s -- %%f\n' "$exec_path" > "$service"
+    # Dolphin supplies the current directory for a background click, and the
+    # selected directory for a folder click. Keep the action in the main menu.
+    printf '[Desktop Entry]\nType=Service\nMimeType=inode/directory;\nActions=scan;\nX-KDE-Priority=TopLevel\nX-KDE-RequiredNumberOfUrls=1\nX-KDE-Protocols=file\n\n[Desktop Action scan]\nName=Scan with SpaceBrowser\nIcon=drive-harddisk\nExec=%s -- %%f\n' "$exec_path" > "$service"
     chmod 755 "$service"
     cat > "$nautilus" <<'SCRIPT'
 #!/usr/bin/env bash
