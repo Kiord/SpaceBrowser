@@ -472,9 +472,10 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 	}
 	key := scanMemoryCacheKey(rootPath, profileKey)
 	old := manager.entries[key]
+	dependenciesChanged := manager.dependenciesChangedLocked(plan.dependencies)
 	manager.entries[key] = entry
 	manager.touchLocked(entry)
-	if manager.dependenciesChangedLocked(plan.dependencies) {
+	if dependenciesChanged {
 		entry.dirty[canonicalCachePath(rootPath)] = struct{}{}
 		entry.eventCount++
 	}

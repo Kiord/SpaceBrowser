@@ -100,6 +100,46 @@ func TestScanCacheBudgetCountsEstimatedBytes(t *testing.T) {
 	}
 }
 
+func TestExactCacheReplacementBecomesCleanAfterDirtyRescan(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "file.bin")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := newScanCacheManager(nil)
+	defer manager.Close()
+	filesystem := &countingCacheFilesystem{API: platform.Impl, reads: make(map[string]int)}
+	profile := *defaultProfile()
+	profile.MinFileSize = 0
+	scan := func() {
+		plan := manager.Prepare(root, profile)
+		scanner := NewScannerWithFilesystem(&profile, 1, filesystem)
+		scanner.SetIncrementalCache(plan.directories, plan.dirty)
+		var files, dirs int64
+		tree, err := scanner.buildTree(root, 0, -1, &files, &dirs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observation := &scanCacheObservation{manager: manager, rootPath: root, dirty: make(map[string]struct{})}
+		manager.Install(root, profile, tree, scanner.Nodes(), int(files), int(dirs), ScanReportSnapshot{}, plan, observation)
+	}
+	scan()
+	if err := os.WriteFile(path, []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.InvalidatePath(path)
+	scan()
+	reads := filesystem.readCount(root)
+	plan := manager.Prepare(root, profile)
+	if plan.source == nil || !manager.StillClean(plan.source, plan.eventCount) {
+		t.Fatal("dirty rescan did not install a clean replacement")
+	}
+	scan()
+	if filesystem.readCount(root) != reads {
+		t.Fatal("unchanged scan enumerated the clean replacement again")
+	}
+}
+
 func TestDisablingCacheClearsMemoryEntries(t *testing.T) {
 	rootPath := t.TempDir()
 	root := &Node{ID: 0, ParentID: -1, FullPath: rootPath, IsFolder: true, EntryDirs: 1}
