@@ -6,6 +6,71 @@ import (
 	"testing"
 )
 
+func TestOverlappingScanMappingGeneration(t *testing.T) {
+	for _, ancestor := range []bool{false, true} {
+		t.Run(map[bool]string{false: "descendant", true: "ancestor"}[ancestor], func(t *testing.T) {
+			a := newApp(filepath.Join(t.TempDir(), "settings.json"))
+			t.Cleanup(func() { a.Shutdown(nil) })
+			a.scanCache.SetEnabled(false)
+			a.profile.UpdateIncludedScans = true
+			root := t.TempDir()
+			child := filepath.Join(root, "child")
+			removed := filepath.Join(child, "removed")
+			if err := os.MkdirAll(removed, 0700); err != nil {
+				t.Fatal(err)
+			}
+			savedPath, scanPath := child, root
+			if ancestor {
+				savedPath, scanPath = root, child
+			}
+			job, err := a.QueueScan(savedPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitJob(t, a, job.ID, "completed")
+			view, err := a.SelectScanJob(job.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			removedID := indexCachedDirectories(a.store.root)[canonicalCachePath(removed)].ID
+			for update := 0; update < 2; update++ {
+				if update == 1 {
+					if err := os.Remove(removed); err != nil {
+						t.Fatal(err)
+					}
+				}
+				previous := view.MappingGeneration
+				scan, err := a.QueueScan(scanPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				waitJob(t, a, scan.ID, "completed")
+				view, err = a.GetScanJobView(job.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if view.MappingGeneration <= previous || view.NodeIDs == nil {
+					t.Fatalf("update did not publish a new mapping: %+v", view)
+				}
+				if update == 1 && view.NodeIDs[removedID] != -1 {
+					t.Fatal("later mapping did not invalidate the removed folder")
+				}
+				before := view
+				if _, err := a.SelectScanJob(scan.ID); err != nil {
+					t.Fatal(err)
+				}
+				view, err = a.SelectScanJob(job.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if view.Key == before.Key || view.MappingGeneration != before.MappingGeneration {
+					t.Fatal("saving the snapshot changed its mapping generation")
+				}
+			}
+		})
+	}
+}
+
 func TestSnapshotDurationSurvivesOverlappingScans(t *testing.T) {
 	for _, ancestor := range []bool{false, true} {
 		for _, loaded := range []bool{false, true} {

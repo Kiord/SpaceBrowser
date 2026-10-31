@@ -16,7 +16,7 @@ async function harness() {
   let autocompleteCloses = 0;
   const view = id => {
     const job = jobs.find(job => job.id === id);
-    return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds };
+    return { job: { ...job }, key: `${id}:${job.revision}:${job.state}`, tree: job.tree, restored: job.state === 'cancelled', nodeIds: job.nodeIds, mappingGeneration: job.mappingGeneration || 0 };
   };
   const backend = {
     QueueScan: async path => {
@@ -39,7 +39,14 @@ async function harness() {
   const modules = {
     './wailsjs/go/app/App.js': Object.fromEntries(Object.keys(backend).map(key => [key, (...args) => backend[key](...args)])),
     './dom.js': { byId: element }, './state.js': { AppState: state },
-    './navigation.js': { pushBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping, fallback) { state.node_id = mapping[state.node_id] ?? fallback; } },
+    './navigation.js': { pushBrowserHistoryEntry() {}, updateNavButtons() {}, remapNavigation(mapping, fallback) {
+      state.navHistory = state.navHistory.map(id => mapping[id] ?? id);
+      state.node_id = mapping[state.node_id] ?? state.node_id;
+      if (state.node_id < 0) {
+        state.node_id = fallback;
+        state.navHistory[state.navIndex] = fallback;
+      }
+    } },
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './path-autocomplete.js': { closePathAutocomplete() { autocompleteCloses++; } },
@@ -251,6 +258,7 @@ test('completed refresh remapping is consumed once across tile reselection', asy
   h.state.node_id = 1;
   h.state.selectedNodeIds = new Set([1]);
   h.jobs[0].nodeIds = { 1: 2, 2: 1 };
+  h.jobs[0].mappingGeneration = 1;
   h.jobs[0].revision++;
   await h.ui.refreshScanJobs();
   assert.equal(h.state.node_id, 2);
@@ -265,6 +273,32 @@ test('completed refresh remapping is consumed once across tile reselection', asy
   assert.equal(h.state.node_id, 2);
   assert.deepEqual([...h.state.selectedNodeIds], [2]);
 });
+
+for (const background of [false, true]) {
+  test(`later mappings for the same completed job update its ${background ? 'saved' : 'current'} view`, async () => {
+    const h = await harness();
+    await h.ui.analyze(); h.complete(0); await h.poll();
+    Object.assign(h.state, { node_id: 1, navHistory: [0, 1], navIndex: 1, selectedNodeIds: new Set([1, 3]) });
+    Object.assign(h.jobs[0], { nodeIds: { 1: 2, 3: 3 }, mappingGeneration: 1 });
+    h.jobs[0].revision++;
+    await h.ui.refreshScanJobs();
+    assert.equal(h.state.node_id, 2);
+    assert.deepEqual([...h.state.selectedNodeIds], [2, 3]);
+    if (background) {
+      h.element('pathInput').value = '/two';
+      await h.ui.analyze(); h.complete(1); await h.poll();
+    }
+    // An overlapping scan removes the viewed folder without replacing the job.
+    Object.assign(h.jobs[0], { nodeIds: { 2: -1, 3: 3 }, mappingGeneration: 2 });
+    h.jobs[0].revision++;
+    if (background) await h.ui.openLocation('/one');
+    else await h.ui.refreshScanJobs();
+    assert.equal(h.state.node_id, 0);
+    assert.deepEqual(Array.from(h.state.navHistory), [0, 0]);
+    assert.deepEqual([...h.state.selectedNodeIds], [3]);
+    assert.deepEqual(h.errors, []);
+  });
+}
 
 test('opening a never-scanned tile does not scan until explicitly requested', async () => {
   const h = await harness(); h.state.homeVisible = true;

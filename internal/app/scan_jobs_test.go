@@ -163,6 +163,23 @@ func TestQueueCancellationRestoresBeforeTreeAndAllowsNextScan(t *testing.T) {
 	release()
 }
 
+func TestQueuedFolderRefreshPublishesMappingGeneration(t *testing.T) {
+	a, _, root, ids := refreshFixture(t)
+	t.Cleanup(func() { a.Shutdown(nil) })
+	job, err := a.QueueFolderRefresh([]FolderRefreshTarget{{NodeID: ids["a"], Path: filepath.Join(root, "a")}}, []int{ids["a"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, a, job.ID, "completed")
+	view, err := a.SelectScanJob(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.MappingGeneration == 0 || view.NodeIDs == nil {
+		t.Fatalf("completed refresh has no mapping generation: %+v", view)
+	}
+}
+
 func TestContinuePausedJobPreemptsRunningJob(t *testing.T) {
 	a := &App{}
 	q := a.jobQueue()

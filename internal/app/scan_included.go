@@ -52,6 +52,7 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 		// Retain the duration of its original scan when saving the updated tree.
 		job.info.Progress = ScanProgress{Fraction: 1, FileCount: int64(job.snapshot.files), DirCount: int64(job.snapshot.dirs),
 			ElapsedMilliseconds: job.info.Progress.ElapsedMilliseconds}
+		job.mappingGeneration++
 		job.revision++
 		if q.selected == job.info.ID {
 			// Prevent navigation from saving the old foreground tree over this update.

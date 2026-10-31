@@ -30,12 +30,12 @@ const reportedFailures = new Set();
 const pathKey = path => /^[a-z]:|^\\\\/i.test(path) ? path.replaceAll("\\", "/").toLowerCase().replace(/\/+$/, "") : path.replace(/\/+$/, "") || "/";
 
 const captureView = () => ({ node_id: AppState.node_id, scanRootPath: AppState.scanRootPath,
-  scanRemapJobID: AppState.scanRemapJobID,
+  scanRemapKey: AppState.scanRemapKey,
   navHistory: [...AppState.navHistory], navIndex: AppState.navIndex, selectedNodeIds: new Set(selectionIds()),
   fileCount: AppState.fileCount, dirCount: AppState.dirCount, jobID: selectedID, homeVisible: AppState.homeVisible });
 
 function clearView() {
-  AppState.scanRemapJobID = null;
+  AppState.scanRemapKey = null;
   AppState.node_id = null;
   AppState.rects = [];
   AppState.navHistory = [];
@@ -128,12 +128,13 @@ async function applyView(view, token) {
     pushBrowserHistoryEntry(view.tree.rootId, 0);
   }
   if (view.job.state === "completed") {
-    if (view.nodeIds && AppState.scanRemapJobID !== view.job.id) {
+    const mappingKey = `${view.job.id}:${view.mappingGeneration}`;
+    if (view.nodeIds && AppState.scanRemapKey !== mappingKey) {
       remapNavigation(view.nodeIds, view.tree.rootId);
       AppState.selectedNodeIds = new Set([...selectionIds()].map(id => view.nodeIds[id] ?? id).filter(id => id >= 0));
-      // A completed job owns one mapping. Snapshot keys can change when the
-      // backend saves edits while switching tiles, without another ID change.
-      AppState.scanRemapJobID = view.job.id;
+      // Overlapping scans can publish new mappings for this job. Saving edits
+      // while switching tiles changes the snapshot key, but not this token.
+      AppState.scanRemapKey = mappingKey;
     }
     AppState.fileCount = view.tree.fileCount;
     AppState.dirCount = view.tree.dirCount;

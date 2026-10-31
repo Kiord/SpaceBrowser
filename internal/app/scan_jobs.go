@@ -24,29 +24,31 @@ type ScanJobInfo struct {
 }
 
 type ScanJobView struct {
-	Job      ScanJobInfo `json:"job"`
-	Tree     *TreeInfo   `json:"tree,omitempty"`
-	Key      string      `json:"key"`
-	NodeIDs  map[int]int `json:"nodeIds,omitempty"`
-	Restored bool        `json:"restored"`
+	Job               ScanJobInfo `json:"job"`
+	Tree              *TreeInfo   `json:"tree,omitempty"`
+	Key               string      `json:"key"`
+	NodeIDs           map[int]int `json:"nodeIds,omitempty"`
+	MappingGeneration uint64      `json:"mappingGeneration"`
+	Restored          bool        `json:"restored"`
 }
 
 type scanJob struct {
-	coldEpoch  coldEpoch
-	snapshot   *treeStoreSnapshot
-	revision   uint64
-	info       ScanJobInfo
-	worker     *App
-	pause      *scanPause
-	cancel     context.CancelFunc
-	started    bool
-	startedAt  time.Time
-	previous   *treeStoreSnapshot
-	targets    []FolderRefreshTarget
-	tracked    []int
-	nodeIDs    map[int]int
-	queueOrder uint64
-	autoResume bool
+	coldEpoch         coldEpoch
+	snapshot          *treeStoreSnapshot
+	revision          uint64
+	info              ScanJobInfo
+	worker            *App
+	pause             *scanPause
+	cancel            context.CancelFunc
+	started           bool
+	startedAt         time.Time
+	previous          *treeStoreSnapshot
+	targets           []FolderRefreshTarget
+	tracked           []int
+	nodeIDs           map[int]int
+	mappingGeneration uint64
+	queueOrder        uint64
+	autoResume        bool
 }
 
 type scanJobQueue struct {
@@ -267,6 +269,7 @@ func (q *scanJobQueue) run(job *scanJob) {
 			}
 			if refresh != nil {
 				job.info.Report, job.nodeIDs = refresh.ScanReport, refresh.NodeIDs
+				job.mappingGeneration++
 			}
 			snapshot := job.worker.store.snapshotState()
 			job.info.Progress.FileCount, job.info.Progress.DirCount = int64(snapshot.files), int64(snapshot.dirs)
@@ -428,7 +431,7 @@ func (q *scanJobQueue) viewLocked(id uint64) (*ScanJobView, error) {
 			job.worker.store.mu.RUnlock()
 		}
 		key := strconv.FormatUint(id, 10) + ":" + strconv.FormatUint(generation, 10) + ":" + info.State
-		view := &ScanJobView{Job: info, Key: key, NodeIDs: job.nodeIDs}
+		view := &ScanJobView{Job: info, Key: key, NodeIDs: job.nodeIDs, MappingGeneration: job.mappingGeneration}
 		var snapshot *treeStoreSnapshot
 		if info.State == "cancelled" || info.State == "failed" {
 			snapshot, view.Restored = job.snapshot, true
