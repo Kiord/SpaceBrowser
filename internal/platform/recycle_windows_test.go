@@ -237,7 +237,9 @@ func testWindowsRecycleNativeRoundTrip(t *testing.T) {
 				if data, readErr := os.ReadFile(contentPath); readErr != nil || string(data) != "recoverable content" {
 					t.Fatalf("rejected recycling changed the target: %q, %v (operation: %v)", data, readErr, err)
 				}
-				if errors.Is(err, errRecycleUnavailable) {
+				// Developer sandboxes may lack a Recycle Bin. CI's Windows
+				// runner must exercise success, so refusal must fail there.
+				if errors.Is(err, errRecycleUnavailable) && os.Getenv("SPACEBROWSER_TEST_REQUIRE_RECYCLE") != "1" {
 					t.Skipf("recycling is unavailable for the test account/volume; verified target was preserved: %v", err)
 				}
 				t.Fatal(err)

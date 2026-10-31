@@ -55,9 +55,11 @@ jobs:
         if: runner.os == 'macOS'
         run: go test ./...
 
-      - name: Run tests with mapped-drive integration
+      - name: Run tests with Recycle Bin and mapped-drive integration
         if: runner.os == 'Windows'
         shell: powershell
+        env:
+          SPACEBROWSER_TEST_REQUIRE_RECYCLE: '1'
         run: |
           $ErrorActionPreference = 'Stop'
           $shareName = 'SpaceBrowserTest'
