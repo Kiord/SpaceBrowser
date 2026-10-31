@@ -23,9 +23,18 @@ func TestFileCreationTime(t *testing.T) {
 	if delta := time.Now().Unix() - created; delta < -5 || delta > 10 {
 		t.Fatalf("unexpected creation time %d", created)
 	}
-	old := time.Unix(1000000000, 0)
-	if err := os.Chtimes(path, old, old); err != nil {
+	// macOS can move the birth time backward when mtime predates it.
+	// Move mtime forward to test that creation time is read independently.
+	modified := time.Unix(created, 0).Add(time.Hour)
+	if err := os.Chtimes(path, modified, modified); err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.ModTime().Unix(); got != modified.Unix() {
+		t.Fatalf("modification date = %d, want %d", got, modified.Unix())
 	}
 	if got := FileCreationTime(path); got != created {
 		t.Fatalf("modification date changed creation date: %d != %d", got, created)
