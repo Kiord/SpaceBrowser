@@ -12,7 +12,7 @@
       <img src="https://img.shields.io/github/v/release/Kiord/SpaceBrowser?style=plastic&include_prereleases&label=latest" alt="Latest release">
     </a>
     <a href="LICENSE">
-      <img src="https://img.shields.io/badge/license-MIT-blue?style=plastic" alt="MIT License">
+      <img src="https://img.shields.io/badge/license-CeCILL--B-blue?style=plastic" alt="CeCILL-B License">
     </a>
     <img src="https://img.shields.io/badge/Go-1.27-00ADD8?style=plastic&logo=go&logoColor=white" alt="Go 1.27">
     <a href="https://github.com/wailsapp/awesome-wails">

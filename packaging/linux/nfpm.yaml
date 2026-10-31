@@ -8,7 +8,7 @@ priority: optional
 maintainer: Kiord
 vendor: Kiord
 homepage: https://github.com/Kiord/SpaceBrowser
-license: MIT
+license: CECILL-B
 description: Cross-platform disk space visualizer using a size-proportional treemap.
 
 contents:

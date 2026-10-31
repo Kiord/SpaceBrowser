@@ -11,6 +11,7 @@ import {
   PickSettingsPath,
   SaveSettings,
 } from "./wailsjs/go/app/App.js";
+import { BrowserOpenURL } from "./wailsjs/runtime/runtime.js";
 import { byId, queryAll } from "./dom.js";
 import { SIZE_UNITS, splitSizeIntoUnit, formatSize } from "./format.js";
 import { addControlEventListeners, shortcutFromEvent } from "./controls.js";
@@ -849,6 +850,12 @@ export function initSettings(options) {
   });
   queryAll("[data-settings-tab]").forEach(tab => {
     tab.addEventListener("click", () => showSettingsTab(tab.dataset.settingsTab));
+  });
+  queryAll("#settingsAboutPanel a").forEach(link => {
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      BrowserOpenURL(link.href);
+    });
   });
   queryAll("[data-control-binding]").forEach(button => {
     button.addEventListener("click", () => beginControlBindingCapture(button));

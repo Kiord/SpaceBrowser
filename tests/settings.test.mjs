@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eventTarget, loadUI } from "./helpers/ui.mjs";
 
-test("General settings load, save, cancel and restore defaults", async () => {
+test("settings tabs and links work, and General settings save, cancel and restore defaults", async () => {
   const elements = new Map();
   const createElement = () => ({
     ...eventTarget(), value: "", checked: false, selectedOptions: [], dataset: {}, style: {}, open: false,
@@ -20,6 +20,10 @@ test("General settings load, save, cancel and restore defaults", async () => {
   const defaults = { appearance, minFileSize: 0, updateIncludedScans: true, showBreadcrumbs: true };
   let profile = { ...defaults };
   const saved = [];
+  const openedURLs = [];
+  const tabs = ["general", "about"].map(name => ({ ...createElement(), dataset: { settingsTab: name } }));
+  const panels = ["general", "about"].map(name => ({ ...createElement(), dataset: { settingsPanel: name } }));
+  const links = ["https://github.com/Kiord/SpaceBrowser", "https://github.com/Kiord/SpaceBrowser/issues"].map(href => ({ ...eventTarget(), href }));
   const restore = { ...eventTarget(), dataset: { restoreSettings: "general" } };
   const ui = await loadUI("settings.js", {
     "./wailsjs/go/app/App.js": {
@@ -28,7 +32,11 @@ test("General settings load, save, cancel and restore defaults", async () => {
       GetSettingsPath: async () => "settings.json", PickSettingsPath() {}, SetSettingsPath() {},
       SaveSettings: async (value, path) => { if (path === '/blocked') throw new Error('cannot relocate settings'); saved.push(value); profile = value; return { profile: value, path }; },
     },
-    "./dom.js": { byId, queryAll: selector => selector === "[data-restore-settings]" ? [restore] : [] },
+    "./wailsjs/runtime/runtime.js": { BrowserOpenURL: url => openedURLs.push(url) },
+    "./dom.js": { byId, queryAll: selector => ({
+      "[data-restore-settings]": [restore], "[data-settings-tab]": tabs,
+      "[data-settings-panel]": panels, "#settingsAboutPanel a": links,
+    }[selector] || []) },
     "./format.js": { formatSize: String, SIZE_UNITS: { B: 1 }, splitSizeIntoUnit: value => ({ value, unit: "B" }) },
     "./controls.js": { addControlEventListeners() {}, shortcutFromEvent() {} },
     "./logging.js": { logError: (...args) => { throw new Error(args.join(" ")); } },
@@ -39,6 +47,17 @@ test("General settings load, save, cancel and restore defaults", async () => {
   });
   ui.initSettings({ redraw: async () => {} });
   await byId("settingsButton").emit("click");
+  assert.equal(panels[1].hidden, true);
+  await tabs[1].emit("click");
+  assert.equal(panels[0].hidden, true);
+  assert.equal(panels[1].hidden, false);
+  let prevented = 0;
+  for (const link of links) await link.emit("click", { preventDefault() { prevented++; } });
+  assert.equal(prevented, 2);
+  assert.deepEqual(openedURLs, links.map(link => link.href));
+  assert.equal(byId("settingsDialog").open, true);
+  await tabs[0].emit("click");
+  assert.equal(panels[1].hidden, true);
   assert.equal(byId("settingsUpdateIncludedScans").checked, true);
   assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   for (const field of ["Icon", "Path", "Size", "ModificationDate", "ScanDate"]) assert.equal(byId(`settingsTooltip${field}`).checked, true);
@@ -112,6 +131,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
   const appState = { node_id: 0, profile: { appearance }, defaultProfile: { appearance } };
   const ui = await loadUI("settings.js", {
+    "./wailsjs/runtime/runtime.js": { BrowserOpenURL() {} },
     "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SaveSettings() {} },
     "./dom.js": { byId, queryAll: () => [] },
     "./format.js": { formatSize: String, SIZE_UNITS: {}, splitSizeIntoUnit() {} },

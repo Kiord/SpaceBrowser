@@ -14,6 +14,7 @@ async function harness() {
   ];
   const calls = []; let refreshed = 0, fail = false, enabled = true;
   const ui = await loadUI('settings.js', {
+    './wailsjs/runtime/runtime.js': { BrowserOpenURL() {} },
     './wailsjs/go/app/App.js': {
       GetCachingEnabled: async () => enabled, SetCachingEnabled(value) { enabled = value; }, GetCachedScans: async () => scans,
       ClearCachedScan: async path => { if (fail) throw Error('disk error'); calls.push(path); scans = scans.filter(scan => scan.path !== path); },

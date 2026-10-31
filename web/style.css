@@ -1040,6 +1040,13 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   display: none;
 }
 
+.settings-about { line-height: 1.45; }
+.settings-about p { margin: 0; }
+.settings-about a { color: #24577f; overflow-wrap: anywhere; }
+.about-license { display: grid; gap: 10px; font-size: 11px; }
+.about-license h3 { margin: 4px 0 0; font-size: 12px; }
+.about-license-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+
 .settings-row {
   display: grid;
   grid-template-columns: 142px minmax(0, 1fr);
