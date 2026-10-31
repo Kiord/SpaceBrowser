@@ -15,9 +15,7 @@ export function isPassiveRect(rect) {
 export function getSelectedRects() {
   if (AppState.homeVisible) return [];
   const ids = selectionIds();
-  const items = new Map((AppState.listItems || []).map(item => [item.node_id, item]));
-  for (const rect of AppState.rects || []) items.set(rect.node_id, rect);
-  return [...items.values()].filter(rect => ids.has(rect.node_id) && !isPassiveRect(rect));
+  return (AppState.rects || []).filter(rect => ids.has(rect.node_id) && !isPassiveRect(rect));
 }
 
 export function getSelectedRect() {
@@ -27,12 +25,9 @@ export function getSelectedRect() {
 
 // Return changed IDs so the canvas repaints just the affected rectangles.
 export function selectRect(rectIndex, { additive = false, preserve = false } = {}) {
-  return selectItem(AppState.rects?.[rectIndex], { additive, preserve });
-}
-
-export function selectItem(rect, { additive = false, preserve = false } = {}) {
   const ids = selectionIds();
   const before = new Set(ids);
+  const rect = AppState.rects?.[rectIndex];
   const selectable = rect && !isPassiveRect(rect) && rect.node_id >= 0;
   if (selectable && preserve && ids.has(rect.node_id)) return new Set();
   const toggleOff = selectable && !additive && !preserve && ids.size === 1 && ids.has(rect.node_id);

@@ -13,7 +13,6 @@ import { closePathAutocomplete } from "./path-autocomplete.js";
 let redraw = async () => {};
 let repaintScanLabels = () => {};
 let hideContextMenu = () => {};
-let clearFileList = () => {};
 let scanReportPath = "";
 let jobs = [];
 let selectedID = null;
@@ -36,7 +35,6 @@ const captureView = () => ({ node_id: AppState.node_id, scanRootPath: AppState.s
   fileCount: AppState.fileCount, dirCount: AppState.dirCount, jobID: selectedID, homeVisible: AppState.homeVisible });
 
 function clearView() {
-  clearFileList();
   AppState.scanRemapJobID = null;
   AppState.node_id = null;
   AppState.rects = [];
@@ -323,7 +321,6 @@ async function openScanReport() {
 export function initScan(options) {
   redraw = options.redraw;
   repaintScanLabels = options.repaintScanLabels || (() => {});
-  clearFileList = options.clearFileList || (() => {});
   hideContextMenu = options.hideContextMenu;
   byId("analyzeButton").addEventListener("click", analyze);
   byId("scanLocationButton").addEventListener("click", () => {

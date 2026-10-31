@@ -336,34 +336,29 @@ async function copySelectedPathAt(position) {
 
 async function handleContextMenuAction(event) {
   const item = event.target.closest("li");
-  if (!item || item.classList?.contains("disabled") || !getSelectedRects().length) return;
-  return runFileAction(item.dataset.action, { x: event.clientX, y: event.clientY });
-}
-
-export async function runFileAction(action, position) {
-  if (!getSelectedRects().length) return;
   const rect = getSelectedRect();
-  if (action === "copy") {
-    await copySelectedPathAt(position);
-  } else if (action === "refresh") {
+  if (!item || item.classList?.contains("disabled") || !getSelectedRects().length) return;
+  if (item.dataset.action === "copy") {
+    await copySelectedPathAt({ x: event.clientX, y: event.clientY });
+  } else if (item.dataset.action === "refresh") {
     await refreshSelectedFolders();
-  } else if (action === "delete") {
+  } else if (item.dataset.action === "delete") {
     requestSelectedDeletion();
-  } else if (action === "restore") {
+  } else if (item.dataset.action === "restore") {
     await requestSelectedRestore();
-  } else if (action === "open") {
+  } else if (item.dataset.action === "open") {
     await applyToSelected(OpenInFileBrowser);
-  } else if (action === "open-default") {
+  } else if (item.dataset.action === "open-default") {
     await openRectWithDefault();
-  } else if (action === "open-with") {
+  } else if (item.dataset.action === "open-with") {
     await openRectWithChooser(rect);
-  } else if (action === "properties" && rect?.full_path && !isPassiveRect(rect)) {
+  } else if (item.dataset.action === "properties" && rect?.full_path && !isPassiveRect(rect)) {
     try {
       await ShowProperties(rect.full_path);
     } catch (error) {
       showErrorToast(error);
     }
-  } else if (action === "goto" && rect?.is_folder) {
+  } else if (item.dataset.action === "goto" && rect?.is_folder) {
     visit(rect.node_id);
   }
 }
