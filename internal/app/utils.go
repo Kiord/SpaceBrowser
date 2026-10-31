@@ -15,6 +15,7 @@ type Profile struct {
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
 	ShowTooltips         bool               `json:"showTooltips"`
+	ShowBreadcrumbs      bool               `json:"showBreadcrumbs"`
 	TooltipDelayMS       int                `json:"tooltipDelayMs"`
 	TooltipFields        TooltipFields      `json:"tooltipFields"`
 	AllowDelete          bool               `json:"allowDelete"`
@@ -134,6 +135,7 @@ func defaultProfile() *Profile {
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
 		ShowTooltips:         true,
+		ShowBreadcrumbs:      true,
 		TooltipDelayMS:       0,
 		TooltipFields:        defaultTooltipFields(),
 		AllowDelete:          false,

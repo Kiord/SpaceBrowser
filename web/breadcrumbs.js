@@ -20,10 +20,25 @@ function setHidden(hidden) {
   options.visibilityChanged?.();
 }
 
+function hideTooltip() {
+  byId("breadcrumbTooltip").hidden = true;
+}
+
+function showTooltip(entry) {
+  const tooltip = byId("breadcrumbTooltip");
+  const bounds = entry.button.getBoundingClientRect();
+  tooltip.textContent = entry.rect.full_path;
+  tooltip.hidden = false;
+  tooltip.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+  const top = bounds.bottom + 7;
+  tooltip.style.top = `${Math.max(8, top + tooltip.offsetHeight > window.innerHeight - 8 ? bounds.top - tooltip.offsetHeight - 7 : top)}px`;
+}
+
 // Restore full names first so widening the window reverses contraction.
 // Once every item is one letter, horizontal scrolling keeps even extremely
 // deep paths reachable without removing any navigation targets.
 export function fitBreadcrumbs() {
+  hideTooltip();
   const row = byId("breadcrumbs");
   if (row.hidden) return;
   for (const entry of entries) entry.button.textContent = entry.label;
@@ -34,6 +49,7 @@ export function fitBreadcrumbs() {
 }
 
 function clearBreadcrumbs() {
+  hideTooltip();
   request++;
   lastRoot = undefined;
   lastScope = "";
@@ -46,8 +62,7 @@ function clearBreadcrumbs() {
 
 function renderBreadcrumbs(crumbs, root, viewScope) {
   const row = byId("breadcrumbs");
-  const separator = AppState.profile?.platformSystem === "windows" ? "\\" : "/";
-  const labels = crumbs.map((crumb, index) => index === 0 && crumbs.length > 1 && separator === "\\" ? crumb.name.replace(/\\+$/, "") : crumb.name);
+  const labels = crumbs.map(crumb => crumb.name);
   const sameItems = entries.length === crumbs.length && entries.every((entry, index) => entry.rect.node_id === crumbs[index].node_id && entry.rect.full_path === crumbs[index].full_path && entry.label === labels[index]);
   AppState.breadcrumbRects = crumbs;
   if (sameItems) {
@@ -58,25 +73,32 @@ function renderBreadcrumbs(crumbs, root, viewScope) {
   const focusedID = entries.find(entry => entry.button === document.activeElement)?.rect.node_id;
   const children = [];
   entries = crumbs.map((rect, index) => {
-    if (index > 0 && !labels[index - 1].endsWith(separator)) {
+    if (index > 0) {
       const divider = document.createElement("span");
-      divider.textContent = separator;
+      divider.textContent = " > ";
       divider.setAttribute("aria-hidden", "true");
       children.push(divider);
     }
     const button = document.createElement("button");
     button.type = "button";
-    button.title = rect.full_path;
     button.setAttribute("aria-label", rect.full_path);
+    button.setAttribute("aria-describedby", "breadcrumbTooltip");
     if (index === crumbs.length - 1) button.setAttribute("aria-current", "location");
     const entry = { rect, button, label: labels[index], root, scope: viewScope };
     const current = () => !pending && !row.hidden && entry.scope === scope() && entry.root === AppState.rects?.[0];
+    const revealTooltip = () => { if (current()) showTooltip(entry); };
+    button.addEventListener("mouseenter", revealTooltip);
+    button.addEventListener("focus", revealTooltip);
+    button.addEventListener("mouseleave", hideTooltip);
+    button.addEventListener("blur", hideTooltip);
     button.addEventListener("click", () => {
+      hideTooltip();
       if (!current()) return;
       options.hideContextMenu();
       options.visit(entry.rect.node_id);
     });
     const contextMenu = (x, y) => {
+      hideTooltip();
       if (!current()) return;
       options.select(entry.rect);
       options.showContextMenu(x, y);
@@ -103,7 +125,7 @@ function renderBreadcrumbs(crumbs, root, viewScope) {
 export async function updateBreadcrumbs() {
   if (!options) return;
   const root = AppState.rects?.[0];
-  if (!byId("showBreadcrumbs").checked || AppState.homeVisible || AppState.node_id == null || !root?.full_path || root.node_id !== AppState.node_id) {
+  if (AppState.profile?.showBreadcrumbs === false || AppState.homeVisible || AppState.node_id == null || !root?.full_path || root.node_id !== AppState.node_id) {
     clearBreadcrumbs();
     return;
   }
@@ -113,6 +135,7 @@ export async function updateBreadcrumbs() {
   lastScope = viewScope;
   const token = ++request;
   pending = true;
+  hideTooltip();
   setHidden(false);
   try {
     const crumbs = await GetBreadcrumbs(root.node_id, root.full_path);
@@ -131,15 +154,12 @@ export async function updateBreadcrumbs() {
 
 export function initBreadcrumbs(callbacks) {
   options = callbacks;
-  byId("showBreadcrumbs").addEventListener("change", () => {
-    options.hideContextMenu();
-    return updateBreadcrumbs();
-  });
   byId("breadcrumbs").addEventListener("keydown", event => {
     // Let the native buttons own activation rather than also running the
     // application's configurable Enter/Space selection shortcuts.
     if (event.key === "Enter" || event.key === " ") event.stopPropagation();
   });
+  byId("breadcrumbs").addEventListener("scroll", hideTooltip);
   window.addEventListener("resize", fitBreadcrumbs);
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitBreadcrumbs).observe(byId("breadcrumbs"));
 }

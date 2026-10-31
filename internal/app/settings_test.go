@@ -9,6 +9,34 @@ import (
 	"testing"
 )
 
+func TestBreadcrumbVisibilityDefaultsMigrationAndPersistence(t *testing.T) {
+	if !defaultProfile().ShowBreadcrumbs {
+		t.Fatal("breadcrumbs should be visible by default")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	for _, enabled := range []bool{false, true} {
+		first := newApp(path)
+		profile := first.GetProfile()
+		profile.ShowBreadcrumbs = enabled
+		if err := first.SetProfile(profile); err != nil {
+			t.Fatal(err)
+		}
+		if got := newApp(path).GetProfile().ShowBreadcrumbs; got != enabled {
+			t.Fatalf("reloaded visibility = %t, want %t", got, enabled)
+		}
+	}
+	if err := os.WriteFile(path, []byte(`{"version":18}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.ShowBreadcrumbs {
+		t.Fatal("existing settings did not enable breadcrumbs")
+	}
+}
+
 func TestUpdateIncludedScansDefaultsMigrationAndPersistence(t *testing.T) {
 	if !defaultProfile().UpdateIncludedScans {
 		t.Fatal("included scans should update by default")

@@ -72,7 +72,6 @@
       </div>
         <span class="toolbar-separator" aria-hidden="true"></span>
         <button class="toggle-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" data-tooltip="Show or hide available disk space">Free space</button>
-        <label class="breadcrumbs-toggle"><input id="showBreadcrumbs" type="checkbox" checked aria-controls="breadcrumbs">Breadcrumbs</label>
         <button class="nav-button" id="settingsButton" type="button" aria-label="Scan settings" data-tooltip="Scan settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
@@ -181,7 +180,8 @@
     </li>
   </ul>
 
-  <div id="toast">Copied path</div>  
+  <div id="toast">Copied path</div>
+  <div id="breadcrumbTooltip" class="rect-toast breadcrumb-tooltip" role="tooltip" hidden></div>
 
   <div id="rectToast" class="rect-toast" role="tooltip" hidden>
     <div id="rectToastIcon" class="rect-toast-icon" aria-hidden="true">
@@ -260,6 +260,10 @@
           <label class="settings-check">
             <input id="settingsUpdateIncludedScans" type="checkbox" checked>
             <span>Update overlapping scans automatically</span>
+          </label>
+          <label class="settings-check">
+            <input id="settingsShowBreadcrumbs" type="checkbox" checked aria-controls="breadcrumbs">
+            <span>Show breadcrumbs</span>
           </label>
           <div class="tooltip-settings-row">
             <label class="settings-check">

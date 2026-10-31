@@ -1972,12 +1972,13 @@ button:disabled:hover,
 
 .scan-snapshot-date[hidden] { display:none; }
 
-.breadcrumbs-toggle { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; white-space: nowrap; font-size: 12px; color: #000; cursor: pointer; }
-.breadcrumbs-toggle input { margin: 0; accent-color: #000; }
-.breadcrumbs { display: flex; flex: 0 0 25px; align-items: center; min-width: 0; box-sizing: border-box; padding: 0 8px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: thin; color: #000; background: #fff; font: 12px "Segoe UI", sans-serif; }
+.breadcrumbs { display: flex; flex: 0 0 20px; align-items: center; min-width: 0; box-sizing: border-box; padding: 0 5px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: thin; color: #000; background: #fff; font: 12px "Segoe UI", sans-serif; }
 .breadcrumbs[hidden] { display: none; }
 .breadcrumbs > * { flex: 0 0 auto; }
-.breadcrumbs button { display: inline-block; margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: #fff; color: #000; font: inherit; line-height: 20px; cursor: pointer; }
-.breadcrumbs button:hover { text-decoration: underline; }
+.breadcrumbs > span { white-space: pre; }
+.breadcrumbs button { display: inline-block; margin: 0; padding: 0 3px; border: 1px solid transparent; border-radius: 2px; box-shadow: none; background: #fff; color: #000; font: inherit; line-height: 16px; cursor: pointer; }
+.breadcrumbs button:hover { border-color: #aaa; background: #f0f0f0; }
 .breadcrumbs button:focus-visible { outline: 1px solid #000; outline-offset: 1px; }
+.breadcrumb-tooltip { display: block; width: max-content; white-space: normal; overflow-wrap: anywhere; animation: breadcrumb-tooltip-reveal 80ms linear 420ms both; }
+@keyframes breadcrumb-tooltip-reveal { from { opacity: 0; } to { opacity: 1; } }
 .cached-scan-row button { padding:3px 8px; border:1px solid #aaa; border-radius:2px; background:#fafafa; color:#444; cursor:pointer; font:inherit; }

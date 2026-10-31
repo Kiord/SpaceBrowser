@@ -586,6 +586,7 @@ function populateGeneralForm(profile) {
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
+  byId("settingsShowBreadcrumbs").checked = profile.showBreadcrumbs !== false;
   byId("settingsShowTooltips").checked = profile.showTooltips !== false;
   byId("settingsTooltipDelay").value = String(profile.tooltipDelayMs ?? 0);
   for (const [name, enabled] of Object.entries(TOOLTIP_FIELD_DEFAULTS)) {
@@ -757,6 +758,7 @@ async function saveSettings(event) {
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
+    showBreadcrumbs: byId("settingsShowBreadcrumbs").checked,
     showTooltips: byId("settingsShowTooltips").checked,
     tooltipDelayMs,
     tooltipFields: Object.fromEntries(Object.keys(TOOLTIP_FIELD_DEFAULTS).map(name => [name, byId(tooltipFieldId(name)).checked])),

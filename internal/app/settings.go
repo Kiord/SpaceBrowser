@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 18
+const settingsFileVersion = 19
 
 type persistedSettings struct {
 	Version             int                `json:"version"`
@@ -19,6 +19,7 @@ type persistedSettings struct {
 	FollowSymlinks      bool               `json:"followSymlinks"`
 	SkipNetworkFS       bool               `json:"skipNetworkFS"`
 	ShowTooltips        bool               `json:"showTooltips"`
+	ShowBreadcrumbs     bool               `json:"showBreadcrumbs"`
 	TooltipDelayMS      int                `json:"tooltipDelayMs"`
 	TooltipFields       TooltipFields      `json:"tooltipFields"`
 	AllowDelete         bool               `json:"allowDelete"`
@@ -127,6 +128,10 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		controls = defaultControlSettings()
 	}
 	showTooltips := saved.ShowTooltips
+	showBreadcrumbs := saved.ShowBreadcrumbs
+	if saved.Version < 19 {
+		showBreadcrumbs = defaultProfile().ShowBreadcrumbs
+	}
 	updateIncludedScans := saved.UpdateIncludedScans
 	if saved.Version < 16 {
 		updateIncludedScans = defaultProfile().UpdateIncludedScans
@@ -162,6 +167,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		FollowSymlinks:       saved.FollowSymlinks,
 		SkipNetworkFS:        saved.SkipNetworkFS,
 		ShowTooltips:         showTooltips,
+		ShowBreadcrumbs:      showBreadcrumbs,
 		TooltipDelayMS:       tooltipDelayMS,
 		TooltipFields:        tooltipFields,
 		AllowDelete:          allowDelete,
@@ -182,6 +188,7 @@ func saveSettings(path string, profile Profile) error {
 		FollowSymlinks:      profile.FollowSymlinks,
 		SkipNetworkFS:       profile.SkipNetworkFS,
 		ShowTooltips:        profile.ShowTooltips,
+		ShowBreadcrumbs:     profile.ShowBreadcrumbs,
 		TooltipDelayMS:      profile.TooltipDelayMS,
 		TooltipFields:       profile.TooltipFields,
 		AllowDelete:         profile.AllowDelete,

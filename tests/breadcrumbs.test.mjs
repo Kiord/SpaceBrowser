@@ -9,7 +9,7 @@ async function harness(platform = 'windows', names = ['Projects', 'SpaceBrowser'
   const document = { activeElement: null, createElement: () => element() };
   const element = () => {
     let text = '';
-    return { ...eventTarget(), children: [], attributes: {}, hidden: false,
+    return { ...eventTarget(), children: [], attributes: {}, hidden: false, style: {}, offsetWidth: 220, offsetHeight: 25,
       get textContent() { return this.children.length ? this.children.map(child => child.textContent).join('') : text; },
       set textContent(value) { text = value; this.children = []; },
       replaceChildren(...children) { this.children = children; text = ''; },
@@ -17,19 +17,21 @@ async function harness(platform = 'windows', names = ['Projects', 'SpaceBrowser'
       getAttribute(key) { return this.attributes[key]; },
       get clientWidth() { return width; },
       get scrollWidth() { return Array.from(this.textContent).length * 8; },
-      getBoundingClientRect() { return { left: 10, bottom: 25 }; },
+      getBoundingClientRect() { return { left: 10, top: 7, bottom: 25 }; },
       focus() { document.activeElement = this; },
     };
   };
   const byId = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
-  byId('showBreadcrumbs').checked = true;
   byId('breadcrumbs').hidden = true;
+  byId('breadcrumbTooltip').hidden = true;
   const separator = platform === 'windows' ? '\\' : '/';
   const crumbs = names.map((name, id) => ({ node_id: id, parent_id: id ? id - 1 : null, name, full_path: names.slice(0, id + 1).join(separator), is_folder: true, size: 100 - id }));
   const state = { node_id: crumbs.at(-1).node_id, navSession: 1, scanRootPath: crumbs[0].full_path,
     rects: [crumbs.at(-1)], selectedNodeIds: new Set(), profile: { platformSystem: platform } };
   const backend = { GetBreadcrumbs: async (...args) => { calls.push(['load', ...args]); return crumbs; } };
   const window = eventTarget();
+  window.innerWidth = 1000;
+  window.innerHeight = 700;
   const ui = await loadUI('breadcrumbs.js', {
     './wailsjs/go/app/App.js': { GetBreadcrumbs: (...args) => backend.GetBreadcrumbs(...args) },
     './dom.js': { byId }, './state.js': { AppState: state }, './logging.js': { logError: (...args) => errors.push(args) },
@@ -43,25 +45,26 @@ async function harness(platform = 'windows', names = ['Projects', 'SpaceBrowser'
 
 test('breadcrumbs contract earlier names first and restore full names when widened', async () => {
   const h = await harness();
-  h.width(190); await h.ui.updateBreadcrumbs();
+  h.width(230); await h.ui.updateBreadcrumbs();
   assert.deepEqual(h.buttons().map(button => button.textContent), ['P', 'SpaceBrowser', 'internal']);
-  assert.equal(h.byId('breadcrumbs').textContent, 'P\\SpaceBrowser\\internal');
-  h.width(110); h.ui.fitBreadcrumbs();
+  assert.equal(h.byId('breadcrumbs').textContent, 'P > SpaceBrowser > internal');
+  h.width(150); h.ui.fitBreadcrumbs();
   assert.deepEqual(h.buttons().map(button => button.textContent), ['P', 'S', 'internal']);
   h.width(40); await h.window.emit('resize');
   assert.deepEqual(h.buttons().map(button => button.textContent), ['P', 'S', 'i']);
   h.width(1000); h.ui.fitBreadcrumbs();
   assert.deepEqual(h.buttons().map(button => button.textContent), ['Projects', 'SpaceBrowser', 'internal']);
-  assert.equal(h.buttons()[1].title, 'Projects\\SpaceBrowser');
+  assert.equal(h.buttons()[1].getAttribute('aria-label'), 'Projects\\SpaceBrowser');
   assert.equal(h.buttons()[2].getAttribute('aria-current'), 'location');
   assert.equal(h.calls.filter(call => call[0] === 'load').length, 1);
 });
 
-test('OS roots keep exactly one separator and Unicode initials stay intact', async () => {
+test('arrow separators work on every OS and Unicode initials stay intact', async () => {
   for (const [platform, names, expected] of [
-    ['windows', ['C:\\', 'Users', 'Documents'], 'C:\\Users\\Documents'],
-    ['linux', ['/', 'home', 'Documents'], '/home/Documents'],
-    ['darwin', ['/', 'Users', 'Documents'], '/Users/Documents'],
+    ['windows', ['C:\\', 'Users', 'Documents'], 'C:\\ > Users > Documents'],
+    ['linux', ['/', 'home', 'Documents'], '/ > home > Documents'],
+    ['darwin', ['/', 'Users', 'Documents'], '/ > Users > Documents'],
+    ['linux', ['folder>', 'child'], 'folder> > child'],
   ]) {
     const h = await harness(platform, names); await h.ui.updateBreadcrumbs();
     assert.equal(h.byId('breadcrumbs').textContent, expected);
@@ -70,8 +73,39 @@ test('OS roots keep exactly one separator and Unicode initials stay intact', asy
   h.width(20); await h.ui.updateBreadcrumbs();
   assert.equal(h.buttons()[0].textContent, 'e\u0301');
   assert.equal(h.buttons()[1].textContent, '文');
-  assert.equal(h.buttons()[2].title, 'e\u0301clair/文件/<folder>');
+  assert.equal(h.buttons()[2].getAttribute('aria-label'), 'e\u0301clair/文件/<folder>');
   assert.equal(h.buttons().length, 3); // extremely narrow paths retain every target
+});
+
+test('full-path tooltips use the shared toast, stay in the viewport and hide with the target', async () => {
+  const h = await harness(); await h.ui.updateBreadcrumbs();
+  const button = h.buttons()[1], tooltip = h.byId('breadcrumbTooltip');
+  assert.equal(button.title, undefined); // no native OS tooltip over the styled one
+  assert.equal(button.getAttribute('aria-describedby'), 'breadcrumbTooltip');
+  h.width(40); h.ui.fitBreadcrumbs();
+  await button.emit('mouseenter');
+  assert.equal(tooltip.hidden, false);
+  assert.equal(tooltip.textContent, 'Projects\\SpaceBrowser');
+  assert.equal(tooltip.style.top, '32px');
+  await button.emit('mouseleave');
+  assert.equal(tooltip.hidden, true);
+  h.window.innerWidth = 230;
+  h.window.innerHeight = 50;
+  await button.emit('focus');
+  assert.equal(tooltip.hidden, false);
+  assert.equal(tooltip.style.left, '8px');
+  assert.equal(tooltip.style.top, '8px');
+  await button.emit('blur');
+  assert.equal(tooltip.hidden, true);
+  await button.emit('mouseenter');
+  await h.byId('breadcrumbs').emit('scroll');
+  assert.equal(tooltip.hidden, true);
+  await button.emit('mouseenter');
+  h.state.profile.showBreadcrumbs = false;
+  await h.ui.updateBreadcrumbs();
+  assert.equal(tooltip.hidden, true);
+  await button.emit('mouseenter');
+  assert.equal(tooltip.hidden, true); // detached buttons cannot show stale paths
 });
 
 test('crumbs navigate by ID and context menus target the clicked ancestor', async () => {
@@ -99,15 +133,15 @@ test('visibility toggles resize the treemap and reject late breadcrumb replies',
   const pending = deferred(); h.backend.GetBreadcrumbs = () => pending.promise;
   const loading = h.ui.updateBreadcrumbs();
   assert.equal(h.byId('breadcrumbs').hidden, false);
-  h.byId('showBreadcrumbs').checked = false;
-  await h.byId('showBreadcrumbs').emit('change');
+  h.state.profile.showBreadcrumbs = false;
+  await h.ui.updateBreadcrumbs();
   pending.resolve(h.crumbs); await loading;
   assert.equal(h.byId('breadcrumbs').hidden, true);
   assert.equal(h.buttons().length, 0);
   assert.equal(h.state.breadcrumbRects.length, 0);
   h.backend.GetBreadcrumbs = async () => h.crumbs;
-  h.byId('showBreadcrumbs').checked = true;
-  await h.byId('showBreadcrumbs').emit('change');
+  h.state.profile.showBreadcrumbs = true;
+  await h.ui.updateBreadcrumbs();
   assert.equal(h.buttons().length, 3);
   assert.equal(h.calls.filter(call => call[0] === 'resize').length, 3);
   h.state.homeVisible = true; await h.ui.updateBreadcrumbs();
@@ -129,7 +163,10 @@ test('refresh updates metadata without losing focus and ignores older responses'
   assert.equal(h.buttons().length, 3);
 });
 
-test('breadcrumb visibility checkbox is enabled by default in the page', async () => {
+test('breadcrumb visibility checkbox is enabled by default and only in General settings', async () => {
   const html = await readFile(new URL('../web/index.html', import.meta.url), 'utf8');
-  assert.match(html, /id="showBreadcrumbs"[^>]*\bchecked\b/);
+  const generalPanel = html.match(/<section id="settingsGeneralPanel"[\s\S]*?<\/section>/)[0];
+  assert.match(generalPanel, /id="settingsShowBreadcrumbs"[^>]*\bchecked\b/);
+  assert.equal((html.match(/id="settingsShowBreadcrumbs"/g) || []).length, 1);
+  assert.doesNotMatch(html, /id="showBreadcrumbs"/);
 });

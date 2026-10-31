@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { eventTarget, loadUI } from "./helpers/ui.mjs";
 
-test("General included-folder setting loads, saves, cancels and restores defaults", async () => {
+test("General settings load, save, cancel and restore defaults", async () => {
   const elements = new Map();
   const createElement = () => ({
     ...eventTarget(), value: "", checked: false, selectedOptions: [], dataset: {}, style: {}, open: false,
@@ -17,7 +17,7 @@ test("General included-folder setting loads, saves, cancels and restores default
     return elements.get(id);
   };
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
-  const defaults = { appearance, minFileSize: 0, updateIncludedScans: true };
+  const defaults = { appearance, minFileSize: 0, updateIncludedScans: true, showBreadcrumbs: true };
   let profile = { ...defaults };
   const saved = [];
   const restore = { ...eventTarget(), dataset: { restoreSettings: "general" } };
@@ -40,36 +40,44 @@ test("General included-folder setting loads, saves, cancels and restores default
   ui.initSettings({ redraw: async () => {} });
   await byId("settingsButton").emit("click");
   assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   for (const field of ["Icon", "Path", "Size", "ModificationDate", "ScanDate"]) assert.equal(byId(`settingsTooltip${field}`).checked, true);
   for (const field of ["CreationDate", "Counts"]) assert.equal(byId(`settingsTooltip${field}`).checked, false);
   byId("settingsTooltipCreationDate").checked = true;
   byId("settingsUpdateIncludedScans").checked = false;
+  byId("settingsShowBreadcrumbs").checked = false;
   await byId("cancelSettingsButton").emit("click");
   assert.equal(saved.length, 0);
   await byId("settingsButton").emit("click");
   assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   assert.equal(byId("settingsTooltipCreationDate").checked, false);
   byId("settingsTooltipCreationDate").checked = true;
   byId("settingsTooltipIcon").checked = false;
   byId("settingsTooltipCounts").checked = true;
   byId("settingsUpdateIncludedScans").checked = false;
+  byId("settingsShowBreadcrumbs").checked = false;
   await byId("settingsForm").emit("submit");
   assert.equal(saved.at(-1).updateIncludedScans, false);
+  assert.equal(saved.at(-1).showBreadcrumbs, false);
   assert.equal(saved.at(-1).tooltipFields.creationDate, true);
   assert.equal(saved.at(-1).tooltipFields.icon, false);
   assert.equal(saved.at(-1).tooltipFields.counts, true);
   await byId("settingsButton").emit("click");
   assert.equal(byId("settingsUpdateIncludedScans").checked, false);
+  assert.equal(byId("settingsShowBreadcrumbs").checked, false);
   assert.equal(byId("settingsTooltipCreationDate").checked, true);
   await restore.emit("click");
   await byId("confirmRestoreDefaultsButton").emit("click");
   assert.equal(byId("settingsUpdateIncludedScans").checked, true);
+  assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   assert.equal(byId("settingsTooltipCreationDate").checked, false);
   assert.equal(byId("settingsTooltipIcon").checked, true);
   assert.equal(byId("settingsTooltipCounts").checked, false);
   assert.equal(saved.length, 1);
   await byId("settingsForm").emit("submit");
   assert.equal(saved.at(-1).updateIncludedScans, true);
+  assert.equal(saved.at(-1).showBreadcrumbs, true);
   await byId("settingsButton").emit("click");
   byId("settingsAllowPermanentDelete").checked = true;
   byId("settingsConfigPath").value = '/blocked';
