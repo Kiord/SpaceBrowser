@@ -146,6 +146,35 @@ func TestWindowsRecycleRejectsMissingAndNULPaths(t *testing.T) {
 }
 
 func TestWindowsRecycleNativeRoundTrip(t *testing.T) {
+	testWindowsRecycleNativeRoundTrip(t)
+}
+
+func TestWindowsRecycleNativeRoundTripShortTempPath(t *testing.T) {
+	dir, err := resolvePhysicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ptr, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]uint16, 32768)
+	n, err := windows.GetShortPathName(ptr, &buffer[0], uint32(len(buffer)))
+	if err != nil || n == 0 || n >= uint32(len(buffer)) {
+		t.Fatalf("get short temporary path: length %d, %v", n, err)
+	}
+	short := windows.UTF16ToString(buffer[:n])
+	if strings.EqualFold(short, dir) {
+		t.Skip("8.3 short paths are unavailable on the temporary volume")
+	}
+	// Windows CI can expose TEMP through an alias such as RUNNER~1.
+	t.Setenv("TMP", short)
+	t.Setenv("TEMP", short)
+	testWindowsRecycleNativeRoundTrip(t)
+}
+
+func testWindowsRecycleNativeRoundTrip(t *testing.T) {
+	t.Helper()
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +185,12 @@ func TestWindowsRecycleNativeRoundTrip(t *testing.T) {
 			name = "directory"
 		}
 		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
+			// Recycle Bin metadata records the expanded physical path, even
+			// when TEMP uses an 8.3 alias or a directory junction.
+			dir, err := resolvePhysicalPath(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
 			path := filepath.Join(dir, "recycle-é-文件.txt")
 			contentPath := path
 			if directory {
