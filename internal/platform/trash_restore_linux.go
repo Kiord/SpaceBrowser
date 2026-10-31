@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 func linuxTrashRootContaining(p string) (clean, root string, err error) {
@@ -59,6 +61,10 @@ func (Linux) TrashRestoreInfo(p string) (TrashRestoreInfo, error) {
 }
 
 func (l Linux) RestoreTrashItem(p string, expected TrashRestoreInfo) error {
+	return l.restoreTrashItem(p, expected, unix.Renameat2)
+}
+
+func (l Linux) restoreTrashItem(p string, expected TrashRestoreInfo, rename func(int, string, int, string, uint) error) error {
 	info, err := l.TrashRestoreInfo(p)
 	if err != nil {
 		return err
@@ -75,8 +81,11 @@ func (l Linux) RestoreTrashItem(p string, expected TrashRestoreInfo) error {
 	if parentInfo, err := os.Stat(parent); err != nil || !parentInfo.IsDir() {
 		return fmt.Errorf("the original parent folder is unavailable: %s", parent)
 	}
-	if err := os.Rename(info.TargetPath, info.OriginalPath); err != nil {
-		return fmt.Errorf("restore Trash item: %w", err)
+	// The destination can appear after Lstat. Enforce no replacement in the
+	// rename itself; never fall back to os.Rename on unsupported filesystems
+	// or kernels, since that would reintroduce the overwrite race.
+	if err := rename(unix.AT_FDCWD, info.TargetPath, unix.AT_FDCWD, info.OriginalPath, unix.RENAME_NOREPLACE); err != nil {
+		return fmt.Errorf("restore Trash item without overwriting: %w", err)
 	}
 	_, root, _ := linuxTrashRootContaining(p)
 	_ = os.Remove(filepath.Join(root, "info", filepath.Base(info.TargetPath)+".trashinfo"))
