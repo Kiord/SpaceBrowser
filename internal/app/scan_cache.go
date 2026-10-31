@@ -389,16 +389,19 @@ func (observation *scanCacheObservation) markFailed(err error) {
 	}
 }
 
-func (observation *scanCacheObservation) activate(entry *scanCacheEntry) (treeWatcher, map[string]struct{}, bool, uint64) {
+// Caller holds manager.mu. Transfer buffered state before forwarding callbacks,
+// so a later failure can never be overwritten by an earlier sampled value.
+func (observation *scanCacheObservation) activate(entry *scanCacheEntry) {
 	observation.mu.Lock()
 	defer observation.mu.Unlock()
+	entry.watcher = observation.watcher
+	entry.invalid = observation.invalid
+	for path := range observation.dirty {
+		entry.dirty[path] = struct{}{}
+	}
+	entry.eventCount += observation.eventCount
 	observation.entry = entry
 	observation.adopted = true
-	dirty := make(map[string]struct{}, len(observation.dirty))
-	for path := range observation.dirty {
-		dirty[path] = struct{}{}
-	}
-	return observation.watcher, dirty, observation.invalid, observation.eventCount
 }
 
 func (observation *scanCacheObservation) Close() {
@@ -509,27 +512,12 @@ func (manager *scanCacheManager) Install(rootPath string, profile Profile, root 
 		delete(manager.entries, oldestKey)
 		retired = append(retired, oldest)
 	}
-	manager.mu.Unlock()
-
-	watcher, observedDirty, watcherInvalid, observedEvents := observation.activate(entry)
-	manager.mu.Lock()
-	retained := manager.containsLocked(entry)
-	if retained {
-		entry.watcher = watcher
-		entry.invalid = watcherInvalid
-		for path := range observedDirty {
-			entry.dirty[path] = struct{}{}
-		}
-		entry.eventCount += observedEvents
-	}
+	observation.activate(entry)
 	manager.mu.Unlock()
 	for _, retiredEntry := range retired {
 		if retiredEntry.watcher != nil {
 			_ = retiredEntry.watcher.Close()
 		}
-	}
-	if !retained && watcher != nil {
-		_ = watcher.Close()
 	}
 }
 

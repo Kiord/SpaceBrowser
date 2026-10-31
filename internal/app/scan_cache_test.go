@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"spacebrowser/internal/platform"
@@ -8,6 +9,38 @@ import (
 	"testing"
 	"time"
 )
+
+func TestCacheActivationPreservesConcurrentWatcherFailure(t *testing.T) {
+	root := t.TempDir()
+	manager := newScanCacheManager(nil)
+	_, key := scanProfileCacheKey(*defaultProfile())
+	entry := &scanCacheEntry{rootPath: root, profileKey: key, invalid: true, dirty: make(map[string]struct{})}
+	observation := &scanCacheObservation{manager: manager, rootPath: root, dirty: make(map[string]struct{})}
+	manager.mu.Lock()
+	manager.entries[scanMemoryCacheKey(root, key)] = entry
+	observation.activate(entry)
+	if entry.invalid {
+		manager.mu.Unlock()
+		t.Fatal("healthy observation was not transferred at activation")
+	}
+	started, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		close(started)
+		observation.markFailed(errors.New("watcher stopped during handover"))
+		close(finished)
+	}()
+	<-started
+	manager.mu.Unlock()
+	<-finished
+	if plan := manager.Prepare(root, *defaultProfile()); plan.source != nil {
+		t.Fatal("watcher failure during activation left a reusable cache")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if !entry.invalid || entry.eventCount != 1 {
+		t.Fatalf("failure was lost: invalid=%v events=%d", entry.invalid, entry.eventCount)
+	}
+}
 
 type countingCacheFilesystem struct {
 	platform.API
