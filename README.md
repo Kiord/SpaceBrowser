@@ -37,7 +37,7 @@ Visualize disk usage with an interactive [treemap](https://en.wikipedia.org/wiki
 
 <br>
 
-**[Download SpaceBrowser](https://github.com/Kiord/SpaceBrowser/releases)**
+[![Download SpaceBrowser](https://img.shields.io/github/downloads/Kiord/SpaceBrowser/total?style=plastic&label=Download%20SpaceBrowser)](https://github.com/Kiord/SpaceBrowser/releases)
 
 </div>
 
