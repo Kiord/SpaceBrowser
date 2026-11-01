@@ -29,7 +29,7 @@
 
 <br>
 
-Visualize disk usage with an interactive [treemap](https://en.wikipedia.org/wiki/Treemapping), quickly identify large files and folders, explore your filesystem, and reclaim storage space.
+Visualize disk usage with an interactive [treemap](https://en.wikipedia.org/wiki/Treemapping). Find large files and folders, and reclaim storage space.
 
 <div align="center">
 
@@ -52,23 +52,27 @@ SpaceBrowser recreates the main features of [SpaceMonger 1.4](https://github.com
 ### Visualization and scanning
 
 - Size-proportional treemap for files and folders
-- Locations sidebar for drives, volumes, and folders
+- Locations sidebar with disk usage and storage details
 - Optional free-space node for scanned volumes
 - Configurable small-file aggregation threshold
-- Animated live scan display
+- Live scan display with pause, resume, and cancel controls
+- Saved scans across app restarts, with cache management
+- Rescan selected folders and automatically update overlapping scans
 - Exclusions for paths, hidden files, symlinks, and network filesystems
 
 ### Navigation and actions
 
-- In-treemap navigation with Back, Forward, Parent, and Root commands
-- Hover details with full path, byte size, modification date, and system icon
+- Folder breadcrumbs and Back, Forward, Parent, and Root commands
+- Customizable tooltips with dates, sizes, icons, and file/folder counts
 - "Open" and "Open with…" commands for files and folders
+- Multiple selection for batch opening and deletion
 - Move-to-trash and permanent deletion with protection for sensitive filesystem locations
-- Empty trash command
+- Restore trash items and empty trash
 
 ### Customization
 
-- Configurable rectangle color palettes, scale, shape, shading, and hover highlighting
+- Configurable colors, scale, spacing, shape, shading, and hover highlighting
+- Live previews for appearance settings
 - Rebindable keyboard shortcuts
 - Persistent application settings
 
@@ -89,6 +93,9 @@ Download the latest available version from the **[GitHub Releases](https://githu
 | Windows | MSI installer, portable EXE |
 | Linux | DEB, RPM, portable binary, setup TAR.GZ |
 | macOS | DMG, ZIP (untested) |
+
+Linux setup archives include `Install.sh`; macOS packages include `Install.command`.
+Setup offers optional "Scan with SpaceBrowser" file-manager shortcuts.
 
 > **Note:** macOS builds are provided but have not yet been tested. Feedback and bug reports are welcome.
 
@@ -119,7 +126,8 @@ wails build
 
 ## Usage
 
-Launch SpaceBrowser normally to select a location to scan, or provide a path as a command-line argument to begin scanning immediately.
+Select a location in the sidebar, or enter a folder path to scan.
+Pass a path on the command line to scan it at startup.
 
 <details>
 <summary>Command-line options</summary>
