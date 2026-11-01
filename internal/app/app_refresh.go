@@ -36,7 +36,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	}
 
 	a.store.mu.RLock()
-	shared := false
+	requiresRootScan := false
 	for _, target := range targets {
 		if target.NodeID < 0 || target.NodeID >= len(a.store.nodes) || a.store.nodes[target.NodeID] == nil {
 			a.store.mu.RUnlock()
@@ -47,7 +47,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 			a.store.mu.RUnlock()
 			return nil, fmt.Errorf("selected item is not the expected filesystem folder")
 		}
-		shared = shared || subtreeHasSharedAllocation(node)
+		requiresRootScan = requiresRootScan || subtreeHasSharedAllocation(node) || node.HasDirectoryAliases
 	}
 	rootTarget := FolderRefreshTarget{NodeID: a.store.root.ID, Path: a.store.root.FullPath}
 	storeGeneration := a.store.generation
@@ -80,10 +80,10 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		}
 		a.scanCache.InvalidatePath(target.Path)
 	}
-	// Shared allocations may cross the selected boundaries. Recompute their
-	// identities from the scan root rather than publishing incorrect totals.
-	if shared {
-		a.logger.Infof("refresh requires a full scan to account for shared file allocations")
+	// Shared allocations and omitted directory aliases depend on paths outside
+	// the selected boundaries. Preserve the original root's accounting scope.
+	if requiresRootScan {
+		a.logger.Infof("refresh requires a full scan to account for shared files or directory aliases")
 		reduced = []FolderRefreshTarget{rootTarget}
 	}
 	ctx, generation := a.beginScan(reduced[0].Path)

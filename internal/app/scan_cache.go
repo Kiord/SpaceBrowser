@@ -232,7 +232,8 @@ func cacheEntryIncrementallySafe(entry *scanCacheEntry, profile Profile) bool {
 }
 
 func cacheEntryCrossRootSafe(entry *scanCacheEntry, profile Profile) bool {
-	return !entry.sharedAllocation && !profile.FollowSymlinks
+	// A broader scan can omit directory aliases that a narrower scan needs.
+	return !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.Skipped[scanSkipRepeatedDirectory] == 0
 }
 
 func (manager *scanCacheManager) BeginObservation(rootPath string) *scanCacheObservation {

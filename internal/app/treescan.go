@@ -42,6 +42,8 @@ type Node struct {
 	EntryFiles     int    `json:"-"`
 	EntryDirs      int    `json:"-"`
 	ScanIncomplete bool   `json:"scan_incomplete,omitempty"`
+	// This subtree omits backing directories represented elsewhere in the scan.
+	HasDirectoryAliases bool `json:"-"`
 }
 
 // ==============================
@@ -66,6 +68,7 @@ type Scanner struct {
 	linkMu              sync.Mutex // link metadata can be updated by another directory's worker
 	seenDirs            map[string]struct{}
 	seenDirsMu          sync.Mutex
+	directoryAliases    map[string]struct{}
 
 	workDiscovered int64
 	workProcessed  int64
@@ -375,7 +378,39 @@ func (s *Scanner) Nodes() []*Node {
 // buildTree scans 'path' and all descendants, assigning IDs.
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
+	s.prepareDirectoryAliases(s.filesystem.Canonicalize(path))
 	return s.buildTreeWithModTime(path, depth, parentID, fileCount, dirCount, 0)
+}
+
+func (s *Scanner) prepareDirectoryAliases(root string) {
+	s.directoryAliases = nil
+	provider, ok := s.filesystem.(platform.DirectoryAliasProvider)
+	if !ok {
+		return
+	}
+	for _, alias := range provider.DirectoryAliases() {
+		preferred := s.filesystem.Canonicalize(alias.Preferred)
+		backing := s.filesystem.Canonicalize(alias.Backing)
+		if preferred == backing || backing == root || !cachePathWithin(backing, root) || !cachePathWithin(preferred, root) {
+			continue
+		}
+		// A direct scan of the Data volume, or an excluded/hidden preferred
+		// path, must still be able to visit the backing directory.
+		included := true
+		for current := preferred; current != root; current = filepath.Dir(current) {
+			if shouldExclude(s.profile, current) || (s.profile.SkipHidden && s.filesystem.IsHidden(current)) ||
+				(s.profile.SkipNetworkFS && s.filesystem.IsLikelyNetworkFS(current)) {
+				included = false
+				break
+			}
+		}
+		if included {
+			if s.directoryAliases == nil {
+				s.directoryAliases = make(map[string]struct{})
+			}
+			s.directoryAliases[canonicalCachePath(backing)] = struct{}{}
+		}
+	}
 }
 
 func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fileCount, dirCount *int64, modTime int64) (*Node, error) {
@@ -490,6 +525,11 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			if isDir {
+				if _, duplicate := s.directoryAliases[canonicalCachePath(full)]; duplicate {
+					root.HasDirectoryAliases = true
+					s.report.RecordSkip(scanSkipRepeatedDirectory)
+					return true
+				}
 				if s.profile.SkipNetworkFS {
 					networkPath := full
 					if isSymlink {
@@ -661,6 +701,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			root.Size += n.Size
 			root.EntryFiles += n.EntryFiles
 			root.EntryDirs += n.EntryDirs
+			root.HasDirectoryAliases = root.HasDirectoryAliases || n.HasDirectoryAliases
 		}
 	}
 	if err := s.pause.wait(s.ctx); err != nil {
@@ -678,6 +719,13 @@ func (s *Scanner) reusableCachedDirectory(path string) *Node {
 		return nil
 	}
 	clean := canonicalCachePath(path)
+	// A child scan may have cached the full backing hierarchy. Revisit its
+	// ancestors so a broader scan can omit aliases before cloning subtrees.
+	for backing := range s.directoryAliases {
+		if cachePathWithin(backing, clean) {
+			return nil
+		}
+	}
 	cached := s.cachedDirectories[clean]
 	if cached == nil {
 		return nil

@@ -19,7 +19,7 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 				directories = indexCachedDirectories(source.snapshot.root)
 			}
 			root := directories[canonicalCachePath(job.info.Path)]
-			if root == nil {
+			if root == nil || root.HasDirectoryAliases {
 				continue
 			}
 			job.snapshot, job.nodeIDs = includedScanSnapshot(root, job.snapshot)
@@ -107,7 +107,9 @@ func mergeIncludedScan(previous *treeStoreSnapshot, root *Node) (*treeStoreSnaps
 		return nil, nil
 	}
 	target := indexCachedDirectories(previous.root)[canonicalCachePath(root.FullPath)]
-	if target == nil {
+	// A standalone backing-volume scan includes aliases that an enclosing
+	// scan omits, so these regions cannot be exchanged between scan scopes.
+	if target == nil || target.HasDirectoryAliases || root.HasDirectoryAliases {
 		return nil, nil
 	}
 	var store TreeStore
