@@ -218,12 +218,29 @@ func TestLiveCacheReusesScanUntilAppCloses(t *testing.T) {
 		t.Fatal(err)
 	}
 	reads := filesystem.readCount(root)
-	second, err := app.GetFullTree(root)
-	if err != nil {
-		t.Fatal(err)
+	if reads == 0 {
+		t.Fatal("initial scan did not enumerate the root")
 	}
-	if reads == 0 || filesystem.readCount(root) != reads || first.FileCount != second.FileCount {
-		t.Fatal("repeat scan did not reuse the live cache")
+	// FSEvents can deliver queued setup changes after watching starts. A
+	// conservative rescan is valid until those events settle; require eventual
+	// reuse rather than assuming the very first repeat has a clean watcher.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		reads = filesystem.readCount(root)
+		second, err := app.GetFullTree(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.FileCount != second.FileCount {
+			t.Fatalf("repeat scan changed file count from %d to %d", first.FileCount, second.FileCount)
+		}
+		if filesystem.readCount(root) == reads {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("unchanged scans did not reuse the live cache after filesystem events settled")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	app.Shutdown(nil)
 	if len(app.scanCache.entries) != 0 {
