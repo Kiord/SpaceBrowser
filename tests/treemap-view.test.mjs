@@ -2,15 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, eventTarget, loadUI, noop } from "./helpers/ui.mjs";
 
-async function harness() {
+async function harness(appearanceOverrides = {}) {
   const window = { ...eventTarget(), devicePixelRatio: 1 };
-  const requests = [], painted = [], actions = [];
+  const requests = [], painted = [], actions = [], paths = [];
+  const appearance = { reliefStrength: 0, cornerRadius: 0, boxPadding: 5, ...appearanceOverrides };
   let time = 1000, frameId = 0;
   const frames = new Map();
   const state = { node_id: 1, scale: 1, rects: [], selectedNodeIds: new Set() };
   for (const name of ["color", "id", "hover", "tmp", "mask", "flash"]) {
+    let path = [];
     state[`${name}Ctx`] = { clearRect: noop, strokeRect: noop, save: noop, restore: noop, drawImage: noop,
-      beginPath: noop, rect: noop, clip: noop,
+      beginPath() { path = []; },
+      ...Object.fromEntries(['rect', 'roundRect', 'moveTo', 'lineTo', 'arc'].map(op => [op, (...args) => {
+        path.push({ op, args: args.map(arg => Array.isArray(arg) ? Array.from(arg) : arg) });
+      }])),
+      ...Object.fromEntries(['fill', 'stroke', 'clip'].map(op => [op, function (...args) {
+        paths.push({ name, op, args, path: [...path], stroke: this.strokeStyle, lineWidth: this.lineWidth });
+      }])),
       measureText: text => ({ width: text.length * 6, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
       fillText(text, x, y) { painted.push({ name, text, x, y }); },
       getImageData: x => ({ data: [0, 0, x + 1, 255] }),
@@ -26,13 +34,125 @@ async function harness() {
     "./navigation.js": { navigateToSelected: () => actions.push(["visit"]), updateNavButtons: noop },
     "./notifications.js": { hideRectToast: noop, initNotifications: noop },
     "./logging.js": { logDebug: noop, logWarning: noop },
-    "./state.js": { AppState: state, AppearanceState: { reliefStrength: 0, cornerRadius: 0, boxPadding: 5 }, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => Math.max(1, window.devicePixelRatio) },
+    "./state.js": { AppState: state, AppearanceState: appearance, FONT_SIZE: 10, activePalette: () => ["#ffffff"], getScale: () => Math.max(1, window.devicePixelRatio) },
   }, { performance: { now: () => time }, cancelAnimationFrame: id => frames.delete(id), requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
     window, document: { getElementById: id => state[id] } });
-  return { ui, state, requests, painted, actions, frames, window, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
+  return { ui, state, requests, painted, actions, paths, appearance, frames, window, advanceFrame(ms) { time += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn(time)); } };
 }
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
+
+async function paintLayout(h, rects) {
+  const draw = h.ui.redraw();
+  h.requests.at(-1).resolve(rects);
+  await draw;
+}
+
+const rootRect = children => ({ ...rect(0), x: 0, y: 0, w: 400, h: 300, children });
+const tile = (id, x, y, w, h, extra = {}) => ({ ...rect(id), parent_id: 0, x, y, w, h, ...extra });
+function paintedRadii(h, rect, name = 'color') {
+  return h.paths.filter(p => p.name === name && p.op === 'fill').flatMap(p => p.path)
+    .find(p => p.op === 'roundRect' && p.args[0] === rect.x && p.args[1] === rect.y && p.args[2] === rect.w && p.args[3] === rect.h)?.args[4] ?? [0, 0, 0, 0];
+}
+
+test('only exposed sibling corners round, including one-pixel layout overlaps', async () => {
+  for (const overlap of [0, 1]) {
+    const h = await harness({ cornerRadius: 8 });
+    const left = tile(1, 10, 20, 100 + overlap, 100);
+    const right = tile(2, 110, 20, 100, 100, { is_free_space: true });
+    const root = { ...rootRect([1, 2]), parent_id: 999 };
+    await paintLayout(h, [root, left, right]);
+    assert.deepEqual(paintedRadii(h, root), [0, 0, 0, 0], 'the visible root stays square even after navigation');
+    assert.deepEqual(paintedRadii(h, left), [8, 0, 0, 8]);
+    assert.deepEqual(paintedRadii(h, right), [0, 8, 8, 0]);
+  }
+});
+
+test('T-junctions and diagonal neighbors keep shared vertices square', async () => {
+  const h = await harness({ cornerRadius: 8 });
+  const tall = tile(1, 10, 20, 100, 200);
+  const top = tile(2, 110, 20, 100, 100);
+  const bottom = tile(3, 110, 120, 100, 100, { is_unaccounted: true });
+  await paintLayout(h, [rootRect([1, 2, 3]), tall, top, bottom]);
+  assert.deepEqual(paintedRadii(h, tall), [8, 0, 0, 8]);
+  assert.deepEqual(paintedRadii(h, top), [0, 8, 0, 0]);
+  assert.deepEqual(paintedRadii(h, bottom), [0, 0, 8, 0]);
+
+  h.paths.length = 0;
+  const diagonal = tile(4, 210, 120, 100, 100);
+  await paintLayout(h, [rootRect([1, 2]), top, diagonal]);
+  assert.deepEqual(paintedRadii(h, top), [8, 8, 0, 8]);
+  assert.deepEqual(paintedRadii(h, diagonal), [0, 8, 8, 8]);
+});
+
+test('a surrounded tile stays square, and separate tiles keep all four rounded corners', async () => {
+  const h = await harness({ cornerRadius: 6 });
+  const tiles = Array.from({ length: 9 }, (_, i) => tile(i + 1, 10 + (i % 3) * 50, 20 + Math.floor(i / 3) * 50, 50, 50));
+  await paintLayout(h, [rootRect(tiles.map((_, i) => i + 1)), ...tiles]);
+  assert.deepEqual(paintedRadii(h, tiles[4]), [0, 0, 0, 0]);
+  assert.deepEqual(paintedRadii(h, tiles[0]), [6, 0, 0, 0]);
+  h.paths.length = 0;
+  const isolated = tile(10, 200, 20, 50, 50);
+  await paintLayout(h, [rootRect([1, 2]), tiles[0], isolated]);
+  assert.deepEqual(paintedRadii(h, tiles[0]), [6, 6, 6, 6]);
+  assert.deepEqual(paintedRadii(h, isolated), [6, 6, 6, 6]);
+});
+
+test('nested tiles, hover holes, flashes, and selection masks share corner geometry', async () => {
+  const h = await harness({ cornerRadius: 8, hoverBrightness: .2 });
+  const folder = tile(1, 10, 20, 100, 100, { children: [3], is_folder: true, name: 'folder' });
+  const neighbor = tile(2, 110, 20, 100, 100);
+  const child = tile(3, 20, 40, 80, 70, { parent_id: 1 });
+  h.state.liveScanPreview = true;
+  h.state.navSession = 1;
+  await paintLayout(h, [rootRect([1, 2]), folder, neighbor, child]);
+  assert.deepEqual(paintedRadii(h, child), [8, 8, 8, 8], 'ancestors do not count as neighbors');
+  const flash = h.paths.find(p => p.name === 'flash' && p.op === 'clip');
+  assert.deepEqual(flash.path.filter(p => p.op === 'roundRect').map(p => p.args[4]), [[8, 0, 0, 8], [8, 8, 8, 8]]);
+  h.ui.setHoveredRectIndex(1);
+  h.advanceFrame(16);
+  const hover = h.paths.find(p => p.name === 'hover' && p.op === 'clip');
+  assert.deepEqual(hover.path.filter(p => p.op === 'roundRect').map(p => p.args[4]), [[8, 0, 0, 8], [8, 8, 8, 8]]);
+  h.ui.selectRectByIndex(1);
+  assert.deepEqual(paintedRadii(h, folder, 'tmp'), [8, 0, 0, 8]);
+  assert.deepEqual(paintedRadii(h, folder, 'mask'), [8, 0, 0, 8]);
+  assert.deepEqual(paintedRadii(h, child, 'mask'), [8, 8, 8, 8]);
+});
+
+test('rounded relief follows inset corner arcs while shared edges remain straight', async () => {
+  const h = await harness({ cornerRadius: 8, reliefStrength: .3 });
+  const left = tile(1, 10, 20, 100, 100);
+  const right = tile(2, 110, 20, 100, 100);
+  await paintLayout(h, [rootRect([1, 2]), left, right]);
+  const clips = h.paths.filter(p => p.name === 'color' && p.op === 'clip');
+  assert.equal(clips[0].path[0].op, 'rect', 'outermost relief remains square');
+  assert.deepEqual(clips[1].path[0], { op: 'roundRect', args: [11, 21, 98, 98, [7, 0, 0, 7]] });
+  const strokes = h.paths.filter(p => p.name === 'color' && p.op === 'stroke');
+  const border = strokes.find(p => p.path[0].op === 'roundRect');
+  assert.deepEqual(border.path[0].args, [10.5, 20.5, 99, 99, [7.5, 0, 0, 7.5]]);
+  const arcs = strokes.flatMap(p => p.path).filter(p => p.op === 'arc');
+  assert.ok(arcs.length > 0);
+  assert.ok(arcs.every(p => p.args[2] === 6.5), 'relief radius contracts by its 1.5 pixel inset');
+  assert.ok(arcs.every(p => p.args[0] < 100 || p.args[0] > 150), 'shared corners have no relief arcs');
+});
+
+test('large radii on small tiles stay concentric at different display scales', async () => {
+  for (const dpr of [1, 1.5, 2]) {
+    const h = await harness({ cornerRadius: 10, reliefStrength: .3 });
+    h.window.devicePixelRatio = dpr;
+    h.state.scale = dpr * 2;
+    h.state.zoomFactor = 2;
+    const small = tile(1, 10, 20, 8, 6);
+    await paintLayout(h, [rootRect([1]), small]);
+    assert.deepEqual(paintedRadii(h, small), [3, 3, 3, 3]);
+    for (const paint of h.paths) {
+      for (const path of paint.path) {
+        if (path.op === 'roundRect') assert.ok(path.args[4].every(radius => radius >= 0));
+        if (path.op === 'arc') assert.ok(path.args[2] > 0);
+      }
+    }
+  }
+});
 
 test("updated layouts fill the map when unaccounted space is hidden", async () => {
   const h = await harness();

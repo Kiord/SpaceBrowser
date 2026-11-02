@@ -19,6 +19,7 @@ let previousVisibleNodes = new Set();
 let scanLabelsFrame = null;
 let scanLabelsRects;
 let scanLabelsSignature = "";
+let rectCornerMasks = new WeakMap();
 
 function flashNewRects(rects) {
   if (flashAnimationFrame != null) cancelAnimationFrame(flashAnimationFrame);
@@ -105,6 +106,7 @@ function drawTreemap(rects) {
     }
   }
   AppState.parentRectIndexes = parentRectIndexes;
+  prepareRectCorners(rects);
 
   for (let i = 0; i < rects.length; i++) {
     drawRect(rects[i], /*writeId*/true, ctx, i);
@@ -119,10 +121,10 @@ function clearRenderedHoverRect() {
 function drawHoverRect(ctx, rect, strength) {
   ctx.save();
   ctx.beginPath();
-  addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
+  addRectPath(ctx, rect);
   for (const childIndex of Array.isArray(rect.children) ? rect.children : []) {
     const child = AppState.rects?.[childIndex];
-    if (child) addRectPath(ctx, child.x, child.y, child.w, child.h);
+    if (child) addRectPath(ctx, child);
   }
   ctx.clip("evenodd");
   ctx.fillStyle = `rgba(255,255,255,${strength})`;
@@ -290,23 +292,33 @@ function drawRectRelief(ctx, rect, fillColor, strokeWidth) {
 
   ctx.save();
   ctx.beginPath();
-  addRectPath(ctx, rect.x, rect.y, rect.w, rect.h);
+  addRectPath(ctx, rect, 0.5 + strokeWidth / 2);
   ctx.clip();
   ctx.lineWidth = reliefWidth;
   ctx.lineCap = "butt";
   ctx.lineJoin = "miter";
 
+  const [tl, tr, br, bl] = cornerRadii(rect, reliefCenterInset);
+  // Follow the same inset outline as the border. Split the top-right and
+  // bottom-left arcs diagonally where the lit and shaded sides meet.
+  const diagonal = Math.SQRT1_2;
   ctx.beginPath();
-  ctx.moveTo(left, bottom);
-  ctx.lineTo(left, top);
-  ctx.lineTo(right, top);
+  ctx.moveTo(left + bl * (1 - diagonal), bottom - bl * (1 - diagonal));
+  if (bl) ctx.arc(left + bl, bottom - bl, bl, 3 * Math.PI / 4, Math.PI);
+  ctx.lineTo(left, top + tl);
+  if (tl) ctx.arc(left + tl, top + tl, tl, Math.PI, 3 * Math.PI / 2);
+  ctx.lineTo(right - tr, top);
+  if (tr) ctx.arc(right - tr, top + tr, tr, 3 * Math.PI / 2, 7 * Math.PI / 4);
   ctx.strokeStyle = lightColor;
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(right, top);
-  ctx.lineTo(right, bottom);
-  ctx.lineTo(left, bottom);
+  ctx.moveTo(right - tr * (1 - diagonal), top + tr * (1 - diagonal));
+  if (tr) ctx.arc(right - tr, top + tr, tr, 7 * Math.PI / 4, 2 * Math.PI);
+  ctx.lineTo(right, bottom - br);
+  if (br) ctx.arc(right - br, bottom - br, br, 0, Math.PI / 2);
+  ctx.lineTo(left + bl, bottom);
+  if (bl) ctx.arc(left + bl, bottom - bl, bl, Math.PI / 2, 3 * Math.PI / 4);
   ctx.strokeStyle = darkColor;
   ctx.stroke();
   ctx.restore();
@@ -354,12 +366,12 @@ function drawRect(rect, writeId, ctx, rectIndex) {
     : (rect.is_free_space || isRoot ? "#fff"
       : (rect.is_unaccounted ? "#d6d9dc" : (rect.is_small_files ? "#e6dac5" : palette[(rect.depth || 0) % palette.length])));
   ctx.fillStyle = fillColor;
-  fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
+  fillRoundedRect(ctx, rect);
 
   // stroke
   ctx.strokeStyle = "#222";
   ctx.lineWidth = STROKE_PX;
-  strokeRoundedRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+  strokeRoundedRect(ctx, rect, 0.5);
   drawRectRelief(ctx, rect, fillColor, STROKE_PX);
 
   //  ID buffer 
@@ -473,7 +485,7 @@ function reDrawRectByIndex(idx) {
   // 2) mask: start with rect, punch out child rects (r.children are rect indices)
   AppState.maskCtx.clearRect(x, y, w, h);
   AppState.maskCtx.fillStyle = 'rgba(0,0,0,1)';
-  fillRoundedRect(AppState.maskCtx, r.x, r.y, r.w, r.h);
+  fillRoundedRect(AppState.maskCtx, r);
 
   AppState.maskCtx.save();
   AppState.maskCtx.globalCompositeOperation = 'destination-out';
@@ -481,7 +493,7 @@ function reDrawRectByIndex(idx) {
   const childrenIdx = Array.isArray(r.children) ? r.children : [];
   for (let i = 0; i < childrenIdx.length; i++) {
     const cr = AppState.rects[childrenIdx[i]];
-    fillRoundedRect(AppState.maskCtx, cr.x, cr.y, cr.w, cr.h);
+    fillRoundedRect(AppState.maskCtx, cr);
   }
   AppState.maskCtx.restore();
 
@@ -530,29 +542,101 @@ function currentCornerRadius() {
   return AppearanceState.cornerRadius * getScale();
 }
 
-function addRectPath(ctx, x, y, w, h) {
-  const radius = currentCornerRadius();
-  if (radius === 0) ctx.rect(x, y, w, h);
-  else ctx.roundRect(x, y, w, h, radius);
+function prepareRectCorners(rects) {
+  rectCornerMasks = new WeakMap();
+  if (!currentCornerRadius()) return;
+
+  // Layout siblings overlap by one canvas pixel to hide hairline gaps. Index
+  // their edges so corner checks also catch T-junctions without pairwise scans.
+  const addEdge = (edges, coordinate, start, end, index) => {
+    const key = Math.round(coordinate);
+    if (!edges.has(key)) edges.set(key, []);
+    edges.get(key).push({ coordinate, start, end, index });
+  };
+  const sortEdges = edges => {
+    for (const entries of edges.values()) {
+      entries.sort((a, b) => a.start - b.start);
+      let maxEnd = -Infinity;
+      for (const entry of entries) entry.maxEnd = maxEnd = Math.max(maxEnd, entry.end);
+    }
+  };
+  const hasNeighbor = (edges, coordinate, position, index) => {
+    const key = Math.round(coordinate);
+    for (let offset = -1; offset <= 1; offset++) {
+      const entries = edges.get(key + offset);
+      if (!entries) continue;
+      let lo = 0, hi = entries.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (entries[mid].start <= position + 1) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo - 1; i >= 0 && entries[i].maxEnd >= position - 1; i--) {
+        const edge = entries[i];
+        if (edge.index !== index && edge.end >= position - 1 && Math.abs(edge.coordinate - coordinate) <= 1) return true;
+      }
+    }
+    return false;
+  };
+
+  for (const parent of rects) {
+    const children = (parent.children || []).filter(index => rects[index]?.w > 0 && rects[index]?.h > 0);
+    if (children.length < 2) continue;
+    const vertical = new Map(), horizontal = new Map();
+    for (const index of children) {
+      const { x, y, w, h } = rects[index];
+      addEdge(vertical, x, y, y + h, index);
+      addEdge(vertical, x + w, y, y + h, index);
+      addEdge(horizontal, y, x, x + w, index);
+      addEdge(horizontal, y + h, x, x + w, index);
+    }
+    sortEdges(vertical);
+    sortEdges(horizontal);
+    for (const index of children) {
+      const rect = rects[index];
+      const { x, y, w, h } = rect;
+      const corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+      let mask = 0;
+      corners.forEach(([cx, cy], corner) => {
+        if (!hasNeighbor(vertical, cx, cy, index) && !hasNeighbor(horizontal, cy, cx, index)) mask |= 1 << corner;
+      });
+      rectCornerMasks.set(rect, mask);
+    }
+  }
 }
 
-function fillRoundedRect(ctx, x, y, w, h) {
-  if (currentCornerRadius() === 0) {
+function cornerRadii(rect, inset = 0) {
+  // The visible root may still have a parent_id after navigating into a folder.
+  const mask = rect === AppState.rects?.[0] ? 0 : (rectCornerMasks.get(rect) ?? 15);
+  const radius = Math.max(0, Math.min(currentCornerRadius(), rect.w / 2, rect.h / 2) - inset);
+  return [1, 2, 4, 8].map(bit => mask & bit ? radius : 0);
+}
+
+function addRectPath(ctx, rect, inset = 0) {
+  const { x, y, w, h } = rect;
+  const radii = cornerRadii(rect, inset);
+  if (radii.some(radius => radius > 0)) ctx.roundRect(x + inset, y + inset, w - 2 * inset, h - 2 * inset, radii);
+  else ctx.rect(x + inset, y + inset, w - 2 * inset, h - 2 * inset);
+}
+
+function fillRoundedRect(ctx, rect) {
+  const { x, y, w, h } = rect;
+  if (!cornerRadii(rect).some(radius => radius > 0)) {
     ctx.fillRect(x, y, w, h);
     return;
   }
   ctx.beginPath();
-  addRectPath(ctx, x, y, w, h);
+  addRectPath(ctx, rect);
   ctx.fill();
 }
 
-function strokeRoundedRect(ctx, x, y, w, h) {
-  if (currentCornerRadius() === 0) {
-    ctx.strokeRect(x, y, w, h);
+function strokeRoundedRect(ctx, rect, inset) {
+  if (!cornerRadii(rect, inset).some(radius => radius > 0)) {
+    ctx.strokeRect(rect.x + inset, rect.y + inset, rect.w - 2 * inset, rect.h - 2 * inset);
     return;
   }
   ctx.beginPath();
-  addRectPath(ctx, x, y, w, h);
+  addRectPath(ctx, rect, inset);
   ctx.stroke();
 }
 
