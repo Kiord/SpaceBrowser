@@ -34,6 +34,35 @@ async function harness() {
 
 const rect = id => ({ node_id: id, parent_id: null, x: id, y: 0, w: 8, h: 8, children: [] });
 
+test("updated layouts fill the map when unaccounted space is hidden", async () => {
+  const h = await harness();
+  h.state.profile = { showUnaccounted: true };
+  const shown = [
+    { ...rect(0), x: 0, y: 0, w: 800, h: 600, children: [1, 2, 3] },
+    { ...rect(1), parent_id: 0, x: 5, y: 20, w: 350, h: 570 },
+    { ...rect(-2), parent_id: 0, is_unaccounted: true, x: 355, y: 20, w: 150, h: 570 },
+    { ...rect(-1), parent_id: 0, is_free_space: true, x: 505, y: 20, w: 290, h: 570 },
+  ];
+  const first = h.ui.redraw();
+  h.requests[0].resolve(shown);
+  await first;
+  assert.equal(h.painted.some(p => p.fill === "#d6d9dc"), true);
+  h.painted.length = 0;
+  h.state.profile.showUnaccounted = false;
+  const hidden = [
+    { ...shown[0], children: [1, 2] },
+    { ...shown[1], w: 400 },
+    { ...shown[3], x: 405, w: 390 },
+  ];
+  const second = h.ui.redraw();
+  h.requests[1].resolve(hidden);
+  await second;
+  assert.equal(h.painted.some(p => p.fill === "#d6d9dc"), false);
+  assert.equal(h.painted.some(p => p.name === "color" && p.args?.[0] === 5 && p.args[2] === 400), true);
+  assert.equal(h.painted.some(p => p.name === "color" && p.args?.[0] === 405 && p.args[2] === 390), true);
+  assert.equal(h.state.rects, hidden);
+});
+
 test("breadcrumb context selection replaces the group and repaints visible selections", async () => {
   const h = await harness();
   h.state.rects = [rect(2), rect(3)];
@@ -92,7 +121,8 @@ test("an older layout response cannot overwrite or paint over the latest redraw"
   const latest = [rect(2)];
   h.requests[1].resolve(latest);
   await second;
-  assert.equal(h.requests[1].args.at(-1), 5);
+  assert.equal(h.requests[1].args[4], 5);
+  assert.equal(h.requests[1].args.length, 5);
   const paints = h.painted.length;
   h.requests[0].resolve([rect(1)]);
   await first;

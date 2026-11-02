@@ -32,18 +32,21 @@ type Rect struct {
 	ParentID *int  `json:"parent_id,omitempty"`
 	Children []int `json:"children,omitempty"` // indices into THIS rects array
 
-	FullPath       string `json:"full_path"`
-	Name           string `json:"name"`
-	Size           int64  `json:"size"`
-	IsFolder       bool   `json:"is_folder"`
-	ScanIncomplete bool   `json:"scan_incomplete,omitempty"`
-	IsTrashRoot    bool   `json:"is_trash_root,omitempty"`
-	IsInTrash      bool   `json:"is_in_trash,omitempty"`
-	IsFree         bool   `json:"is_free_space"`
-	IsSmallFiles   bool   `json:"is_small_files"`
-	SmallFileCount int64  `json:"small_file_count,omitempty"`
-	SmallFileLimit int64  `json:"small_file_limit,omitempty"`
-	Depth          int    `json:"depth"`
+	FullPath       string          `json:"full_path"`
+	Name           string          `json:"name"`
+	Size           int64           `json:"size"`
+	IsFolder       bool            `json:"is_folder"`
+	ScanIncomplete bool            `json:"scan_incomplete,omitempty"`
+	IsTrashRoot    bool            `json:"is_trash_root,omitempty"`
+	IsInTrash      bool            `json:"is_in_trash,omitempty"`
+	IsFree         bool            `json:"is_free_space"`
+	IsUnaccounted  bool            `json:"is_unaccounted,omitempty"`
+	SpaceUsage     *ScanSpaceUsage `json:"space_usage,omitempty"`
+	IsScanRoot     bool            `json:"is_scan_root,omitempty"`
+	IsSmallFiles   bool            `json:"is_small_files"`
+	SmallFileCount int64           `json:"small_file_count,omitempty"`
+	SmallFileLimit int64           `json:"small_file_limit,omitempty"`
+	Depth          int             `json:"depth"`
 
 	// on root rect when scanning a mount
 	DiskTotal int64 `json:"disk_total,omitempty"`
@@ -172,6 +175,7 @@ func emitRect(out *[]Rect, n *Node, x, y, w, h float64) int {
 		IsFolder:       n.IsFolder,
 		ScanIncomplete: n.ScanIncomplete,
 		IsFree:         n.IsFreeSpace,
+		IsUnaccounted:  n.IsUnaccounted,
 		IsSmallFiles:   n.IsSmallFiles,
 		SmallFileCount: n.SmallFileCount,
 		SmallFileLimit: n.SmallFileLimit,
@@ -350,6 +354,11 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, pa
 		// Decide emission by FINAL rounded pixel size
 		rw, rh := roundedWH(bx+0.5*negPad, by+0.5*negPad, bw, bh)
 		if rw >= treemapMinSidePx && rh >= treemapMinSidePx {
+			if n.IsSpaceGroup {
+				emitSpaceGroup(out, n, bx+0.5*negPad, by+0.5*negPad, bw, bh, parentRect)
+				offset += breadth
+				continue
+			}
 			// Emit child rect and record its index under the parent
 			childIdx := emitRect(out, n, bx+0.5*negPad, by+0.5*negPad, bw, bh)
 			(*out)[parentRect].Children = append((*out)[parentRect].Children, childIdx)
@@ -363,5 +372,41 @@ func layoutRow(nodes []*Node, areas []float64, x, y, w, h float64, depth int, pa
 		}
 		// Always advance offset so invisible children still consume space (blank area)
 		offset += breadth
+	}
+}
+
+// emitSpaceGroup partitions one layout item into adjacent passive blocks. The
+// group itself is invisible, so both blocks belong directly to the scan root.
+func emitSpaceGroup(out *[]Rect, group *Node, x, y, w, h float64, parentRect int) {
+	offset := 0.0
+	for index, child := range group.Children {
+		fraction := float64(child.Size) / float64(group.Size)
+		cx, cy, cw, ch := x, y, w, h
+		if w >= h {
+			cx, cw = x+offset*w, w*fraction
+			if index > 0 {
+				cx -= 0.5
+				cw += 0.5
+			}
+			if index < len(group.Children)-1 {
+				cw += 0.5
+			}
+		} else {
+			cy, ch = y+offset*h, h*fraction
+			if index > 0 {
+				cy -= 0.5
+				ch += 0.5
+			}
+			if index < len(group.Children)-1 {
+				ch += 0.5
+			}
+		}
+		// Match ordinary siblings' one-pixel overlap so their border strokes
+		// share the same pixels instead of making a double-width divider.
+		if rw, rh := roundedWH(cx, cy, cw, ch); rw >= treemapMinSidePx && rh >= treemapMinSidePx {
+			index := emitRect(out, child, cx, cy, cw, ch)
+			(*out)[parentRect].Children = append((*out)[parentRect].Children, index)
+		}
+		offset += fraction
 	}
 }

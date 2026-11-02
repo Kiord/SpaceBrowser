@@ -18,6 +18,7 @@ const (
 	scanSkipNonRegular
 	scanSkipDuplicateIdentity
 	scanSkipRepeatedDirectory
+	scanSkipNestedVolume
 	scanSkipReasonCount
 )
 
@@ -29,6 +30,7 @@ var scanSkipLabels = [scanSkipReasonCount]string{
 	"non-regular files",
 	"deduplicated hard-link paths",
 	"repeated directories",
+	"nested mounted volumes",
 }
 
 type scanErrorReason uint8

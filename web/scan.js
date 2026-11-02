@@ -13,7 +13,6 @@ import { closePathAutocomplete } from "./path-autocomplete.js";
 let redraw = async () => {};
 let repaintScanLabels = () => {};
 let hideContextMenu = () => {};
-let scanReportPath = "";
 let jobs = [];
 let selectedID = null;
 let selectedKey = "";
@@ -95,7 +94,7 @@ function presentJobs() {
   pruneSavedViews();
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
-    job => enqueue(() => QueueScan(job.path))), AppState.scanRootPath || "", releaseJob);
+    job => enqueue(() => QueueScan(job.path)), job => openScanReport(job.report?.reportPath)), AppState.scanRootPath || "", releaseJob);
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();
@@ -138,7 +137,6 @@ async function applyView(view, token) {
     }
     AppState.fileCount = view.tree.fileCount;
     AppState.dirCount = view.tree.dirCount;
-    showScanWarning(view.job.report);
     previousViews.delete(selectedID);
   }
   applyJobState(view.job);
@@ -168,7 +166,6 @@ async function selectJob(id, reveal = true) {
   if (view) {
     emptyPath = view.job.path;
     AppState.scanRootPath = view.job.path;
-    clearScanWarning();
   }
   if (reveal) hideLocationSelector();
   presentJobs();
@@ -185,7 +182,6 @@ async function releaseJob(job) {
       emptyPath = "";
       AppState.scanRootPath = "";
       clearView();
-      clearScanWarning();
       showLocationSelector();
     }
     await pollJobs();
@@ -201,7 +197,7 @@ async function pollJobs() {
   try {
     jobs = await GetScanJobs();
     if (selectedID != null && !jobs.some(job => job.id === selectedID)) {
-      selectedID = null; selectedKey = ""; selectionToken++; clearView(); clearScanWarning();
+      selectedID = null; selectedKey = ""; selectionToken++; clearView();
       emptyPath = "";
       AppState.scanRootPath = "";
       AppState.liveScanPreview = false;
@@ -264,7 +260,6 @@ export async function openLocation(requestedPath = byId("pathInput").value?.trim
     selectedKey = "";
     selectionToken++;
     clearView();
-    clearScanWarning();
     AppState.scanRootPath = path;
     AppState.liveScanPreview = false;
     emptyPath = path;
@@ -281,38 +276,10 @@ export async function refreshSelectedFolders() {
   await enqueue(() => QueueFolderRefresh(targets, tracked));
 }
 
-function clearScanWarning() {
-  scanReportPath = "";
-  byId("scanWarningIndicator").hidden = true;
-}
-
-function showScanWarning(report) {
-  const errorCount = Number(report?.errorCount || 0);
-  if (errorCount <= 0) {
-    clearScanWarning();
-    return;
-  }
-
-  scanReportPath = String(report?.reportPath || "");
-  const details = String(report?.details || "").replace(/=(\d+)/g, ": $1");
-  byId("scanWarningSummary").textContent = `${errorCount} scan ${errorCount === 1 ? "issue was" : "issues were"} recorded${details ? `: ${details}` : ""}.`;
-  const saveError = byId("scanReportSaveError");
-  saveError.hidden = !report?.saveError;
-  saveError.textContent = report?.saveError
-    ? scanReportPath
-      ? `The report was saved, but a follow-up operation failed: ${report.saveError}`
-      : `The scan report could not be saved: ${report.saveError}`
-    : "";
-  const reportButton = byId("viewScanReportButton");
-  reportButton.hidden = !scanReportPath;
-  reportButton.title = scanReportPath;
-  byId("scanWarningIndicator").hidden = false;
-}
-
-async function openScanReport() {
-  if (!scanReportPath) return;
+async function openScanReport(path) {
+  if (!path) return;
   try {
-    await OpenPath(scanReportPath);
+    await OpenPath(path);
   } catch (error) {
     logError("opening scan report failed:", error);
     showErrorToast(error);
@@ -329,7 +296,6 @@ export function initScan(options) {
       return enqueue(() => QueueScan(emptyPath));
     }
   });
-  byId("viewScanReportButton").addEventListener("click", openScanReport);
   addControlEventListeners(event => {
     if (!shortcutCanRun(event) || !eventMatchesShortcut(event, AppState.profile?.controls?.refresh)) return;
     event.preventDefault(); refreshSelectedFolders();

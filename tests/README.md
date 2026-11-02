@@ -19,6 +19,8 @@ triggered explicitly, without real-time sleeps.
 - `scan.test.mjs`: clearing old results, cancellation, duplicate requests,
   cleanup, validation errors, and progress responses arriving after completion
   or after a new scan starts.
+- `scan-status.test.mjs`: scan actions, recorded dates, and per-location report links.
+- `notifications.test.mjs`: file details and explanations of unaccounted space.
 - `selection.test.mjs`: replace/toggle selection, context-menu selection,
   selection reconciliation after layout changes, and nested deletion targets.
 - `treemap-view.test.mjs`: out-of-order layout responses, navigation/resize/scale

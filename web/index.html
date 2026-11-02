@@ -29,21 +29,6 @@
                 <div id="pathSuggestions" class="path-suggestions" role="listbox" aria-label="Folder suggestions" hidden></div>
               </div>
               <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
-          <div id="scanWarningIndicator" class="scan-warning-indicator" hidden>
-            <span class="scan-warning-symbol" tabindex="0" role="img" aria-label="The last scan completed with issues">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3 22 21H2z"></path>
-                <path d="M12 9v6M12 18h.01"></path>
-              </svg>
-            </span>
-            <div class="scan-warning-popover" role="tooltip">
-              <strong>Scan completed with issues</strong>
-              <span id="scanWarningSummary"></span>
-              <span id="scanReportSaveError" class="scan-report-save-error" hidden></span>
-              <button id="viewScanReportButton" class="scan-report-link" type="button">View scan report</button>
-            </div>
-          </div>
-
             </div>
       <div class="navigation-section" aria-label="Treemap navigation">
         <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Mouse Back" disabled>
@@ -198,6 +183,7 @@
       <span id="rectToastScanned"></span>
       <span id="rectToastCreationDate" hidden></span>
       <span id="rectToastCounts" hidden></span>
+      <span id="rectToastExplanation" hidden></span>
     </div>
   </div>
 
@@ -240,9 +226,9 @@
               <input id="settingsMinFileSize" type="number" min="0" step="any" required>
               <select id="settingsMinFileSizeUnit" aria-label="Small-file threshold unit">
                 <option value="B">B</option>
-                <option value="KB">KB</option>
-                <option value="MB">MB</option>
-                <option value="GB">GB</option>
+                <option value="KB">KiB</option>
+                <option value="MB">MiB</option>
+                <option value="GB">GiB</option>
               </select>
             </div>
           </div>
@@ -265,6 +251,10 @@
           <label class="settings-check">
             <input id="settingsShowBreadcrumbs" type="checkbox" checked aria-controls="breadcrumbs">
             <span>Show breadcrumbs</span>
+          </label>
+          <label class="settings-check" title="Show occupied space not attributed to scanned files. Hiding this block rescales the remaining rectangles to fill the map.">
+            <input id="settingsShowUnaccounted" type="checkbox">
+            <span>Show unaccounted space</span>
           </label>
           <div class="tooltip-settings-row">
             <label class="settings-check">

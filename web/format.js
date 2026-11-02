@@ -40,7 +40,7 @@ export function detailedByteSize(bytes) {
 
 export function formatSize(bytes, fractionDigits = null) {
   if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
   const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   const value = bytes / Math.pow(1024, index);
   const digits = fractionDigits ?? (value < 10 ? 1 : 0);

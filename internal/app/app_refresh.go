@@ -47,7 +47,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 			a.store.mu.RUnlock()
 			return nil, fmt.Errorf("selected item is not the expected filesystem folder")
 		}
-		requiresRootScan = requiresRootScan || subtreeHasSharedAllocation(node) || node.HasDirectoryAliases
+		requiresRootScan = requiresRootScan || subtreeHasSharedAllocation(node) || node.HasDirectoryAliases || node.HasNestedVolumes
 	}
 	rootTarget := FolderRefreshTarget{NodeID: a.store.root.ID, Path: a.store.root.FullPath}
 	storeGeneration := a.store.generation
@@ -83,7 +83,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	// Shared allocations and omitted directory aliases depend on paths outside
 	// the selected boundaries. Preserve the original root's accounting scope.
 	if requiresRootScan {
-		a.logger.Infof("refresh requires a full scan to account for shared files or directory aliases")
+		a.logger.Infof("refresh requires a full scan to account for shared files, directory aliases or volume boundaries")
 		reduced = []FolderRefreshTarget{rootTarget}
 	}
 	ctx, generation := a.beginScan(reduced[0].Path)
@@ -101,6 +101,18 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		target := reduced[i]
 		var files, dirs int64
 		scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+		scopeNote := configureScanVolume(scanner, rootTarget.Path)
+		outsideVolume := false
+		for mount := range scanner.skippedMounts {
+			outsideVolume = outsideVolume || cachePathWithin(target.Path, mount)
+		}
+		if target.NodeID != rootTarget.NodeID && outsideVolume {
+			// A directory can become a mount point after the original scan.
+			// Rebuild the parent volume instead of importing the other disk.
+			reduced = []FolderRefreshTarget{rootTarget}
+			pending, report, i = nil, ScanReportSnapshot{}, -1
+			continue
+		}
 		scanner.requireLinkCounts = target.NodeID != rootTarget.NodeID
 		scanner.ReportAllErrors(true)
 		a.attachScanner(generation, scanner)
@@ -121,6 +133,15 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 			continue
 		}
 		part := scanner.Report()
+		if target.NodeID == rootTarget.NodeID {
+			var volume *disk.UsageStat
+			if a.filesystem.IsMountRoot(rootTarget.Path) {
+				volume, _ = disk.Usage(rootTarget.Path)
+			}
+			root.SpaceUsage = scanSpaceUsage(root, part, volume, scopeNote, time.Now())
+			root.SpaceUsage.VolumeScan = a.filesystem.IsMountRoot(rootTarget.Path)
+			root.SpaceUsage.VolumeScope = scanVolumeScopeKey(scanner, scopeNote)
+		}
 		for j, count := range part.Errors {
 			report.Errors[j] += count
 		}
@@ -182,6 +203,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		}
 	}
 	totalSize := a.store.root.Size
+	spaceUsage := a.store.root.SpaceUsage
 	a.scanResultPublished = true
 	if volumeUsage != nil {
 		a.store.diskTotal, a.store.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
@@ -189,7 +211,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	a.store.mu.Unlock()
 	a.scanMu.Unlock()
 	a.logScanReport(report)
-	reportInfo := a.persistScanReport(rootTarget.Path, started, time.Since(started), profile, report, int64(result.FileCount), int64(result.DirCount), totalSize)
+	reportInfo := a.persistScanReport(rootTarget.Path, started, time.Since(started), profile, report, int64(result.FileCount), int64(result.DirCount), totalSize, spaceUsage)
 	a.logger.Infof("folder refresh completed in %s: %d folders", time.Since(started).Round(time.Millisecond), len(reduced))
 	refreshedPaths := make([]string, 0, len(reduced))
 	for _, target := range reduced {

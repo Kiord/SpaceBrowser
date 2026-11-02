@@ -12,6 +12,14 @@ async function harness() {
   return { state, ui: await loadUI("selection.js", { "./state.js": { AppState: state } }) };
 }
 
+test("unaccounted space is passive and cannot become a file selection", async () => {
+  const { state, ui } = await harness();
+  state.rects = [{ node_id: -2, is_unaccounted: true }];
+  ui.selectRect(0);
+  assert.equal(ui.isPassiveRect(state.rects[0]), true);
+  assert.equal(ui.getSelectedRects().length, 0);
+});
+
 test("normal clicks replace selection; modifier clicks add and toggle", async () => {
   const { state, ui } = await harness();
   ui.selectRect(0);

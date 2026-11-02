@@ -46,6 +46,28 @@ async function tooltipHarness(fields, getDetails = async () => ({})) {
   return { ui, byId, state, hover, icons: () => icons };
 }
 
+test("unaccounted-space hover explains occupied storage without requesting file details", async () => {
+  let requests = 0;
+  const h = await tooltipHarness({ creationDate: true, counts: true }, async () => { requests++; return {}; });
+  const file = h.state.rects[0];
+  h.state.profile.showUnaccounted = true;
+  h.state.rects = [{ node_id: -2, is_unaccounted: true, size: 30, space_usage: { unreadableDirectories: 589 } }];
+  h.hover();
+  assert.equal(h.byId("rectToast").hidden, false);
+  assert.equal(h.byId("rectToastName").textContent, "Unaccounted space");
+  assert.match(h.byId("rectToastExplanation").textContent, /Used space not attributed to files/);
+  assert.match(h.byId("rectToastExplanation").textContent, /589 unreadable directories/);
+  assert.equal(h.byId("rectToastIcon").hidden, true);
+  assert.equal(h.icons(), 0);
+  assert.equal(requests, 0);
+  h.state.profile.showUnaccounted = false;
+  h.hover();
+  assert.equal(h.byId("rectToast").hidden, true);
+  h.state.rects = [file];
+  h.hover();
+  assert.equal(h.byId("rectToastExplanation").hidden, true);
+});
+
 test("tooltip defaults keep five fields visible without fetching optional details", async () => {
   let requests = 0;
   const h = await tooltipHarness(undefined, async () => { requests++; return {}; });

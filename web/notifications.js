@@ -34,7 +34,8 @@ function cacheAssociatedIcon(key, value) {
 }
 
 function rectSupportsDetailsToast(rect) {
-  return !!(rect?.full_path && rect.parent_id != null && !rect.is_free_space);
+  return rect?.is_unaccounted ? !!AppState.profile?.showUnaccounted
+    : !!(rect?.full_path && rect.parent_id != null && !rect.is_free_space);
 }
 
 function associatedIconKey(rect) {
@@ -118,6 +119,23 @@ function showRectToast(rect, rectIndex, clientX, clientY) {
   const session = AppState.navSession;
   hoveredRect = rect;
   hoveredRectIndex = rectIndex;
+  const explanation = byId("rectToastExplanation");
+  explanation.hidden = !rect.is_unaccounted;
+  if (rect.is_unaccounted) {
+    for (const id of Object.values(tooltipFieldIds)) byId(id).hidden = true;
+    byId("rectToastPath").hidden = byId("rectToastSize").hidden = false;
+    byId("rectToastPathPrefix").textContent = "";
+    byId("rectToastName").textContent = "Unaccounted space";
+    byId("rectToastSize").textContent = `${formatSize(rect.size)} (${detailedByteSize(rect.size)})`;
+    const usage = AppState.rects?.[0]?.space_usage;
+    explanation.textContent = "Used space not attributed to files. May include inaccessible or excluded files, snapshots, or filesystem data.";
+    if (usage?.unreadableDirectories) {
+      explanation.textContent += ` ${usage.unreadableDirectories.toLocaleString()} unreadable ${usage.unreadableDirectories === 1 ? "directory" : "directories"}.`;
+    }
+    byId("rectToast").hidden = false;
+    placeRectToast(clientX, clientY);
+    return;
+  }
   const fields = { ...tooltipDefaults, ...AppState.profile?.tooltipFields };
   for (const [field, id] of Object.entries(tooltipFieldIds)) {
     byId(id).hidden = !fields[field] || (field === "counts" && !rect.is_folder);
@@ -204,7 +222,7 @@ export function showToastAt(x, y, message = "Copied path", duration = 1000, vari
   toast.style.opacity = "1";
   toast.style.transform = "translateY(0)";
   clearTimeout(toast._hideTimer);
-  toast._hideTimer = setTimeout(() => {
+  toast._hideTimer = duration == null ? null : setTimeout(() => {
     if (revision !== toastRevision) return;
     toast.style.opacity = "0";
     toast.style.transform = "translateY(6px)";

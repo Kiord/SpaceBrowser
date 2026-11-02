@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 19
+const settingsFileVersion = 20
 
 type persistedSettings struct {
 	Version             int                `json:"version"`
@@ -20,6 +20,7 @@ type persistedSettings struct {
 	SkipNetworkFS       bool               `json:"skipNetworkFS"`
 	ShowTooltips        bool               `json:"showTooltips"`
 	ShowBreadcrumbs     bool               `json:"showBreadcrumbs"`
+	ShowUnaccounted     bool               `json:"showUnaccounted"`
 	TooltipDelayMS      int                `json:"tooltipDelayMs"`
 	TooltipFields       TooltipFields      `json:"tooltipFields"`
 	AllowDelete         bool               `json:"allowDelete"`
@@ -168,6 +169,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		SkipNetworkFS:        saved.SkipNetworkFS,
 		ShowTooltips:         showTooltips,
 		ShowBreadcrumbs:      showBreadcrumbs,
+		ShowUnaccounted:      saved.ShowUnaccounted,
 		TooltipDelayMS:       tooltipDelayMS,
 		TooltipFields:        tooltipFields,
 		AllowDelete:          allowDelete,
@@ -189,6 +191,7 @@ func saveSettings(path string, profile Profile) error {
 		SkipNetworkFS:       profile.SkipNetworkFS,
 		ShowTooltips:        profile.ShowTooltips,
 		ShowBreadcrumbs:     profile.ShowBreadcrumbs,
+		ShowUnaccounted:     profile.ShowUnaccounted,
 		TooltipDelayMS:      profile.TooltipDelayMS,
 		TooltipFields:       profile.TooltipFields,
 		AllowDelete:         profile.AllowDelete,

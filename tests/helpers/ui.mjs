@@ -19,7 +19,7 @@ export async function loadUI(file, dependencies, globals = {}) {
   const link = async name => {
     if (linked.has(name)) return linked.get(name);
     if (name === "./selection.js" && !Object.hasOwn(dependencies, name)) {
-      const source = await readFile(new URL("../../web/selection.js", import.meta.url), "utf8");
+      const source = await readFile(new URL(`../../web/${name.slice(2)}`, import.meta.url), "utf8");
       const selected = new vm.SourceTextModule(source, { context, identifier: name });
       linked.set(name, selected);
       await selected.link(link);

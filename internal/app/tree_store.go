@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // TreeStore owns the currently scanned tree and its dense node index.
@@ -160,10 +161,10 @@ func (s *TreeStore) UpdateDiskUsage(total, free int64) bool {
 }
 
 func (s *TreeStore) Layout(nodeID, width, height int, scale float64, showFreeSpace bool) ([]Rect, error) {
-	return s.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, treemapPad)
+	return s.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, false, treemapPad)
 }
 
-func (s *TreeStore) LayoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace bool, boxPadding float64) ([]Rect, error) {
+func (s *TreeStore) LayoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace, showUnaccounted bool, boxPadding float64) ([]Rect, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -200,7 +201,52 @@ func (s *TreeStore) LayoutWithBoxPadding(nodeID, width, height int, scale float6
 			sort.Slice(viewRoot.Children, func(i, j int) bool { return viewRoot.Children[i].Size > viewRoot.Children[j].Size })
 		}
 	}
-	return ComputeTreemapRectsWithBoxPadding(&viewRoot, float64(width), float64(height), scale, boxPadding), nil
+	if node == s.root {
+		if usage := s.root.SpaceUsage; usage != nil && usage.VolumeAvailable && !usage.Stale && usage.ScopeNote == "" && usage.Difference > 0 {
+			// Squarify free and unaccounted space as one rectangle, then subdivide
+			// it without folder padding. Hidden blocks have no layout weight, so
+			// the remaining rectangles expand to fill the available area.
+			group := &Node{IsSpaceGroup: true, IsFreeSpace: true}
+			if showUnaccounted {
+				group.Children = append(group.Children, &Node{
+					ID: -2, ParentID: node.ID, Name: "Unaccounted space", Size: usage.Difference,
+					IsUnaccounted: true, Depth: node.Depth + 1, ScanTime: node.ScanTime,
+				})
+				group.Size = usage.Difference
+			}
+			children := make([]*Node, 0, len(viewRoot.Children)+1)
+			for _, child := range viewRoot.Children {
+				if !child.IsFreeSpace {
+					children = append(children, child)
+				}
+			}
+			// Keep the map's numerator and denominator from the same measurement.
+			// Live free-space updates must not distort a saved scan's proportions.
+			viewRoot.DiskTotal, viewRoot.DiskFree = usage.VolumeTotal, usage.VolumeTotal-usage.VolumeUsed
+			if showFreeSpace && viewRoot.DiskFree > 0 {
+				group.Children = append(group.Children, &Node{
+					ID: -1, ParentID: node.ID, Name: "[Free Disk Space]", IsFreeSpace: true,
+					Size: viewRoot.DiskFree, DiskTotal: usage.VolumeTotal, Depth: node.Depth + 1,
+				})
+				group.Size += viewRoot.DiskFree
+			}
+			viewRoot.Children = children
+			if group.Size > 0 {
+				viewRoot.Children = append(viewRoot.Children, group)
+			}
+			sort.Slice(viewRoot.Children, func(i, j int) bool { return viewRoot.Children[i].Size > viewRoot.Children[j].Size })
+		}
+	}
+	rects := ComputeTreemapRectsWithBoxPadding(&viewRoot, float64(width), float64(height), scale, boxPadding)
+	if len(rects) > 0 && s.root != nil {
+		rects[0].SpaceUsage, rects[0].IsScanRoot = s.root.SpaceUsage, node == s.root
+		if rects[0].SpaceUsage == nil {
+			legacy := scanSpaceUsage(s.root, ScanReportSnapshot{}, nil, "This saved scan has no recorded volume comparison. Rescan to measure it.", time.Unix(s.root.ScanTime, 0))
+			legacy.CoverageKnown = false
+			rects[0].SpaceUsage = legacy
+		}
+	}
+	return rects, nil
 }
 
 func (s *TreeStore) DeleteNode(nodeID int, isTrashRoot, isInTrash func(string) bool, moveToTrash func(string) error) (DeleteResult, error) {
@@ -246,6 +292,7 @@ func (s *TreeStore) deleteNode(nodeID int, isTrashRoot, isInTrash func(string) b
 	s.ensureOwnedLocked()
 	node := s.nodes[nodeID]
 	s.generation++
+	s.markSpaceUsageStaleLocked()
 
 	parent := s.nodes[node.ParentID]
 	for index, child := range parent.Children {
@@ -291,6 +338,7 @@ func (s *TreeStore) replaceSubtreeLocked(nodeID int, scanned *Node, scannedFiles
 	}
 	s.ensureOwnedLocked()
 	s.generation++
+	s.markSpaceUsageStaleLocked()
 	target = s.nodes[nodeID]
 
 	oldSize := target.Size
@@ -308,6 +356,10 @@ func (s *TreeStore) replaceSubtreeLocked(nodeID int, scanned *Node, scannedFiles
 	target.SmallFileCount = 0
 	target.SmallFileLimit = 0
 	target.FullPath = scanned.FullPath
+	target.HasDirectoryAliases, target.HasNestedVolumes = scanned.HasDirectoryAliases, scanned.HasNestedVolumes
+	if target == s.root {
+		target.SpaceUsage = scanned.SpaceUsage
+	}
 	target.ModTime = scanned.ModTime
 	target.ScanTime = scanned.ScanTime
 	target.LinkCount = scanned.LinkCount
@@ -410,6 +462,7 @@ func (s *TreeStore) EmptyTrashNode(nodeID int, isTrashRoot func(string) bool, em
 	s.ensureOwnedLocked()
 	node := s.nodes[nodeID]
 	s.generation++
+	s.markSpaceUsageStaleLocked()
 
 	emptiedSize := node.Size
 	rescanRequired := subtreeHasSharedAllocation(node)

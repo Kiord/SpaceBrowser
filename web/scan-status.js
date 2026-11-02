@@ -1,4 +1,5 @@
 import { formatDuration } from "./format.js";
+import { showToastAt } from "./notifications.js";
 
 export const pendingScan = job => ["queued", "running", "paused"].includes(job?.state);
 
@@ -27,6 +28,22 @@ export function updateScanStatus(refs, job) {
   refs.date.hidden = !done || !job.scannedAt;
   refs.date.textContent = job.scannedAt ? `${new Date(job.scannedAt).toLocaleString()}${job.saving ? " · Saving…" : job.cacheError ? " · Not saved" : ""}` : "";
   refs.date.title = job.cacheError || (job.cached ? "Saved scan" : "");
+  refs.report.hidden = !done || !job.report?.reportPath;
+  refs.report.title = job.report?.reportPath || "";
+  const errorCount = Number(job.report?.errorCount || 0);
+  const warnings = [];
+  if (errorCount > 0) {
+    const details = String(job.report?.details || "").replace(/=(\d+)/g, ": $1");
+    warnings.push(`${errorCount} scan ${errorCount === 1 ? "issue was" : "issues were"} recorded${details ? `: ${details}` : ""}.`);
+  }
+  if (job.report?.saveError) {
+    warnings.push(job.report.reportPath
+      ? `The report was saved, but a follow-up operation failed: ${job.report.saveError}`
+      : `The scan report could not be saved: ${job.report.saveError}`);
+  }
+  refs.warning.hidden = !done || !warnings.length;
+  refs.warning.setAttribute("aria-label", warnings.join("\n"));
+  refs.reportGroup.hidden = refs.report.hidden && refs.warning.hidden;
   const action = done ? "Rescan" : paused ? "Resume" : job.state === "running" ? "Pause" : job.state === "failed" ? "Retry" : "Scan";
   refs.primary.textContent = action;
   refs.primary.setAttribute("aria-label", `${action} ${job.path || "location"}`);
@@ -34,17 +51,30 @@ export function updateScanStatus(refs, job) {
   refs.cancel.hidden = !active;
 }
 
-export function createTileScanStatus(onPause, onCancel, onScan) {
+export function createTileScanStatus(onPause, onCancel, onScan, onReport) {
   const container = document.createElement("div");
   container.className = "tile-scan-status";
-  container.innerHTML = `<div class="compact-scan-label" data-scan="label"><span data-scan="time"></span><span data-scan="percent"></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span><span class="scan-snapshot-date" data-scan="date"></span><div class="tile-scan-actions"><button type="button" class="tile-scan-primary" data-scan="primary">Scan</button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan">Cancel</button></div>`;
+  container.innerHTML = `<div class="compact-scan-label" data-scan="label"><span data-scan="time"></span><span data-scan="percent"></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span><div class="scan-snapshot-meta"><span class="scan-snapshot-date" data-scan="date"></span><span class="scan-report-meta" data-scan="reportGroup"><button type="button" class="scan-report-link" data-scan="report" hidden>Scan report</button><span class="scan-warning-symbol" data-scan="warning" tabindex="0" role="img" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2z"></path><path d="M12 9v6M12 18h.01"></path></svg></span></span></div><div class="tile-scan-actions"><button type="button" class="tile-scan-primary" data-scan="primary">Scan</button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan">Cancel</button></div>`;
   const refs = { container };
-  for (const name of ["label", "time", "percent", "progress", "bar", "date", "primary", "cancel"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
+  for (const name of ["label", "time", "percent", "progress", "bar", "date", "reportGroup", "report", "warning", "primary", "cancel"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
   let current, busy = false;
+  let dismissWarning = null, warningMessage = "";
+  const hideWarning = () => { dismissWarning?.(); dismissWarning = null; };
+  const showWarning = () => {
+    hideWarning();
+    if (refs.warning.hidden) return;
+    const bounds = refs.warning.getBoundingClientRect();
+    warningMessage = refs.warning.getAttribute("aria-label");
+    dismissWarning = showToastAt(bounds.left - 8, bounds.bottom, warningMessage, null);
+  };
   const render = () => {
     if (!current) return;
     updateScanStatus(refs, current);
     refs.primary.disabled = refs.cancel.disabled = busy;
+    if (dismissWarning) {
+      if (refs.warning.hidden) hideWarning();
+      else if (warningMessage !== refs.warning.getAttribute("aria-label")) showWarning();
+    }
   };
   const perform = async handler => {
     if (busy || !current) return;
@@ -58,5 +88,14 @@ export function createTileScanStatus(onPause, onCancel, onScan) {
     return perform(job => ["running", "paused"].includes(job.state) ? onPause(job) : onScan(job));
   });
   refs.cancel.addEventListener("click", () => pendingScan(current) && perform(onCancel));
+  refs.report.addEventListener("click", event => {
+    event.stopPropagation();
+    if (current?.state === "completed" && current.report?.reportPath) return onReport?.(current);
+  });
+  refs.warning.addEventListener("click", event => event.stopPropagation());
+  refs.warning.addEventListener("mouseenter", showWarning);
+  refs.warning.addEventListener("mouseleave", hideWarning);
+  refs.warning.addEventListener("focus", showWarning);
+  refs.warning.addEventListener("blur", hideWarning);
   return { element: container, update(job) { current = job; render(); } };
 }

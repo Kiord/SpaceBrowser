@@ -22,34 +22,36 @@ type ScanReportInfo struct {
 }
 
 type scanReportDetails struct {
-	RootPath  string
-	StartedAt time.Time
-	Duration  time.Duration
-	Profile   Profile
-	Report    ScanReportSnapshot
-	Files     int64
-	Folders   int64
-	Bytes     int64
+	RootPath   string
+	StartedAt  time.Time
+	Duration   time.Duration
+	Profile    Profile
+	Report     ScanReportSnapshot
+	Files      int64
+	Folders    int64
+	Bytes      int64
+	SpaceUsage *ScanSpaceUsage
 }
 
-func (a *App) persistScanReport(rootPath string, startedAt time.Time, duration time.Duration, profile Profile, report ScanReportSnapshot, files, folders, bytes int64) *ScanReportInfo {
-	if report.TotalErrors() == 0 {
-		return nil
-	}
-
+func (a *App) persistScanReport(rootPath string, startedAt time.Time, duration time.Duration, profile Profile, report ScanReportSnapshot, files, folders, bytes int64, space ...*ScanSpaceUsage) *ScanReportInfo {
 	info := &ScanReportInfo{
 		ErrorCount: report.TotalErrors(),
 		Details:    formatNonzeroScanCounts(report.Errors[:], scanErrorLabels[:]),
 	}
+	var usage *ScanSpaceUsage
+	if len(space) > 0 {
+		usage = space[0]
+	}
 	path, err := writeScanReport(a.GetDefaultSettingsPath(), scanReportDetails{
-		RootPath:  rootPath,
-		StartedAt: startedAt,
-		Duration:  duration,
-		Profile:   profile,
-		Report:    report,
-		Files:     files,
-		Folders:   folders,
-		Bytes:     bytes,
+		RootPath:   rootPath,
+		StartedAt:  startedAt,
+		Duration:   duration,
+		Profile:    profile,
+		Report:     report,
+		Files:      files,
+		Folders:    folders,
+		Bytes:      bytes,
+		SpaceUsage: usage,
 	})
 	info.ReportPath = path
 	if err != nil {
@@ -133,7 +135,41 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	fmt.Fprintf(&output, "Started: %s\n", details.StartedAt.Format(time.RFC3339))
 	fmt.Fprintf(&output, "Completed: %s\n", completedAt.Format(time.RFC3339))
 	fmt.Fprintf(&output, "Duration: %s\n", details.Duration.Round(time.Millisecond))
-	fmt.Fprintf(&output, "Files: %d\nFolders: %d\nDisk usage: %d bytes\n", details.Files, details.Folders, details.Bytes)
+	fmt.Fprintf(&output, "Files: %d\nFolders: %d\n", details.Files, details.Folders)
+	fmt.Fprintf(&output, "Scanned file allocation: %d bytes (%.2f GiB)\n", details.Bytes, float64(details.Bytes)/(1<<30))
+	if usage := details.SpaceUsage; usage != nil {
+		fmt.Fprintf(&output, "Space measured at: %s\n", usage.MeasuredAt)
+		if usage.VolumeAvailable && !usage.Stale {
+			fmt.Fprintf(&output, "Volume used space: %d bytes (%.2f GiB)\nVolume capacity: %d bytes (%.2f GiB)\n", usage.VolumeUsed, float64(usage.VolumeUsed)/(1<<30), usage.VolumeTotal, float64(usage.VolumeTotal)/(1<<30))
+			fmt.Fprintf(&output, "Volume free space: %d bytes (%.2f GiB)\n", usage.VolumeTotal-usage.VolumeUsed, float64(usage.VolumeTotal-usage.VolumeUsed)/(1<<30))
+			if usage.ScopeNote == "" {
+				fmt.Fprintf(&output, "Unaccounted difference (volume used - scanned allocation): %d bytes (%.2f GiB)\n", usage.Difference, float64(usage.Difference)/(1<<30))
+				switch {
+				case usage.Difference > 0:
+					fmt.Fprintln(&output, "Used space not attributed to files. May include inaccessible or excluded files, snapshots, or filesystem data.")
+				case usage.Difference < 0:
+					fmt.Fprintln(&output, "Scanned allocation exceeds volume usage; shared blocks or overlapping accounting may contribute. Negative values are not free space.")
+				default:
+					fmt.Fprintln(&output, "Scanned file allocation matches the volume's reported used space.")
+				}
+			}
+		}
+		if usage.ScopeNote != "" {
+			fmt.Fprintf(&output, "Space comparison unavailable: %s\n", usage.ScopeNote)
+		}
+		if usage.Stale {
+			fmt.Fprintln(&output, "Space comparison unavailable: files changed since the recorded measurement; rescan to update it.")
+		}
+		if !usage.VolumeAvailable && usage.ScopeNote == "" && !usage.Stale {
+			if usage.VolumeScan {
+				fmt.Fprintln(&output, "Space comparison unavailable: volume usage could not be measured; rescan to retry.")
+			} else {
+				fmt.Fprintln(&output, "Space comparison unavailable: a full-volume scan is required to compare file allocation with volume usage.")
+			}
+		}
+		fmt.Fprintln(&output, "Hard links count once; shared blocks may overlap. File and volume totals can change during scanning.")
+		fmt.Fprintf(&output, "Unreadable directories: %d\nPaths excluded by scan settings: %d\nNested volumes excluded: %d (scan these separately)\n", usage.UnreadableDirectories, usage.FilteredPaths, usage.ExcludedVolumes)
+	}
 	fmt.Fprintln(&output)
 	fmt.Fprintln(&output, "Scan settings")
 	fmt.Fprintf(&output, "Skip hidden: %t\n", details.Profile.SkipHidden)

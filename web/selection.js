@@ -9,7 +9,7 @@ export function clearSelection() {
 }
 
 export function isPassiveRect(rect) {
-  return !!(rect?.is_free_space || rect?.is_small_files);
+  return !!(rect?.is_free_space || rect?.is_small_files || rect?.is_unaccounted);
 }
 
 export function getSelectedRects() {

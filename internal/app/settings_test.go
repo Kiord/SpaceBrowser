@@ -9,6 +9,29 @@ import (
 	"testing"
 )
 
+func TestUnaccountedVisibilityDefaultsToHiddenAndPersists(t *testing.T) {
+	if defaultProfile().ShowUnaccounted {
+		t.Fatal("unaccounted space should be hidden by default")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"version":19}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := loadSettings(path); err != nil || loaded.ShowUnaccounted {
+		t.Fatalf("existing settings should default to hidden: %+v, %v", loaded, err)
+	}
+	for _, enabled := range []bool{true, false} {
+		profile := newApp(path).GetProfile()
+		profile.ShowUnaccounted = enabled
+		if err := saveSettings(path, profile); err != nil {
+			t.Fatal(err)
+		}
+		if loaded := newApp(path).GetProfile(); loaded.ShowUnaccounted != enabled {
+			t.Fatalf("visibility did not survive restart: %+v", loaded)
+		}
+	}
+}
+
 func TestBreadcrumbVisibilityDefaultsMigrationAndPersistence(t *testing.T) {
 	if !defaultProfile().ShowBreadcrumbs {
 		t.Fatal("breadcrumbs should be visible by default")
@@ -94,6 +117,7 @@ func TestSettingsPersistAcrossAppInstances(t *testing.T) {
 		FollowSymlinks:       true,
 		SkipNetworkFS:        false,
 		ShowTooltips:         false,
+		ShowUnaccounted:      true,
 		TooltipDelayMS:       350,
 		AllowDelete:          true,
 		AllowPermanentDelete: true,

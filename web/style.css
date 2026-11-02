@@ -577,6 +577,9 @@ html.keyboard-navigation button:focus {
   border-radius:2px;
   box-shadow: 0 2px 5px rgba(0,0,0,.18);
   font-size:12px;
+  line-height:1.35;
+  white-space:pre-line;
+  overflow-wrap:anywhere;
   opacity:0; 
   transform:translateY(6px);
   transition:opacity .18s, transform .18s;
@@ -773,21 +776,11 @@ button:disabled:hover {
   background: #fff;
 }
 
-.scan-warning-indicator {
-  position: relative;
-  display: flex;
-  align-items: center;
-  align-self: stretch;
-}
-
-.scan-warning-indicator[hidden] {
-  display: none;
-}
-
 .scan-warning-symbol {
   display: grid;
   place-items: center;
-  width: 22px;
+  width: 12px;
+  height: 12px;
   color: #b76516;
   cursor: help;
 }
@@ -802,8 +795,8 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 }
 
 .scan-warning-symbol svg {
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
   overflow: visible;
 }
 
@@ -819,72 +812,6 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   stroke: #4c2d10;
   stroke-width: 1.8;
   stroke-linecap: square;
-}
-
-.scan-warning-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: max-content;
-  max-width: min(330px, calc(100vw - 16px));
-  padding: 7px 9px;
-  box-sizing: border-box;
-  color: #fff;
-  background: #1f1f1f;
-  border: 1px solid #111;
-  border-radius: 2px;
-  box-shadow: 0 2px 5px rgba(0,0,0,.2);
-  font: 11px/1.35 "Segoe UI", sans-serif;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(-2px);
-  transition: opacity 80ms linear, transform 80ms linear;
-  z-index: 10002;
-}
-
-.scan-warning-popover::before {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 100%;
-  width: 100%;
-  height: 7px;
-}
-
-.scan-warning-indicator:hover .scan-warning-popover,
-.scan-warning-indicator:focus-within .scan-warning-popover {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-.scan-report-save-error {
-  color: #ffc4bd;
-}
-
-.controls .scan-report-link {
-  align-self: flex-start;
-  min-height: 0;
-  padding: 0;
-  color: #ffd69c;
-  background: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.controls .scan-report-link:hover,
-.controls .scan-report-link:active {
-  color: #fff;
-  background: none;
-  border: 0;
-  box-shadow: none;
 }
 
 /* (Optional) make the topbar behave well with any zoom compensation */
@@ -1839,8 +1766,6 @@ input[type="range"]:focus-visible {
 .compact-scan-progress { display: block; position: relative; box-sizing: border-box; height: 10px; flex-shrink: 0; border: 1px solid #c9c9c9; border-radius: 2px; overflow: hidden; background: #f4f4f2; }
 /* Details and warnings share a fixed slot beside the meter. */
 
-.scan-status-section .scan-warning-indicator { grid-area: 1 / 2; justify-content: center; }
-.scan-status-section .scan-warning-indicator[hidden] { display: flex; visibility: hidden; }
 #compactScanTime, #compactScanPercent { font-variant-numeric: tabular-nums; white-space: nowrap; }
 #compactScanPercent { min-width: 28px; text-align: right; }
 .scan-dialog .scan-close-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 23px; min-height: 23px; padding: 0; }
@@ -1883,21 +1808,21 @@ button:disabled:hover,
 .compact-scan-label { align-items: center; min-height: 18px; }
 
 /* Each location owns a clearly labelled row of scan actions. */
-.location-tile { display: grid; grid-template-rows: 44px minmax(0, 1fr); box-sizing: border-box; height: 130px; min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
-.location-tile:has(.location-disk-bar) { grid-template-rows: 70px minmax(0, 1fr); height: 156px; }
+.location-tile { display: grid; grid-template-rows: 44px auto; box-sizing: border-box; min-width: 0; cursor: pointer; background: #f6f6f6; border: 1px solid #b9b9b9; border-radius: 2px; box-shadow: 1px 2px 3px rgba(0,0,0,.08); }
+.location-tile:has(.location-disk-bar) { grid-template-rows: 70px auto; }
 .location-tile .location-card { box-sizing: border-box; min-height: 0; padding-top: 4px; padding-bottom: 4px; width: 100%; height: 100%; border: 0; box-shadow: none; background: transparent; }
 .location-tile:hover { background: #fff; }
 .location-tile-removable { position: relative; }
 .location-tile-removable .location-card { padding-right: 30px; }
 .location-tile .location-remove-button { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #666; font-size: 18px; line-height: 1; cursor: pointer; }
 .location-remove-button:hover { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }
-.tile-scan-status { display: grid; grid-template-rows: 18px 10px minmax(0, 1fr) 30px; min-height: 0; padding: 0 10px 7px; }
+.tile-scan-status { display: grid; grid-template-rows: 18px 10px auto 30px; min-height: 0; padding: 0 10px 7px; }
 .tile-scan-status > .compact-scan-label,
-.tile-scan-status > .compact-scan-progress,
-.tile-scan-status > .scan-snapshot-date { margin-left: 44px; }
+.tile-scan-status > .compact-scan-progress { margin-left: 44px; }
 .tile-scan-status > .compact-scan-label { grid-row: 1; margin-bottom: 0; }
 .tile-scan-status > .compact-scan-progress { grid-row: 2; }
-.tile-scan-status > .scan-snapshot-date { grid-row: 3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scan-snapshot-meta { grid-row: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-height: 12px; padding: 4px 0 5px; min-width: 0; font: 10px/12px "Segoe UI", sans-serif; }
+.scan-report-meta { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .tile-scan-status .scan-progress-bar { background: #8a68b8; border-radius: 1px; }
 .tile-scan-status[data-complete="true"] .scan-progress-bar { background: #6c4b91; }
 .tile-scan-status .compact-scan-label { font-size: 11px; }
@@ -1951,7 +1876,6 @@ button:disabled:hover,
 .empty-location button { box-sizing: border-box; min-width: 100px; height: 32px; padding: 0 18px; font: 12px "Segoe UI", sans-serif; color: #333; background: #f6f6f6; border: 1px solid #c9c9c9; border-radius: 2px; box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.1); cursor: pointer; }
 .empty-location button:hover { background: #fff; border-color: #aaa; }
 .empty-location button:active { background: #e8e8e8; box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
-.workspace .scan-warning-popover { right: 0; left: auto; }
 @media (max-width: 800px) { .container.workspace { grid-template-columns: 230px minmax(0, 1fr); } }
 
 /* The entire location tile owns hover; the nested opener stays transparent. */
@@ -1969,7 +1893,10 @@ button:disabled:hover,
 #toggleLocationsButton[aria-expanded="true"] .sidebar-expand-icon,
 #toggleLocationsButton[aria-expanded="false"] .sidebar-collapse-icon { display: none; }
 
-.scan-snapshot-date { display:block; font-size:10px; color:#777; margin-top:5px; overflow-wrap:anywhere; }
+.scan-snapshot-date { font-size:10px; color:#777; overflow-wrap:anywhere; }
+.tile-scan-status .scan-report-link { min-width: 0; height: auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: #275f86; font: 10px/12px "Segoe UI", sans-serif; text-decoration: underline; white-space: nowrap; }
+.tile-scan-status .scan-report-link:hover:not(:disabled), .tile-scan-status .scan-report-link:active:not(:disabled) { background: transparent; color: #153d59; box-shadow: none; }
+#rectToastExplanation { max-width: 320px; margin-top: 5px; white-space: normal; line-height: 1.4; }
 .cached-scans-description { color:#777; font-size:12px; line-height:1.5; }
 .cached-scans-list { display:grid; gap:8px; }
 .cached-scan-row { display:flex; gap:12px; align-items:center; padding:10px; border:1px solid #ccc; border-radius:2px; background:#fafafa; }

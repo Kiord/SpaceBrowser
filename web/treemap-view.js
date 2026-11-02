@@ -135,7 +135,7 @@ function renderHoverOverlay() {
   clearRenderedHoverRect();
   const strength = AppearanceState.hoverBrightness;
   const rect = AppState.rects?.[requestedHoverRectIndex];
-  if (!(strength > 0) || !rect || rect.is_free_space || rect.w <= 0 || rect.h <= 0) return;
+  if (!(strength > 0) || !rect || rect.is_free_space || rect.is_unaccounted || rect.w <= 0 || rect.h <= 0) return;
 
   const ctx = AppState.hoverCtx;
   const indexes = [requestedHoverRectIndex];
@@ -148,7 +148,7 @@ function renderHoverOverlay() {
   }
   for (const rectIndex of indexes) {
     const current = AppState.rects?.[rectIndex];
-    if (!current || current.is_free_space || selectionIds().has(current.node_id) || current.w <= 0 || current.h <= 0) continue;
+    if (!current || current.is_free_space || current.is_unaccounted || selectionIds().has(current.node_id) || current.w <= 0 || current.h <= 0) continue;
     drawHoverRect(ctx, current, strength);
   }
   renderedHoverRectIndex = requestedHoverRectIndex;
@@ -352,7 +352,7 @@ function drawRect(rect, writeId, ctx, rectIndex) {
   // fill
   const fillColor = isSelected ? "#000000"
     : (rect.is_free_space || isRoot ? "#fff"
-      : (rect.is_small_files ? "#e6dac5" : palette[(rect.depth || 0) % palette.length]));
+      : (rect.is_unaccounted ? "#d6d9dc" : (rect.is_small_files ? "#e6dac5" : palette[(rect.depth || 0) % palette.length])));
   ctx.fillStyle = fillColor;
   fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h);
 
@@ -382,7 +382,14 @@ function drawRect(rect, writeId, ctx, rectIndex) {
 
   const anonymize = false;
 
-  if (rect.is_free_space) {
+  if (rect.is_unaccounted) {
+    writeCenteredLinesInRect(ctx, [
+      {text: "Unaccounted space", ellipsize: false},
+      {text: formatSize(rect.size, 1), ellipsize: false},
+      {text: "Not attributed to scanned files", ellipsize: false},
+    ], fontBounds, rect);
+  }
+  else if (rect.is_free_space) {
     const percent = 100 * rect.size / rect.disk_total;
     const fileCount = AppState.fileCount == null ? "?" : formatCount(AppState.fileCount);
     const dirCount = AppState.dirCount == null ? "?" : formatCount(AppState.dirCount);

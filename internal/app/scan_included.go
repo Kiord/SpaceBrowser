@@ -1,5 +1,7 @@
 package app
 
+import "time"
+
 // updateIncludedScansLocked publishes independent subtree snapshots only after a
 // successful full scan, also merging narrower scans into saved ancestors.
 // Pending jobs keep ownership of their own results, and
@@ -19,10 +21,20 @@ func (q *scanJobQueue) updateIncludedScansLocked(source *scanJob) []*scanJob {
 				directories = indexCachedDirectories(source.snapshot.root)
 			}
 			root := directories[canonicalCachePath(job.info.Path)]
-			if root == nil || root.HasDirectoryAliases {
+			if root == nil || root.HasDirectoryAliases || root.HasNestedVolumes {
 				continue
 			}
 			job.snapshot, job.nodeIDs = includedScanSnapshot(root, job.snapshot)
+			if canonicalCachePath(job.info.Path) != canonicalCachePath(source.info.Path) {
+				measured := time.Unix(root.ScanTime, 0)
+				if usage := source.snapshot.root.SpaceUsage; usage != nil {
+					if date, err := time.Parse(time.RFC3339Nano, usage.MeasuredAt); err == nil {
+						measured = date
+					}
+				}
+				job.snapshot.root.SpaceUsage = scanSpaceUsage(root, ScanReportSnapshot{}, nil, "Issue counts for this folder were not measured separately. Rescan for a complete report.", measured)
+				job.snapshot.root.SpaceUsage.CoverageKnown = false
+			}
 		case cachePathWithin(source.info.Path, job.info.Path):
 			previous := job.snapshot
 			if previous == nil && job.info.Cached {
@@ -109,7 +121,7 @@ func mergeIncludedScan(previous *treeStoreSnapshot, root *Node) (*treeStoreSnaps
 	target := indexCachedDirectories(previous.root)[canonicalCachePath(root.FullPath)]
 	// A standalone backing-volume scan includes aliases that an enclosing
 	// scan omits, so these regions cannot be exchanged between scan scopes.
-	if target == nil || target.HasDirectoryAliases || root.HasDirectoryAliases {
+	if target == nil || target.HasDirectoryAliases || root.HasDirectoryAliases || target.HasNestedVolumes || root.HasNestedVolumes {
 		return nil, nil
 	}
 	var store TreeStore
@@ -163,6 +175,10 @@ func scanSnapshotWithIDs(root *Node, previous *treeStoreSnapshot, keepFreeSpace 
 		return &node
 	}
 	snapshot.root = clone(root, -1, 0)
+	if !keepFreeSpace && snapshot.root.SpaceUsage == nil {
+		snapshot.root.SpaceUsage = scanSpaceUsage(snapshot.root, ScanReportSnapshot{}, nil, "Issue counts for this folder were not measured separately. Rescan for a complete report.", time.Unix(root.ScanTime, 0))
+		snapshot.root.SpaceUsage.CoverageKnown = false
+	}
 	snapshot.files, snapshot.dirs = subtreeEntryCounts(snapshot.root)
 	return snapshot, ids
 }

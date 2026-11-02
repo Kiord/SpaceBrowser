@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/disk"
 )
 
 func testScanReportDetails(startedAt time.Time) scanReportDetails {
@@ -34,6 +36,7 @@ func TestWriteScanReportCreatesDetailedLocalReport(t *testing.T) {
 	configDirectory := t.TempDir()
 	defaultPath := filepath.Join(configDirectory, "settings.json")
 	details := testScanReportDetails(time.Date(2026, 8, 16, 14, 30, 52, 0, time.UTC))
+	details.SpaceUsage = scanSpaceUsage(&Node{Size: details.Bytes}, details.Report, &disk.UsageStat{Total: 16384, Free: 8192}, "", details.StartedAt)
 
 	reportPath, err := writeScanReport(defaultPath, details)
 	if err != nil {
@@ -58,6 +61,10 @@ func TestWriteScanReportCreatesDetailedLocalReport(t *testing.T) {
 		"[unreadable directories]",
 		"Path: " + filepath.Join("root", "private"),
 		"Error: access denied",
+		"Scanned file allocation: 4096 bytes",
+		"Volume used space: 8192 bytes",
+		"Unaccounted difference (volume used - scanned allocation): 4096 bytes",
+		"Space measured at: 2026-08-16T14:30:52Z",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Errorf("report does not contain %q", expected)
@@ -97,13 +104,35 @@ func TestWriteScanReportRetainsLatestTwenty(t *testing.T) {
 	}
 }
 
-func TestPersistScanReportSkipsCleanScans(t *testing.T) {
+func TestPersistScanReportIncludesCleanScans(t *testing.T) {
 	defaultPath := filepath.Join(t.TempDir(), "settings.json")
 	app := newAppWithPathsAndLogger(defaultPath, defaultPath, NewSeverityLogger(verbosityInfo, io.Discard))
-	if info := app.persistScanReport("root", time.Now(), time.Second, *defaultProfile(), ScanReportSnapshot{}, 1, 1, 1); info != nil {
-		t.Fatalf("clean scan returned report info: %+v", info)
+	info := app.persistScanReport("root", time.Now(), time.Second, *defaultProfile(), ScanReportSnapshot{}, 1, 1, 1)
+	if info == nil || info.ErrorCount != 0 || info.ReportPath == "" || info.SaveError != "" {
+		t.Fatalf("clean scan did not save a report: %+v", info)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(defaultPath), "logs")); !os.IsNotExist(err) {
-		t.Fatalf("clean scan created a logs directory")
+	contents, err := os.ReadFile(info.ReportPath)
+	if err != nil || !strings.Contains(string(contents), "Scanned file allocation: 1 bytes") {
+		t.Fatalf("clean scan report is unavailable: %v", err)
+	}
+}
+
+func TestScanReportDoesNotCompareChangedFilesWithOldVolumeUsage(t *testing.T) {
+	details := testScanReportDetails(time.Now())
+	details.SpaceUsage = &ScanSpaceUsage{VolumeAvailable: true, VolumeUsed: 8000, Difference: 3904, Stale: true}
+	text := formatScanReport(details, time.Now())
+	if strings.Contains(text, "Volume used space:") || strings.Contains(text, "Unaccounted difference") || !strings.Contains(text, "files changed since the recorded measurement") {
+		t.Fatalf("report compared unmatched measurements: %s", text)
+	}
+}
+
+func TestScanReportExplainsExcessAllocationWithoutInventingFreeSpace(t *testing.T) {
+	details := testScanReportDetails(time.Now())
+	details.SpaceUsage = &ScanSpaceUsage{VolumeAvailable: true, VolumeUsed: 3000, VolumeTotal: 5000, Difference: -1096}
+	text := formatScanReport(details, time.Now())
+	for _, expected := range []string{"-1096 bytes", "allocation exceeds volume usage", "may contribute", "Negative values are not free space", "GiB"} {
+		if !strings.Contains(text, expected) {
+			t.Errorf("report omitted %q", expected)
+		}
 	}
 }

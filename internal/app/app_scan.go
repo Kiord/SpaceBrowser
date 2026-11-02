@@ -280,10 +280,18 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	defer a.finishScan(generation)
 
 	profile := a.GetProfile()
+	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+	scopeNote := configureScanVolume(scanner, path)
+	scopeKey := scanVolumeScopeKey(scanner, scopeNote)
 	useCache := a.scanCache.Enabled()
 	cachePlan := scanReusePlan{}
 	if useCache {
 		cachePlan = a.scanCache.Prepare(path, profile)
+		if source := cachePlan.source; source != nil && source.root.SpaceUsage != nil && source.root.SpaceUsage.VolumeScope != scopeKey {
+			// A mounted or unmounted child changes which paths belong to this
+			// volume, even if the filesystem watcher reported no ordinary edits.
+			cachePlan = scanReusePlan{}
+		}
 	}
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t useCache=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS, useCache)
 	if useCache && cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
@@ -293,14 +301,13 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		setScanDate(cachedRoot, startedAt.Unix())
 		duration := time.Since(startedAt)
 		report := cachePlan.source.report
+		a.finishScanSpace(cachedRoot, report, scopeNote)
+		cachedRoot.SpaceUsage.VolumeScope = scopeKey
 		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, cachedRoot, cachedNodes, cachePlan.source.fileCount, cachePlan.source.dirCount, func() *ScanReportInfo {
-			return a.persistScanReport(path, startedAt, duration, profile, report, int64(cachePlan.source.fileCount), int64(cachePlan.source.dirCount), cachePlan.source.root.Size)
+			return a.persistScanReport(path, startedAt, duration, profile, report, int64(cachePlan.source.fileCount), int64(cachePlan.source.dirCount), cachedRoot.Size, cachedRoot.SpaceUsage)
 		})
 		if publishErr != nil {
 			return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, publishErr
-		}
-		if volumeUsage != nil {
-			a.store.UpdateDiskUsage(int64(volumeUsage.Total), int64(volumeUsage.Free))
 		}
 		a.logScanReport(report)
 		a.logger.Infof("scan cache reused the complete tree for %s", path)
@@ -318,7 +325,6 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	defer observation.Close()
 	var files, dirs int64
-	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
 	scanner.preview = newScanPreviewTree()
 	if volumeUsage != nil {
 		scanner.preview.diskTotal, scanner.preview.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
@@ -349,23 +355,8 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
-	if volumeUsage != nil {
-		fs := volumeUsage
-		free := &Node{
-			ID:          -1,
-			ParentID:    root.ID,
-			Name:        "[Free Disk Space]",
-			Size:        int64(fs.Free),
-			DiskTotal:   int64(fs.Total),
-			IsFolder:    false,
-			IsFreeSpace: true,
-			Depth:       1,
-		}
-		root.Children = append(root.Children, free)
-
-		root.DiskTotal = int64(fs.Total)
-		root.DiskFree = int64(fs.Free)
-	}
+	a.finishScanSpace(root, scanner.Report(), scopeNote)
+	root.SpaceUsage.VolumeScope = scopeKey
 
 	sort.Slice(root.Children, func(i, j int) bool {
 		return root.Children[i].Size > root.Children[j].Size
@@ -376,7 +367,7 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	// The shared cache manager validates current policy and observation generation
 	// at installation; this worker keeps its scan options frozen.
 	reportInfo, err := a.publishScanResult(ctx, generation, root, scanner.Nodes(), int(files), int(dirs), useCache, func() *ScanReportInfo {
-		return a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size)
+		return a.persistScanReport(path, startedAt, duration, profile, report, files, dirs, root.Size, root.SpaceUsage)
 	})
 	if err != nil {
 		if errors.Is(err, errScanSuperseded) {
@@ -422,12 +413,13 @@ func (a *App) logScanReport(report ScanReportSnapshot) {
 func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 	a.settingsMu.RLock()
 	showFreeSpace := a.showFreeSpace
+	showUnaccounted := a.profile.ShowUnaccounted
 	boxPadding := float64(a.profile.Appearance.BoxPadding)
 	a.settingsMu.RUnlock()
 	if boxPadding < 1 {
 		boxPadding = treemapPad
 	}
-	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, showUnaccounted, boxPadding)
 }
 
 // LayoutWithBoxPadding previews an unsaved appearance setting without
@@ -435,12 +427,13 @@ func (a *App) Layout(nodeID, width, height int, scale float64) ([]Rect, error) {
 func (a *App) LayoutWithBoxPadding(nodeID, width, height int, scale float64, boxPadding float64) ([]Rect, error) {
 	a.settingsMu.RLock()
 	showFreeSpace := a.showFreeSpace
+	showUnaccounted := a.profile.ShowUnaccounted
 	a.settingsMu.RUnlock()
-	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, float64(boxPadding))
+	return a.layoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, showUnaccounted, float64(boxPadding))
 }
 
-func (a *App) layoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace bool, boxPadding float64) ([]Rect, error) {
-	rects, err := a.store.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, boxPadding)
+func (a *App) layoutWithBoxPadding(nodeID, width, height int, scale float64, showFreeSpace, showUnaccounted bool, boxPadding float64) ([]Rect, error) {
+	rects, err := a.store.LayoutWithBoxPadding(nodeID, width, height, scale, showFreeSpace, showUnaccounted, boxPadding)
 	if err != nil {
 		return nil, err
 	}

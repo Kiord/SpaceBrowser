@@ -12,7 +12,7 @@ async function harness() {
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
   const jobs = [], calls = [], errors = [], timers = new Map();
-  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile;
+  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile, reportTile;
   let autocompleteCloses = 0;
   const view = id => {
     const job = jobs.find(job => job.id === id);
@@ -52,13 +52,14 @@ async function harness() {
     './path-autocomplete.js': { closePathAutocomplete() { autocompleteCloses++; } },
     './logging.js': { logError: (...args) => errors.push(args) },
     './locations.js': { rememberLocation() {}, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
-    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh) { refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
+    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh, report) { reportTile = report; refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
   return { ui, jobs, state, element, calls, errors, backend, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
+    reportTile: job => reportTile(job),
     scanTile: () => refreshTile({ path: state.scanRootPath, state: 'idle' }),
     removeTile: job => removeTile(job),
     pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
@@ -350,4 +351,21 @@ test('saved snapshots display their scan date and open without starting a scan',
   const count = h.calls.filter(call => call[0] === 'queue').length;
   await h.ui.openLocation('/one');
   assert.equal(h.calls.filter(call => call[0] === 'queue').length, count);
+});
+
+test('tile report opens its own scan without selecting it or starting another scan', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  h.complete(0);
+  h.jobs[0].report = { errorCount: 0, reportPath: '/logs/one.log' };
+  await h.poll();
+  h.element('pathInput').value = '/two';
+  await h.ui.analyze();
+  const selected = h.calls.filter(call => call[0] === 'select').length;
+  const queued = h.calls.filter(call => call[0] === 'queue').length;
+  await h.reportTile(h.jobs[0]);
+  assert.deepEqual(h.calls.at(-1), ['open', '/logs/one.log']);
+  assert.equal(h.calls.filter(call => call[0] === 'select').length, selected);
+  assert.equal(h.calls.filter(call => call[0] === 'queue').length, queued);
+  assert.equal(h.state.scanRootPath, '/two');
 });

@@ -25,6 +25,8 @@ type Node struct {
 	Size           int64   `json:"size"`
 	IsFolder       bool    `json:"is_folder"`
 	IsFreeSpace    bool    `json:"is_free_space"`
+	IsUnaccounted  bool    `json:"is_unaccounted,omitempty"`
+	IsSpaceGroup   bool    `json:"-"` // layout-only grouping of free and unaccounted space
 	IsSmallFiles   bool    `json:"is_small_files"`
 	SmallFileCount int64   `json:"small_file_count,omitempty"`
 	SmallFileLimit int64   `json:"small_file_limit,omitempty"`
@@ -43,7 +45,9 @@ type Node struct {
 	EntryDirs      int    `json:"-"`
 	ScanIncomplete bool   `json:"scan_incomplete,omitempty"`
 	// This subtree omits backing directories represented elsewhere in the scan.
-	HasDirectoryAliases bool `json:"-"`
+	HasDirectoryAliases bool            `json:"-"`
+	HasNestedVolumes    bool            `json:"-"`
+	SpaceUsage          *ScanSpaceUsage `json:"-"`
 }
 
 // ==============================
@@ -69,6 +73,7 @@ type Scanner struct {
 	seenDirs            map[string]struct{}
 	seenDirsMu          sync.Mutex
 	directoryAliases    map[string]struct{}
+	skippedMounts       map[string]struct{}
 
 	workDiscovered int64
 	workProcessed  int64
@@ -525,6 +530,11 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			}
 
 			if isDir {
+				if _, mounted := s.skippedMounts[canonicalCachePath(full)]; mounted {
+					root.HasNestedVolumes = true
+					s.report.RecordSkip(scanSkipNestedVolume)
+					return true
+				}
 				if _, duplicate := s.directoryAliases[canonicalCachePath(full)]; duplicate {
 					root.HasDirectoryAliases = true
 					s.report.RecordSkip(scanSkipRepeatedDirectory)
@@ -702,6 +712,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			root.EntryFiles += n.EntryFiles
 			root.EntryDirs += n.EntryDirs
 			root.HasDirectoryAliases = root.HasDirectoryAliases || n.HasDirectoryAliases
+			root.HasNestedVolumes = root.HasNestedVolumes || n.HasNestedVolumes
 		}
 	}
 	if err := s.pause.wait(s.ctx); err != nil {
@@ -723,6 +734,11 @@ func (s *Scanner) reusableCachedDirectory(path string) *Node {
 	// ancestors so a broader scan can omit aliases before cloning subtrees.
 	for backing := range s.directoryAliases {
 		if cachePathWithin(backing, clean) {
+			return nil
+		}
+	}
+	for mount := range s.skippedMounts {
+		if cachePathWithin(mount, clean) {
 			return nil
 		}
 	}
