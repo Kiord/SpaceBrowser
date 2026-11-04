@@ -21,7 +21,7 @@
     <br>
    <img src="https://img.shields.io/badge/Windows-supported-0078D4?style=plastic&logo=windows&logoColor=white" alt="Windows">
     <img src="https://img.shields.io/badge/Linux-supported-FCC624?style=plastic&logo=linux&logoColor=black" alt="Linux">
-    <img src="https://img.shields.io/badge/macOS-untested-555555?style=plastic&logo=apple&logoColor=white" alt="macOS">
+    <img src="https://img.shields.io/badge/macOS-supported-555555?style=plastic&logo=apple&logoColor=white" alt="macOS">
 
   </p>
 
@@ -80,7 +80,7 @@ SpaceBrowser recreates the main features of [SpaceMonger 1.4](https://github.com
 
 - **Windows:** Supported
 - **Linux:** Supported
-- **macOS:** Build available, but not yet tested
+- **macOS:** Supported
 
 </details>
 
@@ -92,12 +92,10 @@ Download the latest available version from the **[GitHub Releases](https://githu
 |---|---|
 | Windows | MSI installer, portable EXE |
 | Linux | DEB, RPM, portable binary, setup TAR.GZ |
-| macOS | DMG, ZIP (untested) |
+| macOS | DMG, ZIP |
 
 Linux setup archives include `Install.sh`; macOS packages include `Install.command`.
 Setup offers optional "Scan with SpaceBrowser" file-manager shortcuts.
-
-> **Note:** macOS builds are provided but have not yet been tested. Feedback and bug reports are welcome.
 
 
 <details>
