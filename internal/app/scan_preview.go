@@ -210,7 +210,9 @@ func (a *App) publishScanPreview(generation uint64, force bool) *TreeInfo {
 	}
 	started := time.Now()
 	root, nodes, revision := scanner.preview.snapshotAfter(previousRevision)
-	interval := scanPreviewInterval(len(nodes), time.Since(started))
+	assemblyTime := time.Since(started)
+	scanner.timing.record(scanTimingPreview, assemblyTime)
+	interval := scanPreviewInterval(len(nodes), assemblyTime)
 	files, dirs := scanner.LiveCounts()
 	a.scanMu.Lock()
 	defer a.scanMu.Unlock()

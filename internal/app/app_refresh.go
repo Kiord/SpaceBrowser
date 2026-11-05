@@ -90,6 +90,13 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	defer a.finishScan(generation)
 	started := time.Now()
 	profile := a.GetProfile()
+	timing := newScanTiming(profile.ScanTiming)
+	var pause *scanPause
+	if timing != nil {
+		a.scanMu.RLock()
+		pause = a.scanPause
+		a.scanMu.RUnlock()
+	}
 	type scannedFolder struct {
 		target      FolderRefreshTarget
 		root        *Node
@@ -97,16 +104,21 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	}
 	var pending []scannedFolder
 	var report ScanReportSnapshot
+	var maxWorkers int
 	for i := 0; i < len(reduced); i++ {
 		target := reduced[i]
 		var files, dirs int64
+		setupStarted := timing.start()
 		scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+		scanner.timing = timing
+		maxWorkers = scanner.maxWorkers
 		scopeNote := configureScanVolume(scanner, rootTarget.Path)
 		outsideVolume := false
 		for mount := range scanner.skippedMounts {
 			outsideVolume = outsideVolume || cachePathWithin(target.Path, mount)
 		}
 		if target.NodeID != rootTarget.NodeID && outsideVolume {
+			timing.finish(scanTimingSetup, setupStarted)
 			// A directory can become a mount point after the original scan.
 			// Rebuild the parent volume instead of importing the other disk.
 			reduced = []FolderRefreshTarget{rootTarget}
@@ -117,7 +129,10 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		scanner.ReportAllErrors(true)
 		a.attachScanner(generation, scanner)
 		scanner.SetContext(ctx, func(current string) { a.updateScanPath(generation, current) })
+		timing.finish(scanTimingSetup, setupStarted)
+		walkStarted := timing.start()
 		root, err := scanner.buildTree(target.Path, 0, -1, &files, &dirs)
+		timing.finish(scanTimingWalk, walkStarted)
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("scan cancelled")
 		}
@@ -151,6 +166,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		report.Examples = append(report.Examples, part.Examples...)
 		pending = append(pending, scannedFolder{target, root, int(files), int(dirs)})
 	}
+	finalizeStarted := timing.start()
 	for _, target := range reduced {
 		a.scanCache.InvalidatePath(target.Path)
 	}
@@ -210,8 +226,11 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 	}
 	a.store.mu.Unlock()
 	a.scanMu.Unlock()
+	timing.finish(scanTimingFinalize, finalizeStarted)
+	duration := time.Since(started)
+	report.Timing = timing.snapshotForScan(pause, started, duration, maxWorkers, 0)
 	a.logScanReport(report)
-	reportInfo := a.persistScanReport(rootTarget.Path, started, time.Since(started), profile, report, int64(result.FileCount), int64(result.DirCount), totalSize, spaceUsage)
+	reportInfo := a.persistScanReport(rootTarget.Path, started, duration, profile, report, int64(result.FileCount), int64(result.DirCount), totalSize, spaceUsage)
 	a.logger.Infof("folder refresh completed in %s: %d folders", time.Since(started).Round(time.Millisecond), len(reduced))
 	refreshedPaths := make([]string, 0, len(reduced))
 	for _, target := range reduced {

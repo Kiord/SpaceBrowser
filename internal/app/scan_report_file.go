@@ -190,6 +190,7 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	fmt.Fprintf(&output, "Filesystem or metadata errors: %d\n", details.Report.TotalErrors())
 	writeScanReportCounts(&output, "Skipped", details.Report.Skipped[:], scanSkipLabels[:])
 	writeScanReportCounts(&output, "Errors", details.Report.Errors[:], scanErrorLabels[:])
+	writeScanTiming(&output, details.Report.Timing, details.Duration)
 	if len(details.Report.Examples) > 0 {
 		fmt.Fprintln(&output)
 		fmt.Fprintln(&output, "Error entries")

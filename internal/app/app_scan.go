@@ -281,6 +281,11 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 
 	profile := a.GetProfile()
 	scanner := NewScannerWithFilesystem(&profile, 0, a.filesystem)
+	if scanner.timing != nil {
+		a.scanMu.RLock()
+		scanner.pause = a.scanPause
+		a.scanMu.RUnlock()
+	}
 	scopeNote := configureScanVolume(scanner, path)
 	scopeKey := scanVolumeScopeKey(scanner, scopeNote)
 	useCache := a.scanCache.Enabled()
@@ -295,14 +300,18 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	a.logger.Debugf("scan settings: skipHidden=%t minFileSize=%d followSymlinks=%t skipNetworkFS=%t useCache=%t", profile.SkipHidden, profile.MinFileSize, profile.FollowSymlinks, profile.SkipNetworkFS, useCache)
 	if useCache && cachePlan.source != nil && len(cachePlan.directories) > 0 && len(cachePlan.dirty) == 0 && a.scanCache.StillClean(cachePlan.source, cachePlan.eventCount) {
+		scanner.timing.finish(scanTimingSetup, startedAt)
+		reuseStarted := scanner.timing.start()
 		// A successful cache validation is a fresh scan. Keep previous snapshots
 		// immutable while publishing the new date throughout the validated tree.
 		cachedRoot, cachedNodes := cloneTreePreservingIDs(cachePlan.source.root, len(cachePlan.source.nodes))
 		setScanDate(cachedRoot, startedAt.Unix())
-		duration := time.Since(startedAt)
 		report := cachePlan.source.report
 		a.finishScanSpace(cachedRoot, report, scopeNote)
 		cachedRoot.SpaceUsage.VolumeScope = scopeKey
+		scanner.timing.finish(scanTimingCacheReuse, reuseStarted)
+		duration := time.Since(startedAt)
+		report.Timing = scanner.timing.snapshotForScan(scanner.pause, startedAt, duration, scanner.maxWorkers, int64(len(cachePlan.directories)))
 		reportInfo, publishErr := a.publishCachedScanResult(ctx, generation, cachedRoot, cachedNodes, cachePlan.source.fileCount, cachePlan.source.dirCount, func() *ScanReportInfo {
 			return a.persistScanReport(path, startedAt, duration, profile, report, int64(cachePlan.source.fileCount), int64(cachePlan.source.dirCount), cachedRoot.Size, cachedRoot.SpaceUsage)
 		})
@@ -341,7 +350,10 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	a.attachScanner(generation, scanner)
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
+	scanner.timing.finish(scanTimingSetup, startedAt)
+	walkStarted := scanner.timing.start()
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
+	scanner.timing.finish(scanTimingWalk, walkStarted)
 	if err != nil {
 		if errors.Is(err, errNetworkFilesystemRootSkipped) {
 			err = errors.New(networkFilesystemScanDisabledMessage)
@@ -355,15 +367,18 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, err
 	}
 
+	finalizeStarted := scanner.timing.start()
 	a.finishScanSpace(root, scanner.Report(), scopeNote)
 	root.SpaceUsage.VolumeScope = scopeKey
 
 	sort.Slice(root.Children, func(i, j int) bool {
 		return root.Children[i].Size > root.Children[j].Size
 	})
+	scanner.timing.finish(scanTimingFinalize, finalizeStarted)
 
 	report := scanner.Report()
 	duration := time.Since(startedAt)
+	report.Timing = scanner.timing.snapshotForScan(scanner.pause, startedAt, duration, scanner.maxWorkers, scanner.ReusedDirectories())
 	// The shared cache manager validates current policy and observation generation
 	// at installation; this worker keeps its scan options frozen.
 	reportInfo, err := a.publishScanResult(ctx, generation, root, scanner.Nodes(), int(files), int(dirs), useCache, func() *ScanReportInfo {

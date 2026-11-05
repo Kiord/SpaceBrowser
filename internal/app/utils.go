@@ -14,6 +14,7 @@ type Profile struct {
 	MinFileSize          int64              `json:"minFileSize"`
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
+	ScanTiming           bool               `json:"scanTiming"`
 	ShowTooltips         bool               `json:"showTooltips"`
 	ShowBreadcrumbs      bool               `json:"showBreadcrumbs"`
 	ShowUnaccounted      bool               `json:"showUnaccounted"`

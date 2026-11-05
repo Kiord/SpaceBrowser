@@ -68,6 +68,7 @@ type ScanReportSnapshot struct {
 	Skipped  [scanSkipReasonCount]int64
 	Errors   [scanErrorReasonCount]int64
 	Examples []ScanReportExample
+	Timing   *ScanTimingSnapshot
 }
 
 func (r ScanReportSnapshot) TotalSkipped() int64 {

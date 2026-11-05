@@ -94,6 +94,7 @@ type Scanner struct {
 	requireLinkCounts  bool // partial refresh must detect links outside its scan boundary
 	preview            *scanPreviewTree
 	pause              *scanPause
+	timing             *scanTiming
 }
 
 type untrustedIdentityCandidate struct {
@@ -133,6 +134,7 @@ func NewScannerWithFilesystem(p *Profile, maxWorkers int, filesystem platform.Sc
 		filesystem:          filesystem,
 		sem:                 make(chan struct{}, maxWorkers),
 		maxWorkers:          maxWorkers,
+		timing:              newScanTiming(p.ScanTiming),
 		seen:                make(map[platform.FileIdentity]*Node),
 		untrustedSeen:       make(map[platform.FileIdentity]untrustedIdentityReference),
 		untrustedCollisions: make(map[platform.FileIdentity]*untrustedIdentityBucket),
@@ -244,7 +246,7 @@ func (s *Scanner) recordNodeLinkCount(node *Node, count uint64) {
 
 func (s *Scanner) registerFileIdentity(path string, info os.FileInfo, usage platform.FileUsage, node *Node) (platform.FileUsage, bool) {
 	if s.requireLinkCounts && !usage.HasLinkCount {
-		usage = s.filesystem.UsageFor(path, info)
+		usage = s.fileUsage(path, info)
 		if !usage.HasLinkCount {
 			// Unknown sharing cannot safely be merged with the surrounding tree.
 			// Conservatively request the same root fallback as a shared file.
@@ -301,7 +303,7 @@ func (s *Scanner) registerUntrustedFileIdentity(path string, info os.FileInfo, u
 	bucket.mu.Lock()
 	defer bucket.mu.Unlock()
 
-	candidate.usage = s.filesystem.UsageFor(path, info)
+	candidate.usage = s.fileUsage(path, info)
 	candidate.resolved = true
 	s.updateNodeUsage(node, candidate.usage)
 
@@ -330,7 +332,7 @@ func (s *Scanner) resolveUntrustedIdentity(candidate *untrustedIdentityCandidate
 		candidate.resolved = true
 		return candidate.usage
 	}
-	candidate.usage = s.filesystem.UsageFor(candidate.path, info)
+	candidate.usage = s.fileUsage(candidate.path, info)
 	candidate.resolved = true
 	if candidate.usage.MetadataError != nil {
 		s.report.RecordError(scanErrorUsageMetadata, candidate.path, candidate.usage.MetadataError)
@@ -358,6 +360,13 @@ func confirmedHardLink(first, second platform.FileUsage) (uint64, bool) {
 		linkCount = 2
 	}
 	return linkCount, true
+}
+
+func (s *Scanner) fileUsage(path string, info os.FileInfo) platform.FileUsage {
+	started := s.timing.start()
+	usage := s.filesystem.UsageFor(path, info)
+	s.timing.finish(scanTimingMetadata, started)
+	return usage
 }
 
 func (s *Scanner) assignID(n *Node) int {
@@ -458,9 +467,13 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	atomic.AddInt64(&s.dirCount, 1)
 
 	if s.onDirectory != nil {
+		started := s.timing.start()
 		s.onDirectory(abs)
+		s.timing.finish(scanTimingWatch, started)
 	}
+	readStarted := s.timing.start()
 	entries, diagnostic, err := platform.ReadDirWithDiagnostics(s.filesystem, abs)
+	s.timing.finish(scanTimingReadDirectory, readStarted)
 	if err != nil {
 		s.report.RecordError(scanErrorReadDirectory, abs, err)
 		// Preserve the partial tree while making the omission visible in the report.
@@ -488,6 +501,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	}
 	defer flushProcessed()
 
+	entriesStarted := s.timing.start()
 	for _, entry := range entries {
 		if err := s.pause.wait(s.ctx); err != nil {
 			return nil, err
@@ -585,7 +599,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 			usage := entry.Usage
 			batchedUsage := entry.HasUsage && !isSymlink
 			if !batchedUsage {
-				usage = s.filesystem.UsageFor(full, info)
+				usage = s.fileUsage(full, info)
 			}
 			isSmall := s.profile.MinFileSize > 0 && info.Size() < s.profile.MinFileSize
 			var child *Node
@@ -662,6 +676,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 		s.preview.smallFiles(root.ID, smallFilesSize, smallFileCount, s.profile.MinFileSize, root.Depth+1)
 	}
 
+	s.timing.finish(scanTimingEntries, entriesStarted)
 	// Second pass: scan subdirectories (bounded)
 	if len(subdirs) > 0 {
 		var wg sync.WaitGroup

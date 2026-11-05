@@ -18,6 +18,7 @@ type persistedSettings struct {
 	MinFileSize         int64              `json:"minFileSize"`
 	FollowSymlinks      bool               `json:"followSymlinks"`
 	SkipNetworkFS       bool               `json:"skipNetworkFS"`
+	ScanTiming          bool               `json:"scanTiming"`
 	ShowTooltips        bool               `json:"showTooltips"`
 	ShowBreadcrumbs     bool               `json:"showBreadcrumbs"`
 	ShowUnaccounted     bool               `json:"showUnaccounted"`
@@ -167,6 +168,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		MinFileSize:          saved.MinFileSize,
 		FollowSymlinks:       saved.FollowSymlinks,
 		SkipNetworkFS:        saved.SkipNetworkFS,
+		ScanTiming:           saved.ScanTiming,
 		ShowTooltips:         showTooltips,
 		ShowBreadcrumbs:      showBreadcrumbs,
 		ShowUnaccounted:      saved.ShowUnaccounted,
@@ -189,6 +191,7 @@ func saveSettings(path string, profile Profile) error {
 		MinFileSize:         profile.MinFileSize,
 		FollowSymlinks:      profile.FollowSymlinks,
 		SkipNetworkFS:       profile.SkipNetworkFS,
+		ScanTiming:          profile.ScanTiming,
 		ShowTooltips:        profile.ShowTooltips,
 		ShowBreadcrumbs:     profile.ShowBreadcrumbs,
 		ShowUnaccounted:     profile.ShowUnaccounted,
