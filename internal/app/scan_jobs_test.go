@@ -41,6 +41,137 @@ func queuedFixture(t *testing.T) (*App, string, func()) {
 	return a, root, release
 }
 
+func TestQueuedScanEstimatesFromPreviousCompletedScan(t *testing.T) {
+	path := t.TempDir()
+	completed := func(milliseconds int64) ScanJobInfo {
+		return ScanJobInfo{Path: path, State: "completed", Progress: ScanProgress{ElapsedMilliseconds: milliseconds}}
+	}
+	failed := completed(1000)
+	failed.State = "failed"
+	cancelled := completed(2000)
+	cancelled.State = "cancelled"
+	partial := completed(3000)
+	partial.Partial = true
+	other := completed(4000)
+	other.Path = filepath.Join(path, "other")
+	canonical := completed(5000)
+	canonical.Path += string(os.PathSeparator) + "."
+	for _, tc := range []struct {
+		name     string
+		history  []ScanJobInfo
+		partial  bool
+		expected int64
+	}{
+		{name: "first scan"},
+		{name: "previous full scan", history: []ScanJobInfo{completed(10000)}, expected: 10000},
+		{name: "canonical location", history: []ScanJobInfo{canonical}, expected: 5000},
+		{name: "another location", history: []ScanJobInfo{other}},
+		{name: "unavailable legacy timing", history: []ScanJobInfo{completed(0)}},
+		{name: "invalid timing", history: []ScanJobInfo{completed(-1)}},
+		{name: "latest successful full scan", history: []ScanJobInfo{completed(20000), completed(10000), failed, cancelled, partial, other}, expected: 10000},
+		{name: "partial history only", history: []ScanJobInfo{partial}},
+		{name: "partial refresh uses work heuristic", history: []ScanJobInfo{completed(10000)}, partial: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newApp(filepath.Join(t.TempDir(), "settings.json"))
+			t.Cleanup(func() { a.Shutdown(nil) })
+			// Hold the scheduler closed to inspect the queued job before any work.
+			q := &scanJobQueue{app: a, closed: true}
+			for _, info := range tc.history {
+				q.nextID++
+				info.ID = q.nextID
+				q.jobs = append(q.jobs, &scanJob{info: info})
+			}
+			var targets []FolderRefreshTarget
+			if tc.partial {
+				targets = []FolderRefreshTarget{{NodeID: 0, Path: path}}
+			}
+			info := q.enqueue(path, targets, nil)
+			t.Cleanup(q.jobs[len(q.jobs)-1].cancel)
+			if info.EstimatedDurationMilliseconds != tc.expected {
+				t.Fatalf("estimated duration = %d ms, want %d", info.EstimatedDurationMilliseconds, tc.expected)
+			}
+			if info.Progress.ElapsedMilliseconds != 0 {
+				t.Fatal("queued scan inherited the previous scan's elapsed time")
+			}
+		})
+	}
+}
+
+func TestRescanEstimateUsesSavedDurationAfterRestart(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "settings.json")
+	path := t.TempDir()
+	a := newApp(config)
+	info := ScanJobInfo{Path: path, State: "completed", ScannedAt: scanTimestamp(), Progress: ScanProgress{ElapsedMilliseconds: 12000}}
+	if err := a.coldCache.save(info, coldFixture(path), a.coldCache.epoch(path)); err != nil {
+		t.Fatal(err)
+	}
+	a.Shutdown(nil)
+	restarted := newApp(config)
+	t.Cleanup(func() { restarted.Shutdown(nil) })
+	q := restarted.jobQueue()
+	q.mu.Lock()
+	q.closed = true
+	q.mu.Unlock()
+	job, err := restarted.QueueScan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(q.jobs[len(q.jobs)-1].cancel)
+	if job.EstimatedDurationMilliseconds != 12000 {
+		t.Fatalf("saved duration not used for rescan: %+v", job)
+	}
+	if q.jobs[0].snapshot != nil {
+		t.Fatal("duration estimate eagerly loaded the saved tree")
+	}
+}
+
+func TestRescanEstimateTracksActiveTimeAcrossPausesAndCompletion(t *testing.T) {
+	a, path, release := queuedFixture(t)
+	q := a.jobQueue()
+	q.mu.Lock()
+	q.nextID++
+	q.jobs = append(q.jobs, &scanJob{info: ScanJobInfo{ID: q.nextID, Path: path, State: "completed",
+		Progress: ScanProgress{ElapsedMilliseconds: 10000}}})
+	q.mu.Unlock()
+	info, err := a.QueueScan(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-a.filesystem.(*blockingReadDirPlatform).entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rescan did not start")
+	}
+	q.mu.Lock()
+	job := q.jobs[len(q.jobs)-1]
+	start := time.Now().Add(-time.Minute)
+	job.startedAt = start
+	job.pause.setAt(true, start.Add(5*time.Second))
+	job.info.State = "paused"
+	q.mu.Unlock()
+	assertProgress := func() {
+		t.Helper()
+		for _, progress := range a.GetScanJobs() {
+			if progress.ID == info.ID {
+				if progress.EstimatedDurationMilliseconds != 10000 || progress.Progress.ElapsedMilliseconds != 5000 {
+					t.Fatalf("pause changed elapsed time or its estimate: %+v", progress)
+				}
+				return
+			}
+		}
+		t.Fatal("rescan not found")
+	}
+	assertProgress()
+	assertProgress()
+	a.SetScanJobPaused(info.ID, false)
+	release()
+	done := waitJob(t, a, info.ID, "completed")
+	if done.Progress.Fraction != 1 || done.Progress.ElapsedMilliseconds < 5000 || done.Progress.ElapsedMilliseconds >= 10000 {
+		t.Fatalf("completion did not retain active time: %+v", done)
+	}
+}
+
 func TestQueuedWorkerCanSaveReportsInDefaultConfigLocation(t *testing.T) {
 	defaultPath := filepath.Join(t.TempDir(), "settings.json")
 	a := newAppWithPaths(filepath.Join(t.TempDir(), "custom.json"), defaultPath)

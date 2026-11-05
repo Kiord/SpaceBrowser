@@ -9,6 +9,35 @@ const element = () => ({ hidden: false, attributes: {}, textContent: "", disable
   style: { setProperty(name, value) { this[name] = value; } } });
 
 const states = { idle: "Scan", running: "Pause", paused: "Resume", queued: "Scan", completed: "Rescan", cancelled: "Scan", failed: "Retry" };
+test("rescans estimate progress from active elapsed time and wait for actual completion", async () => {
+  const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+  for (const [state, elapsedMilliseconds, fraction, percent] of [
+    ["running", 0, .9, 0],
+    ["running", 5000, .9, 50],
+    ["paused", 5000, .2, 50],
+    ["running", 9000, .2, 90],
+    ["running", 10000, .2, 96],
+    ["running", 30000, 1, 96],
+    ["completed", 4000, 1, 100],
+  ]) {
+    ui.updateScanStatus(refs, { state, estimatedDurationMilliseconds: 10000, progress: { elapsedMilliseconds, fraction } });
+    assert.equal(refs.bar.style["--scan-progress"], `${percent}%`);
+    assert.equal(refs.percent.textContent, `${percent}%`);
+    assert.equal(refs.progress.attributes["aria-valuenow"], String(percent));
+  }
+});
+
+test("scans without a usable prior duration retain the work-based heuristic", async () => {
+  const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+  for (const estimate of [undefined, 0, -1]) {
+    ui.updateScanStatus(refs, { state: "running", estimatedDurationMilliseconds: estimate, progress: { elapsedMilliseconds: 5000, fraction: .5 } });
+    assert.equal(refs.bar.style["--scan-progress"], '48%');
+    assert.equal(refs.progress.attributes["aria-valuenow"], '48');
+  }
+});
+
 test("saved scans show their recorded duration and omit unavailable legacy timing", async () => {
   const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
   const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));

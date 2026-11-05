@@ -21,6 +21,8 @@ type ScanJobInfo struct {
 	Report     *ScanReportInfo `json:"report,omitempty"`
 	Error      string          `json:"error,omitempty"`
 	Partial    bool            `json:"partial"`
+
+	EstimatedDurationMilliseconds int64 `json:"estimatedDurationMilliseconds,omitempty"`
 }
 
 type ScanJobView struct {
@@ -107,11 +109,21 @@ func (a *App) QueueFolderRefresh(targets []FolderRefreshTarget, tracked []int) (
 func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, tracked []int) *ScanJobInfo {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	var estimatedDuration int64
+	key := canonicalCachePath(path)
 	for _, job := range q.jobs {
-		if canonicalCachePath(job.info.Path) == canonicalCachePath(path) && pendingJob(job.info.State) {
+		if canonicalCachePath(job.info.Path) != key {
+			continue
+		}
+		if pendingJob(job.info.State) {
 			q.activateLocked(job)
 			info := q.infoLocked(job)
 			return &info
+		}
+		// A partial refresh does not measure the time to scan the whole location.
+		// Jobs are retained in creation order, so the last usable duration wins.
+		if len(targets) == 0 && job.info.State == "completed" && !job.info.Partial && job.info.Progress.ElapsedMilliseconds > 0 {
+			estimatedDuration = job.info.Progress.ElapsedMilliseconds
 		}
 	}
 	base := q.app.ctx
@@ -131,6 +143,7 @@ func (q *scanJobQueue) enqueue(path string, targets []FolderRefreshTarget, track
 	q.nextID++
 	job := &scanJob{coldEpoch: q.app.coldCache.epoch(path), info: ScanJobInfo{ID: q.nextID, Path: path, State: "queued", Partial: len(targets) > 0}, worker: worker,
 		pause: pause, cancel: cancel, previous: previous, targets: targets, tracked: tracked}
+	job.info.EstimatedDurationMilliseconds = estimatedDuration
 	q.jobs = append(q.jobs, job)
 	q.requested = job.info.ID
 	q.queueClock++

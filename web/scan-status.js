@@ -19,7 +19,10 @@ export function updateScanStatus(refs, job) {
   refs.time.textContent = done ? completedTime
     : queued ? "Queued" : paused ? `Paused · ${formatDuration(progress.elapsedMilliseconds || 0)}`
     : job.state === "failed" ? "Scan failed" : formatDuration(progress.elapsedMilliseconds || 0);
-  const fraction = done ? 1 : Math.max(0, Math.min(0.96, (progress.fraction || 0) * 0.96));
+  const estimate = job.estimatedDurationMilliseconds;
+  const estimatedFraction = estimate > 0
+    ? (progress.elapsedMilliseconds || 0) / estimate : (progress.fraction || 0) * 0.96;
+  const fraction = done ? 1 : Math.max(0, Math.min(0.96, estimatedFraction));
   refs.progress.hidden = idle;
   refs.percent.textContent = `${Math.floor(fraction * 100)}%`;
   refs.percent.hidden = !active || queued;
