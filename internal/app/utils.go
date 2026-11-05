@@ -15,6 +15,7 @@ type Profile struct {
 	FollowSymlinks       bool               `json:"followSymlinks"`
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
 	ScanTiming           bool               `json:"scanTiming"`
+	ShowScanPreview      bool               `json:"showScanPreview"`
 	ShowTooltips         bool               `json:"showTooltips"`
 	ShowBreadcrumbs      bool               `json:"showBreadcrumbs"`
 	ShowUnaccounted      bool               `json:"showUnaccounted"`
@@ -136,6 +137,7 @@ func defaultProfile() *Profile {
 		MinFileSize:          1024,
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
+		ShowScanPreview:      true,
 		ShowTooltips:         true,
 		ShowBreadcrumbs:      true,
 		ShowUnaccounted:      false,

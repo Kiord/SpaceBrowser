@@ -145,6 +145,48 @@ func TestScanPreviewCanBeBrowsedAndKeepsIDsOnCompletion(t *testing.T) {
 	}
 }
 
+func TestDisabledScanPreviewSkipsRecordingAndStillPublishesFinishedTree(t *testing.T) {
+	a, root := previewFixture(t)
+	a.profile.ShowScanPreview = false
+	a.profile.ScanTiming = true
+	previous := &Node{ID: 0, ParentID: -1, FullPath: "previous", IsFolder: true}
+	a.store.Replace(previous, []*Node{previous}, 0, 1)
+	result, failure, release := startBlockedPreviewScan(t, a, root)
+	progress := a.GetScanProgress()
+	if !progress.Active || progress.LivePreview || progress.FileCount == 0 {
+		t.Fatalf("progress should remain available without previews: %+v", progress)
+	}
+	a.scanMu.RLock()
+	scanner := a.scanScanner
+	a.scanMu.RUnlock()
+	if scanner.preview != nil || a.GetScanPreview(progress.Generation) != nil {
+		t.Fatal("disabled preview still records or publishes a preview tree")
+	}
+	if a.store.snapshotState().root != previous {
+		t.Fatal("disabled preview changed the visible tree during scanning")
+	}
+	// Changing settings affects the next scan, not the scanner in flight.
+	profile := a.GetProfile()
+	profile.ShowScanPreview = true
+	if err := a.SetProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if scanner.preview != nil || a.GetScanProgress().LivePreview {
+		t.Fatal("changing settings enabled recording during an active scan")
+	}
+	release()
+	if err := <-failure; err != nil {
+		t.Fatal(err)
+	}
+	finished := <-result
+	if finished.RootID != 0 || a.store.snapshotState().root.FullPath != root || a.GetScanProgress().Active {
+		t.Fatal("finished scan was not published")
+	}
+	if scanner.timing.stages[scanTimingPreview].calls.Load() != 0 {
+		t.Fatal("disabled scan still assembled previews")
+	}
+}
+
 func TestCancelledScanRestoresPreviousTreeAndRejectsLatePreviews(t *testing.T) {
 	for _, hasPrevious := range []bool{false, true} {
 		t.Run(map[bool]string{false: "home", true: "previous tree"}[hasPrevious], func(t *testing.T) {

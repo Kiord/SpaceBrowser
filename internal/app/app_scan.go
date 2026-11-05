@@ -334,9 +334,11 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 	}
 	defer observation.Close()
 	var files, dirs int64
-	scanner.preview = newScanPreviewTree()
-	if volumeUsage != nil {
-		scanner.preview.diskTotal, scanner.preview.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
+	if profile.ShowScanPreview {
+		scanner.preview = newScanPreviewTree()
+		if volumeUsage != nil {
+			scanner.preview.diskTotal, scanner.preview.diskFree = int64(volumeUsage.Total), int64(volumeUsage.Free)
+		}
 	}
 	// Persisted scan reports need the complete error list independently of the
 	// terminal verbosity selected by the user.

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"spacebrowser/internal/platform"
 )
 
 func TestScanTimingDisabledAndConcurrentCollection(t *testing.T) {
@@ -60,6 +62,30 @@ func TestScanTimingReportDistinguishesOverlappingTimeAndPauses(t *testing.T) {
 	details.Report.Timing = nil
 	if strings.Contains(formatScanReport(details, start), "Timing profile") {
 		t.Fatal("unprofiled report contains a timing section")
+	}
+}
+
+func TestScanTimingIncludesDirectoryAPIBreakdownAndZeroFallbacks(t *testing.T) {
+	timing := newScanTiming(true)
+	read := &platform.DirectoryReadTimings{
+		Open:             platform.DirectoryReadMetric{Calls: 1, Duration: time.Millisecond},
+		Query:            platform.DirectoryReadMetric{Calls: 2, Duration: 20 * time.Millisecond},
+		Decode:           platform.DirectoryReadMetric{Calls: 1, Duration: 2 * time.Millisecond},
+		ExtendedAttempts: 1,
+	}
+	timing.recordDirectoryRead(read)
+	timing.recordDirectoryRead(read)
+	details := testScanReportDetails(time.Now())
+	details.Report.Timing = timing.snapshot(time.Second, 16, 0)
+	text := formatScanReport(details, time.Now())
+	for _, expected := range []string{
+		"Portable directory enumeration fallbacks: 0", "Native Windows 128-bit: 2", "Native Windows 64-bit: 0", "Portable fallback: 0",
+		"Windows directory open API: 2ms (2 calls", "Windows directory enumeration API: 40ms (4 calls", "Windows directory record decoding (excludes allocation APIs): 4ms (2 calls",
+		"do not isolate physical disk latency",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Errorf("missing directory detail %q: %s", expected, text)
+		}
 	}
 }
 

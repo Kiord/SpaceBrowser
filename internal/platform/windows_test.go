@@ -188,6 +188,32 @@ func TestWindowsReadDirReturnsBatchedMetadata(t *testing.T) {
 	if originalEntry.Usage.Identity != linkEntry.Usage.Identity {
 		t.Fatalf("batched hard-link identities differ: %+v and %+v", originalEntry.Usage.Identity, linkEntry.Usage.Identity)
 	}
+	timedEntries, diagnostic, timing, err := (Windows{}).ReadDirWithTimings(dir)
+	if err != nil || diagnostic != nil || len(timedEntries) != len(entries) {
+		t.Fatalf("timed enumeration differs: %d entries, diagnostic %+v, error %v", len(timedEntries), diagnostic, err)
+	}
+	if timing.Open.Calls != 1 || timing.Close.Calls != 1 || timing.Identity.Calls < 1 || timing.Query.Calls < 2 || timing.Decode.Calls < 1 || timing.PortableAttempts != 0 {
+		t.Fatalf("native API breakdown is incomplete: %+v", timing)
+	}
+	if timing.ExtendedAttempts+timing.LegacyAttempts != 1 {
+		t.Fatalf("successful reader was not counted: %+v", timing)
+	}
+	for _, entry := range timedEntries {
+		if original := byName[entry.Name()]; entry.Usage != original.Usage || entry.HasUsage != original.HasUsage || entry.Hidden != original.Hidden {
+			t.Fatalf("timing changed file metadata for %s", entry.Name())
+		}
+	}
+}
+
+func TestWindowsDirectoryTimingsIncludeFailedFallbackAttempts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing")
+	_, diagnostic, timing, err := (Windows{}).ReadDirWithTimings(path)
+	if err == nil || diagnostic == nil || !diagnostic.PortableFallback {
+		t.Fatalf("failed fallback diagnostic was lost: %+v, %v", diagnostic, err)
+	}
+	if timing.ExtendedAttempts+timing.LegacyAttempts != int64(len(windowsDirectoryLayouts)) || timing.Open.Calls != int64(len(windowsDirectoryLayouts)) || timing.Query.Calls != 0 || timing.PortableAttempts != 1 || timing.Portable.Calls != 1 {
+		t.Fatalf("failed reader attempts were not timed: %+v", timing)
+	}
 }
 
 func TestParseWindowsDirectoryRecordLayouts(t *testing.T) {

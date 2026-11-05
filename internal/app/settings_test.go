@@ -9,6 +9,34 @@ import (
 	"testing"
 )
 
+func TestLiveScanPreviewDefaultsMigrationAndPersistence(t *testing.T) {
+	if !defaultProfile().ShowScanPreview {
+		t.Fatal("live previews should be enabled by default")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"version":20}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := loadSettings(path)
+	if err != nil || !profile.ShowScanPreview {
+		t.Fatalf("existing settings should keep previews: %+v, %v", profile, err)
+	}
+	_, cacheKey := scanProfileCacheKey(profile)
+	for _, enabled := range []bool{false, true} {
+		profile.ShowScanPreview = enabled
+		if err := saveSettings(path, profile); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := loadSettings(path)
+		if err != nil || loaded.ShowScanPreview != enabled {
+			t.Fatalf("preview setting did not persist: %+v, %v", loaded, err)
+		}
+		if _, key := scanProfileCacheKey(loaded); key != cacheKey {
+			t.Fatal("preview preference invalidated file metadata cache")
+		}
+	}
+}
+
 func TestUnaccountedVisibilityDefaultsToHiddenAndPersists(t *testing.T) {
 	if defaultProfile().ShowUnaccounted {
 		t.Fatal("unaccounted space should be hidden by default")

@@ -85,6 +85,22 @@ test('removing the selected folder clears its view and cached location', async (
   assert.deepEqual(h.calls.at(-1), ['remove', '/one']);
 });
 
+test('disabled live previews skip label repainting and still display the completed scan', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  h.jobs[0].progress = { livePreview: false, fileCount: 12, dirCount: 3 };
+  const labels = h.labels();
+  await h.poll();
+  assert.equal(h.state.liveScanPreview, false);
+  assert.equal(h.labels(), labels);
+  assert.equal(h.state.node_id, null);
+  h.complete(0);
+  await h.poll();
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.state.liveScanPreview, false);
+  assert.equal(h.state.fileCount, 3);
+});
+
 test('selecting an unscanned location preserves the running scan and query input', async () => {
   const h = await harness();
   await h.ui.analyze(); h.preview(0); await h.poll();

@@ -198,6 +198,10 @@ func windowsUTF16String(buffer []byte, offset, byteLength int) (string, bool) {
 }
 
 func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLayout, volume uint64, hasVolume bool, parent string) ([]DirectoryEntry, error) {
+	return parseWindowsDirectoryBufferWithTimings(buffer, layout, volume, hasVolume, parent, nil)
+}
+
+func parseWindowsDirectoryBufferWithTimings(buffer []byte, layout windowsDirectoryRecordLayout, volume uint64, hasVolume bool, parent string, timing *DirectoryReadTimings) ([]DirectoryEntry, error) {
 	entries := make([]DirectoryEntry, 0, 128)
 	for offset := 0; ; {
 		if offset < 0 || offset > len(buffer)-layout.nameOffset {
@@ -254,7 +258,12 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 
 			if attributes&(windows.FILE_ATTRIBUTE_COMPRESSED|windows.FILE_ATTRIBUTE_SPARSE_FILE) != 0 {
 				if pathPtr, err := windowsPathPtr(parent + `\` + name); err == nil {
-					if allocated, ok := windowsAllocatedSize(pathPtr); ok {
+					started := timing.start()
+					allocated, ok := windowsAllocatedSize(pathPtr)
+					if timing != nil {
+						timing.finish(&timing.Allocation, started)
+					}
+					if ok {
 						usage.AllocatedSize = allocated
 					} else {
 						usage.MetadataError = fmt.Errorf("read compressed or sparse allocation size")
@@ -285,10 +294,15 @@ func parseWindowsDirectoryBuffer(buffer []byte, layout windowsDirectoryRecordLay
 }
 
 func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]DirectoryEntry, error) {
+	return readWindowsDirectoryWithTimings(path, layout, nil)
+}
+
+func readWindowsDirectoryWithTimings(path string, layout windowsDirectoryRecordLayout, timing *DirectoryReadTimings) ([]DirectoryEntry, error) {
 	pathPtr, err := windowsPathPtr(path)
 	if err != nil {
 		return nil, err
 	}
+	started := timing.start()
 	handle, err := windows.CreateFile(
 		pathPtr,
 		windows.FILE_LIST_DIRECTORY,
@@ -298,23 +312,42 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 		windows.FILE_FLAG_BACKUP_SEMANTICS,
 		0,
 	)
+	if timing != nil {
+		timing.finish(&timing.Open, started)
+	}
 	if err != nil {
 		return nil, err
 	}
-	defer windows.CloseHandle(handle)
+	defer func() {
+		started := timing.start()
+		windows.CloseHandle(handle)
+		if timing != nil {
+			timing.finish(&timing.Close, started)
+		}
+	}()
 
 	var volumeSerial uint64
 	var directoryID windowsFileIDInfo
-	if err := windows.GetFileInformationByHandleEx(
+	started = timing.start()
+	identityErr := windows.GetFileInformationByHandleEx(
 		handle,
 		windows.FileIdInfo,
 		(*byte)(unsafe.Pointer(&directoryID)),
 		uint32(unsafe.Sizeof(directoryID)),
-	); err == nil {
+	)
+	if timing != nil {
+		timing.finish(&timing.Identity, started)
+	}
+	if identityErr == nil {
 		volumeSerial = directoryID.VolumeSerialNumber
 	} else {
 		var legacyVolumeSerial uint32
-		if err := windows.GetVolumeInformationByHandle(handle, nil, 0, &legacyVolumeSerial, nil, nil, nil, 0); err != nil {
+		started = timing.start()
+		err := windows.GetVolumeInformationByHandle(handle, nil, 0, &legacyVolumeSerial, nil, nil, nil, 0)
+		if timing != nil {
+			timing.finish(&timing.Identity, started)
+		}
+		if err != nil {
 			return nil, err
 		}
 		volumeSerial = uint64(legacyVolumeSerial)
@@ -324,7 +357,11 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 	entries := make([]DirectoryEntry, 0, 128)
 	class := layout.restart
 	for {
+		started = timing.start()
 		err := windows.GetFileInformationByHandleEx(handle, class, &buffer[0], uint32(len(buffer)))
+		if timing != nil {
+			timing.finish(&timing.Query, started)
+		}
 		if err != nil {
 			if err == windows.ERROR_NO_MORE_FILES || err == windows.ERROR_FILE_NOT_FOUND {
 				return entries, nil
@@ -332,11 +369,21 @@ func readWindowsDirectory(path string, layout windowsDirectoryRecordLayout) ([]D
 			return nil, err
 		}
 		class = layout.class
-		batch, err := parseWindowsDirectoryBuffer(buffer, layout, volumeSerial, true, path)
+		started = timing.start()
+		var allocationBefore time.Duration
+		if timing != nil {
+			allocationBefore = timing.Allocation.Duration
+		}
+		batch, err := parseWindowsDirectoryBufferWithTimings(buffer, layout, volumeSerial, true, path, timing)
+		entries = append(entries, batch...)
+		if timing != nil {
+			timing.Decode.Calls++
+			// Attribute native allocation queries separately from record decoding.
+			timing.Decode.Duration += max(0, time.Since(started)-(timing.Allocation.Duration-allocationBefore))
+		}
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, batch...)
 	}
 }
 
@@ -390,6 +437,27 @@ func (w Windows) ReadDirWithDiagnostics(path string) ([]DirectoryEntry, *Directo
 	return readWindowsDirectoryWithFallback(path, readWindowsDirectory, w.Default.ReadDir)
 }
 
+func (w Windows) ReadDirWithTimings(path string) ([]DirectoryEntry, *DirectoryReadDiagnostic, *DirectoryReadTimings, error) {
+	timing := &DirectoryReadTimings{}
+	entries, diagnostic, err := readWindowsDirectoryWithFallback(path,
+		func(path string, layout windowsDirectoryRecordLayout) ([]DirectoryEntry, error) {
+			if layout.idSize == 16 {
+				timing.ExtendedAttempts++
+			} else {
+				timing.LegacyAttempts++
+			}
+			return readWindowsDirectoryWithTimings(path, layout, timing)
+		},
+		func(path string) ([]DirectoryEntry, error) {
+			timing.PortableAttempts++
+			started := timing.start()
+			entries, err := w.Default.ReadDir(path)
+			timing.finish(&timing.Portable, started)
+			return entries, err
+		})
+	return entries, diagnostic, timing, err
+}
+
 func readWindowsDirectoryWithFallback(
 	path string,
 	nativeRead func(string, windowsDirectoryRecordLayout) ([]DirectoryEntry, error),
@@ -400,10 +468,7 @@ func readWindowsDirectoryWithFallback(
 		strategy := cached.(windowsDirectoryStrategy)
 		if strategy.layout == windowsPortableDirectoryLayout {
 			entries, err := portableRead(path)
-			if err != nil {
-				return nil, nil, err
-			}
-			return entries, &DirectoryReadDiagnostic{PortableFallback: true, Cause: strategy.cause}, nil
+			return entries, &DirectoryReadDiagnostic{PortableFallback: true, Cause: strategy.cause}, err
 		}
 	}
 	var usableEntries []DirectoryEntry
@@ -429,19 +494,18 @@ func readWindowsDirectoryWithFallback(
 		return usableEntries, nil, nil
 	}
 	entries, err := portableRead(path)
-	if err != nil {
-		return nil, nil, err
-	}
 	nativeCause := errors.Join(nativeErrors...)
 	if nativeCause != nil {
 		nativeCause = fmt.Errorf("native enumeration failed: %s", strings.ReplaceAll(nativeCause.Error(), "\n", "; "))
 	}
-	windowsDirectoryLayoutByVolume.Store(volumeKey, windowsDirectoryStrategy{
-		layout: windowsPortableDirectoryLayout,
-		cause:  nativeCause,
-	})
+	if err == nil {
+		windowsDirectoryLayoutByVolume.Store(volumeKey, windowsDirectoryStrategy{
+			layout: windowsPortableDirectoryLayout,
+			cause:  nativeCause,
+		})
+	}
 	return entries, &DirectoryReadDiagnostic{
 		PortableFallback: true,
 		Cause:            nativeCause,
-	}, nil
+	}, err
 }

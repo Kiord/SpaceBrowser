@@ -47,7 +47,7 @@ function clearView() {
 }
 
 function applyJobState(job) {
-  AppState.liveScanPreview = !!job && pendingScan(job) && !job.partial;
+  AppState.liveScanPreview = !!job && pendingScan(job) && !job.partial && job.progress?.livePreview !== false;
   AppState.scanPaused = job?.state === "paused" || job?.state === "queued";
   if (AppState.liveScanPreview) {
     AppState.fileCount = job.progress?.fileCount || 0;

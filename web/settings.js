@@ -587,6 +587,7 @@ function populateGeneralForm(profile) {
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsScanTiming").checked = !!profile.scanTiming;
+  byId("settingsShowScanPreview").checked = profile.showScanPreview !== false;
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
   byId("settingsShowBreadcrumbs").checked = profile.showBreadcrumbs !== false;
   byId("settingsShowUnaccounted").checked = !!profile.showUnaccounted;
@@ -761,6 +762,7 @@ async function saveSettings(event) {
     followSymlinks: byId("settingsFollowSymlinks").checked,
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     scanTiming: byId("settingsScanTiming").checked,
+    showScanPreview: byId("settingsShowScanPreview").checked,
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
     showBreadcrumbs: byId("settingsShowBreadcrumbs").checked,
     showUnaccounted: byId("settingsShowUnaccounted").checked,

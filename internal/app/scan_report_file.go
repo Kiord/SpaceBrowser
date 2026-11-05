@@ -176,6 +176,7 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	fmt.Fprintf(&output, "Minimum file size: %d bytes\n", details.Profile.MinFileSize)
 	fmt.Fprintf(&output, "Follow symlinks: %t\n", details.Profile.FollowSymlinks)
 	fmt.Fprintf(&output, "Skip network filesystems: %t\n", details.Profile.SkipNetworkFS)
+	fmt.Fprintf(&output, "Live scan previews: %t\n", details.Profile.ShowScanPreview)
 	if len(details.Profile.ExcludedPaths) == 0 {
 		fmt.Fprintln(&output, "Excluded paths: none")
 	} else {
@@ -188,6 +189,7 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	fmt.Fprintln(&output, "Summary")
 	fmt.Fprintf(&output, "Skipped paths: %d\n", details.Report.TotalSkipped())
 	fmt.Fprintf(&output, "Filesystem or metadata errors: %d\n", details.Report.TotalErrors())
+	fmt.Fprintf(&output, "Portable directory enumeration fallbacks: %d\n", details.Report.Errors[scanErrorPortableDirectoryFallback])
 	writeScanReportCounts(&output, "Skipped", details.Report.Skipped[:], scanSkipLabels[:])
 	writeScanReportCounts(&output, "Errors", details.Report.Errors[:], scanErrorLabels[:])
 	writeScanTiming(&output, details.Report.Timing, details.Duration)
