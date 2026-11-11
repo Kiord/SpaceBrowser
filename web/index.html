@@ -253,8 +253,8 @@
             <span>Show live scan previews</span>
           </label>
           <label id="settingsUseMFTLabel" class="settings-check" hidden title="Read the MFT directly for local NTFS drive roots when running as administrator. Otherwise use bulk NTFS metadata or directory scanning. Applies to new scans.">
-            <input id="settingsUseMFT" type="checkbox" checked>
-            <span>Use fast NTFS scanning (Windows)</span>
+            <input id="settingsUseMFT" type="checkbox">
+            <span>Fast NTFS Scanning (direct MFT read)</span>
           </label>
           <label class="settings-check" title="Measure scan phases and operations to help diagnose slow scans. Adds some overhead; applies to new scans.">
             <input id="settingsScanTiming" type="checkbox">
@@ -1027,6 +1027,17 @@ Version 1.0 dated 2006-09-05.
         </div>
       </footer>
     </form>
+  </dialog>
+
+  <dialog id="scanElevationDialog" class="settings-dialog confirm-dialog" aria-labelledby="scanElevationTitle">
+    <div class="confirm-dialog-body">
+      <h2 id="scanElevationTitle">Restart as administrator?</h2>
+      <p>Direct MFT reading requires user elevation. Restart SpaceBrowser as administrator ?</p>
+      <div class="confirm-dialog-actions">
+        <button id="cancelScanElevationButton" type="button">Cancel</button>
+        <button id="confirmScanElevationButton" type="button">Save and restart</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="restoreDefaultsDialog" class="settings-dialog confirm-dialog" aria-labelledby="restoreDefaultsTitle">

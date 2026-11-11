@@ -137,6 +137,7 @@ Usage: spacebrowser [path] [options]
 Launch SpaceBrowser and optionally begin scanning path.
 
 Options:
+      --settings path    Use the specified configuration file
       --no-cache         Disable saved-scan loading/saving for this session
       --cache            Enable saved-scan caching (default)
   -v, --verbosity level  Logging verbosity: 0=critical, 1=error,

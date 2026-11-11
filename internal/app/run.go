@@ -37,6 +37,14 @@ func Run(assets fs.FS, appIcon, configuration []byte) {
 
 	consoleLogger := NewSeverityLogger(cliOptions.verbosity, logOutput)
 	app := newAppWithLogger(consoleLogger)
+	if cliOptions.settingsPath != "" {
+		settingsPath, pathErr := resolveSettingsPath(cliOptions.settingsPath)
+		if pathErr != nil {
+			consoleLogger.Criticalf("%v", pathErr)
+			return
+		}
+		app = newAppWithPathsAndLogger(settingsPath, app.defaultSettingsPath, consoleLogger)
+	}
 	app.initialScanPath = cliOptions.initialPath
 	app.SetCachingEnabled(!cliOptions.disableCache)
 	consoleLogger.Infof("starting SpaceBrowser %s (verbosity %d)", applicationVersion(), cliOptions.verbosity)

@@ -8,6 +8,7 @@ import (
 
 type commandLineOptions struct {
 	initialPath  string
+	settingsPath string
 	verbosity    int
 	disableCache bool
 	showHelp     bool
@@ -30,6 +31,13 @@ func parseCommandLine(args []string) (commandLineOptions, error) {
 				continue
 			case argument == "--version":
 				options.showVersion = true
+				continue
+			case argument == "--settings":
+				if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+					return options, fmt.Errorf("--settings requires a configuration file path")
+				}
+				i++
+				options.settingsPath = args[i]
 				continue
 			case argument == "--cache":
 				options.disableCache = false
@@ -85,6 +93,7 @@ func commandLineUsage(executable string) string {
 Launch SpaceBrowser and optionally begin scanning path.
 
 Options:
+      --settings path   Use the specified configuration file
       --no-cache        Disable saved-scan loading/saving for this session
       --cache           Enable saved-scan caching (default)
   -v, --verbosity level  Logging verbosity: 0=critical, 1=error,

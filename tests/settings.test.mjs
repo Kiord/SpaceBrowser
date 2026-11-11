@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { eventTarget, loadUI } from "./helpers/ui.mjs";
+import { eventTarget, loadUI, deferred } from "./helpers/ui.mjs";
 
 test("settings tabs and links work, and General settings save, cancel and restore defaults", async () => {
   const elements = new Map();
@@ -19,6 +19,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
   const defaults = { platformSystem: "windows", appearance, minFileSize: 0, updateIncludedScans: true, showBreadcrumbs: true };
   let profile = { ...defaults };
+  let elevated = true, elevationChecks = 0, restarts = 0, restartError, elevationPending, elevationError;
   const saved = [];
   const openedURLs = [];
   const tabs = ["general", "about"].map(name => ({ ...createElement(), dataset: { settingsTab: name } }));
@@ -30,6 +31,8 @@ test("settings tabs and links work, and General settings save, cancel and restor
       GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {},
       GetDefaultProfile: async () => defaults, GetDefaultSettingsPath: async () => "settings.json", GetProfile: async () => profile,
       GetSettingsPath: async () => "settings.json", PickSettingsPath() {}, SetSettingsPath() {},
+      IsElevated: async () => { elevationChecks++; if (elevationError) throw elevationError; return elevationPending ? elevationPending.promise : elevated; },
+      RestartAsAdministrator: async () => { restarts++; if (restartError) throw restartError; },
       SaveSettings: async (value, path) => { if (path === '/blocked') throw new Error('cannot relocate settings'); saved.push(value); profile = value; return { profile: value, path }; },
     },
     "./wailsjs/runtime/runtime.js": { BrowserOpenURL: url => openedURLs.push(url) },
@@ -142,8 +145,75 @@ test("settings tabs and links work, and General settings save, cancel and restor
     profile = { ...profile, platformSystem };
     await byId("settingsButton").emit("click");
     assert.equal(byId("settingsUseMFTLabel").hidden, platformSystem !== "windows");
+    assert.equal(byId("settingsUseMFT").checked, platformSystem === "windows");
     await byId("cancelSettingsButton").emit("click");
   }
+  elevated = false;
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsUseMFT").checked, false, 'a saved enabled preference cannot check the box in an unelevated session');
+  await restore.emit("click");
+  await byId("confirmRestoreDefaultsButton").emit("click");
+  assert.equal(byId("settingsUseMFT").checked, false, 'General defaults cannot enable direct MFT without elevation');
+  await byId("restoreAllDefaultsButton").emit("click");
+  await byId("confirmRestoreDefaultsButton").emit("click");
+  assert.equal(byId("settingsUseMFT").checked, false, 'restoring all defaults also respects session elevation');
+  elevationChecks = 0;
+  byId("settingsUseMFT").checked = false;
+  await byId("settingsUseMFT").emit("change");
+  assert.equal(elevationChecks, 0);
+  byId("settingsUseMFT").checked = true;
+  elevationPending = deferred();
+  const pendingCheck = byId("settingsUseMFT").emit("change");
+  assert.equal(byId("settingsUseMFT").checked, false, 'an elevation request must not temporarily enable the checkbox');
+  assert.equal(byId("settingsUseMFT").disabled, true);
+  await byId("settingsUseMFT").emit("change");
+  assert.equal(elevationChecks, 1);
+  elevationPending.resolve(false);
+  await pendingCheck;
+  elevationPending = null;
+  assert.equal(byId("settingsUseMFT").disabled, false);
+  assert.equal(byId("scanElevationDialog").open, true);
+  assert.equal(byId("settingsUseMFT").checked, false);
+  await byId("scanElevationDialog").emit("cancel");
+  assert.equal(byId("settingsUseMFT").checked, false);
+  assert.equal(restarts, 0);
+  const savesBeforeElevation = saved.length;
+  byId("settingsUseMFT").checked = true;
+  await byId("settingsUseMFT").emit("change");
+  byId("settingsConfigPath").value = '/blocked';
+  await byId("confirmScanElevationButton").emit("click", { currentTarget: byId("confirmScanElevationButton") });
+  assert.equal(saved.length, savesBeforeElevation);
+  assert.equal(restarts, 0, 'a failed settings save must not restart the application');
+  assert.equal(byId("settingsDialog").open, true);
+  assert.equal(byId("settingsUseMFT").checked, false, 'a failed save cannot leave direct MFT checked');
+  byId("settingsConfigPath").value = 'settings.json';
+  byId("settingsUseMFT").checked = true;
+  await byId("settingsUseMFT").emit("change");
+  restartError = new Error("administrator request cancelled");
+  await byId("confirmScanElevationButton").emit("click", { currentTarget: byId("confirmScanElevationButton") });
+  assert.equal(saved.length, savesBeforeElevation + 1);
+  assert.equal(saved.at(-1).useMft, true);
+  assert.equal(restarts, 1);
+  assert.equal(byId("settingsDialog").open, true);
+  assert.equal(byId("settingsUseMFT").checked, false, 'UAC cancellation leaves the checkbox unchecked even though the preference was saved');
+  assert.match(byId("settingsError").textContent, /administrator request cancelled/);
+  restartError = null;
+  byId("settingsUseMFT").checked = true;
+  await byId("settingsUseMFT").emit("change");
+  await byId("confirmScanElevationButton").emit("click", { currentTarget: byId("confirmScanElevationButton") });
+  assert.equal(restarts, 2);
+  assert.equal(byId("settingsDialog").open, false);
+  elevated = true;
+  await byId("settingsButton").emit("click");
+  assert.equal(byId("settingsUseMFT").checked, true, 'the elevated session can apply the saved enabled preference');
+  byId("settingsUseMFT").checked = true;
+  await byId("settingsUseMFT").emit("change");
+  assert.equal(byId("scanElevationDialog").open, false);
+  assert.equal(restarts, 2);
+  elevationError = new Error("cannot query session elevation");
+  await byId("settingsUseMFT").emit("change");
+  assert.equal(byId("settingsUseMFT").checked, false, 'an elevation query failure must leave the checkbox unchecked');
+  assert.equal(byId("settingsUseMFT").disabled, false);
 });
 
 test("appearance slider drafts are included in the live treemap preview", async () => {
@@ -168,7 +238,7 @@ test("appearance slider drafts are included in the live treemap preview", async 
   const appState = { node_id: 0, profile: { appearance }, defaultProfile: { appearance } };
   const ui = await loadUI("settings.js", {
     "./wailsjs/runtime/runtime.js": { BrowserOpenURL() {} },
-    "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SaveSettings() {} },
+    "./wailsjs/go/app/App.js": { GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {}, GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, IsElevated() {}, RestartAsAdministrator() {}, PickSettingsPath() {}, SaveSettings() {} },
     "./dom.js": { byId, queryAll: () => [] },
     "./format.js": { formatSize: String, SIZE_UNITS: {}, splitSizeIntoUnit() {} },
     "./controls.js": { addControlEventListeners() {}, shortcutFromEvent() {} },

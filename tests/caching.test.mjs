@@ -19,7 +19,7 @@ async function harness() {
       GetCachingEnabled: async () => enabled, SetCachingEnabled(value) { enabled = value; }, GetCachedScans: async () => scans,
       ClearCachedScan: async path => { if (fail) throw Error('disk error'); calls.push(path); scans = scans.filter(scan => scan.path !== path); },
       ClearAllCachedScans: async () => { calls.push('all'); scans = []; },
-      GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, PickSettingsPath() {}, SaveSettings() {},
+      GetDefaultProfile() {}, GetDefaultSettingsPath() {}, GetProfile() {}, GetSettingsPath() {}, IsElevated() {}, RestartAsAdministrator() {}, PickSettingsPath() {}, SaveSettings() {},
     },
     './dom.js': { byId, queryAll: () => [] },
     './format.js': { SIZE_UNITS: {}, splitSizeIntoUnit() {}, formatSize: value => `${value} B` },

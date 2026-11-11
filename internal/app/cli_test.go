@@ -46,6 +46,8 @@ func TestParseCommandLinePathAndVerbosityInEitherOrder(t *testing.T) {
 func TestParseCommandLineRejectsInvalidArguments(t *testing.T) {
 	for _, args := range [][]string{
 		{"-v"},
+		{"--settings"},
+		{"--settings", ""},
 		{"-v", "6"},
 		{"--unknown"},
 		{"first", "second"},

@@ -8,7 +8,9 @@ import {
   GetDefaultSettingsPath,
   GetProfile,
   GetSettingsPath,
+  IsElevated,
   PickSettingsPath,
+  RestartAsAdministrator,
   SaveSettings,
 } from "./wailsjs/go/app/App.js";
 import { BrowserOpenURL } from "./wailsjs/runtime/runtime.js";
@@ -36,6 +38,9 @@ let defaultSettingsPath = "";
 let pendingRestoreTab = "";
 let draftCustomThemes = [];
 let draggedColorIndex = -1;
+let checkingElevation = false;
+let savingSettings = false;
+let sessionElevated = false;
 
 const MAX_CUSTOM_THEMES = 32;
 const MAX_THEME_COLORS = 32;
@@ -588,7 +593,7 @@ function populateGeneralForm(profile) {
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsScanTiming").checked = !!profile.scanTiming;
   byId("settingsShowScanPreview").checked = profile.showScanPreview !== false;
-  byId("settingsUseMFT").checked = profile.useMft !== false;
+  byId("settingsUseMFT").checked = profile.platformSystem === "windows" && sessionElevated && profile.useMft !== false;
   byId("settingsUseMFTLabel").hidden = profile.platformSystem !== "windows";
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
   byId("settingsShowBreadcrumbs").checked = profile.showBreadcrumbs !== false;
@@ -632,14 +637,18 @@ async function openSettings() {
   const dialog = byId("settingsDialog");
   if (dialog.open) return;
 
+  sessionElevated = false;
+  byId("settingsUseMFT").checked = false;
   byId("settingsError").textContent = "";
   try {
-    const [profile, , settingsPath, defaultPath] = await Promise.all([
+    const [profile, , settingsPath, defaultPath, elevated] = await Promise.all([
       GetProfile(),
       ensureDefaultProfile(),
       GetSettingsPath(),
       GetDefaultSettingsPath(),
+      IsElevated(),
     ]);
+    sessionElevated = elevated === true;
     AppState.profile = profile;
     populateProfileForm(profile);
     populateMiscForm(settingsPath, defaultPath);
@@ -682,6 +691,7 @@ function closeSettings() {
   closePaletteMenu(false);
   closeRestoreDefaultsConfirmation();
   closePermanentDeleteWarning();
+  if (byId("scanElevationDialog").open) byId("scanElevationDialog").close();
   const dialog = byId("settingsDialog");
   if (dialog.open) dialog.close();
   if (AppState.profile?.appearance) void applyAppearance(AppState.profile.appearance);
@@ -724,8 +734,37 @@ async function restoreDefaultSettings() {
   closeRestoreDefaultsConfirmation();
 }
 
-async function saveSettings(event) {
+async function changeFastNTFS() {
+  const checkbox = byId("settingsUseMFT");
+  if (!checkbox.checked) return;
+  // An enable attempt requests elevation; it must not appear enabled while the
+  // current process is still unelevated, including during the asynchronous check.
+  checkbox.checked = sessionElevated && byId("settingsPlatform").textContent === "windows";
+  if (byId("settingsPlatform").textContent !== "windows" || checkingElevation || savingSettings) return;
+  checkingElevation = true;
+  checkbox.disabled = true;
+  try {
+    sessionElevated = await IsElevated() === true;
+    checkbox.checked = sessionElevated;
+    if (!sessionElevated && byId("settingsDialog").open) byId("scanElevationDialog").showModal();
+  } catch (error) {
+    sessionElevated = false;
+    checkbox.checked = false;
+    byId("settingsError").textContent = String(error);
+  } finally {
+    checkbox.disabled = false;
+    checkingElevation = false;
+  }
+}
+
+function cancelScanElevation() {
+  byId("scanElevationDialog").close();
+  byId("settingsUseMFT").checked = false;
+}
+
+async function saveSettings(event, restartElevated = false) {
   event.preventDefault();
+  if (savingSettings || checkingElevation) return;
   stopControlBindingCapture();
   const dialog = byId("settingsDialog");
   const error = byId("settingsError");
@@ -765,7 +804,7 @@ async function saveSettings(event) {
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     scanTiming: byId("settingsScanTiming").checked,
     showScanPreview: byId("settingsShowScanPreview").checked,
-    useMft: byId("settingsUseMFT").checked,
+    useMft: restartElevated || (sessionElevated && byId("settingsUseMFT").checked),
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
     showBreadcrumbs: byId("settingsShowBreadcrumbs").checked,
     showUnaccounted: byId("settingsShowUnaccounted").checked,
@@ -790,16 +829,19 @@ async function saveSettings(event) {
 
   const saveButton = event.submitter;
   error.textContent = "";
+  savingSettings = true;
   if (saveButton) saveButton.disabled = true;
   try {
     const saved = await SaveSettings(profile, byId("settingsConfigPath").value || activeSettingsPath);
     activeSettingsPath = saved.path;
     AppState.profile = saved.profile;
-    dialog.close();
     await applyAppearance(saved.profile.appearance);
+    if (restartElevated) await RestartAsAdministrator();
+    dialog.close();
   } catch (saveError) {
     error.textContent = String(saveError || "Unable to save settings.");
   } finally {
+    savingSettings = false;
     if (saveButton) saveButton.disabled = false;
   }
 }
@@ -829,6 +871,16 @@ function useDefaultConfigPath() {
 export function initSettings(options) {
   redraw = options.redraw;
   cachedScansChanged = options.cachedScansChanged || (async () => {});
+  byId("settingsUseMFT").addEventListener("change", changeFastNTFS);
+  byId("cancelScanElevationButton").addEventListener("click", cancelScanElevation);
+  byId("scanElevationDialog").addEventListener("cancel", event => {
+    event.preventDefault();
+    cancelScanElevation();
+  });
+  byId("confirmScanElevationButton").addEventListener("click", event => {
+    byId("scanElevationDialog").close();
+    return saveSettings({ preventDefault() {}, submitter: event.currentTarget }, true);
+  });
   byId("settingsCachingEnabled").addEventListener("change", changeSessionCaching);
   byId("clearAllCachedScans").addEventListener("click", () => clearCachedScans());
   byId("settingsButton").addEventListener("click", openSettings);

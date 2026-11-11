@@ -29,6 +29,8 @@ type App struct {
 	settingsPath        string
 	defaultSettingsPath string
 	settingsMu          sync.RWMutex
+	elevationMu         sync.Mutex
+	elevationRestarting bool
 	iconServiceOnce     sync.Once
 	iconService         *fileicon.Service
 
