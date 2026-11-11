@@ -1101,30 +1101,6 @@ Version 1.0 dated 2006-09-05.
     </div>
   </dialog>
 
-  <!-- LEGACY: retained progress-window markup; no active UI entry point. -->
-  <dialog inert aria-hidden="true" data-legacy="scan-progress-window" id="scanDialog" class="scan-dialog" aria-labelledby="scanDialogTitle">
-    <button id="closeScanDetailsButton" class="scan-close-button" type="button" aria-label="Close scan details"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
-    <div class="scan-dialog-body">
-      <div id="scanDialogTitle" class="scan-title">
-        <span id="scanPhase">Scanning </span><span id="scanQueryPath" class="scan-query-path"></span>
-        <span id="scanningDots" class="scanning-dots" aria-hidden="true">.</span>
-      </div>
-      <div id="scanCurrentPath" class="scan-current-path"></div>
-      <div class="scan-progress" role="progressbar" aria-label="Scanning filesystem">
-        <div class="scan-progress-bar"></div>
-      </div>
-      <div class="scan-time">
-        <span>Elapsed: <strong id="scanElapsedTime">0:00</strong></span>
-        <span>Files: <strong id="scanFileCount">0</strong></span>
-        <span>Folders: <strong id="scanFolderCount">0</strong></span>
-      </div>
-      <div class="scan-actions">
-        <button id="cancelScanButton" class="danger-button" type="button">Cancel Scan</button>
-      </div>
-    </div>
-  </dialog>
-
-
 </body>
 
 </html>

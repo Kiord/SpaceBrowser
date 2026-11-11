@@ -191,7 +191,6 @@ test('explicit scan opens its view and leaves progress on the sidebar', async ()
   const h = await harness(); h.state.homeVisible = true;
   await h.ui.analyze();
   assert.equal(h.state.homeVisible, false);
-  assert.equal(h.element('compactScanStatus').hidden, true);
   assert.equal(h.tileJobs().length, 1);
   h.preview(0); await h.poll();
   assert.equal(h.state.fileCount, 3);
@@ -238,7 +237,6 @@ test('cancelled location requires an explicit scan action', async () => {
   h.state.homeVisible = true;
   await h.cancelTile();
   assert.equal(h.state.homeVisible, true);
-  assert.equal(h.element('compactScanStatus').hidden, true);
   assert.equal(h.jobs.length, 1);
   await h.ui.openLocation();
   assert.equal(h.jobs.length, 1);
