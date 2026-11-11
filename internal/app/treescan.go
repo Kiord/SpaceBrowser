@@ -95,6 +95,7 @@ type Scanner struct {
 	preview            *scanPreviewTree
 	pause              *scanPause
 	timing             *scanTiming
+	method             atomic.Pointer[ScanMethodInfo]
 }
 
 type untrustedIdentityCandidate struct {
@@ -161,7 +162,9 @@ func (s *Scanner) LiveCounts() (files, dirs int64) {
 }
 
 func (s *Scanner) Report() ScanReportSnapshot {
-	return s.report.Snapshot()
+	report := s.report.Snapshot()
+	report.Method = s.method.Load()
+	return report
 }
 
 func (s *Scanner) ReportAllErrors(reportAll bool) {
@@ -393,7 +396,11 @@ func (s *Scanner) Nodes() []*Node {
 // Concurrency: subdirectories of a folder are scanned in parallel, bounded by s.sem.
 func (s *Scanner) buildTree(path string, depth int, parentID int, fileCount, dirCount *int64) (*Node, error) {
 	s.prepareDirectoryAliases(s.filesystem.Canonicalize(path))
-	return s.buildTreeWithModTime(path, depth, parentID, fileCount, dirCount, 0)
+	var directory platform.ScanDirectory
+	if provider, ok := s.filesystem.(platform.ScanDirectoryProvider); ok {
+		directory = provider.RootScanDirectory(path)
+	}
+	return s.buildTreeDirectory(path, depth, parentID, fileCount, dirCount, 0, directory)
 }
 
 func (s *Scanner) prepareDirectoryAliases(root string) {
@@ -428,6 +435,10 @@ func (s *Scanner) prepareDirectoryAliases(root string) {
 }
 
 func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fileCount, dirCount *int64, modTime int64) (*Node, error) {
+	return s.buildTreeDirectory(path, depth, parentID, fileCount, dirCount, modTime, nil)
+}
+
+func (s *Scanner) buildTreeDirectory(path string, depth int, parentID int, fileCount, dirCount *int64, modTime int64, directory platform.ScanDirectory) (*Node, error) {
 	if err := s.pause.wait(s.ctx); err != nil {
 		return nil, err
 	}
@@ -475,7 +486,11 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 	var entries []platform.DirectoryEntry
 	var diagnostic *platform.DirectoryReadDiagnostic
 	var err error
-	if s.timing != nil {
+	if directory != nil {
+		var timing *platform.DirectoryReadTimings
+		entries, diagnostic, timing, err = directory.ReadScanDirectory(abs, s.timing != nil)
+		s.timing.recordDirectoryRead(timing)
+	} else if s.timing != nil {
 		var timing *platform.DirectoryReadTimings
 		entries, diagnostic, timing, err = platform.ReadDirWithTimings(s.filesystem, abs)
 		s.timing.recordDirectoryRead(timing)
@@ -495,8 +510,9 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 
 	// First pass: files now, subdirs later
 	type subdir struct {
-		full    string
-		modTime int64
+		full      string
+		modTime   int64
+		directory platform.ScanDirectory
 	}
 	subdirs := make([]subdir, 0, 32)
 	var smallFilesSize, smallFileCount int64
@@ -588,7 +604,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				if info != nil {
 					modTime = info.ModTime().Unix()
 				}
-				subdirs = append(subdirs, subdir{full: full, modTime: modTime})
+				subdirs = append(subdirs, subdir{full: full, modTime: modTime, directory: entry.Directory})
 				return false
 			}
 
@@ -710,7 +726,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				go func(sd subdir) {
 					defer wg.Done()
 					defer func() { <-s.sem }()
-					n, err := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+					n, err := s.buildTreeDirectory(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime, sd.directory)
 					if err != nil && s.ctx.Err() == nil {
 						s.report.RecordError(scanErrorSubdirectory, sd.full, err)
 					}
@@ -718,7 +734,7 @@ func (s *Scanner) buildTreeWithModTime(path string, depth int, parentID int, fil
 				}(sd)
 			default:
 				// inline to avoid deadlock
-				n, err := s.buildTreeWithModTime(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime)
+				n, err := s.buildTreeDirectory(sd.full, depth+1, root.ID, fileCount, dirCount, sd.modTime, sd.directory)
 				if err != nil && s.ctx.Err() == nil {
 					s.report.RecordError(scanErrorSubdirectory, sd.full, err)
 				}

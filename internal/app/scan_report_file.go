@@ -177,6 +177,7 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	fmt.Fprintf(&output, "Follow symlinks: %t\n", details.Profile.FollowSymlinks)
 	fmt.Fprintf(&output, "Skip network filesystems: %t\n", details.Profile.SkipNetworkFS)
 	fmt.Fprintf(&output, "Live scan previews: %t\n", details.Profile.ShowScanPreview)
+	fmt.Fprintf(&output, "Fast NTFS scanning: %t\n", details.Profile.UseMFT)
 	if len(details.Profile.ExcludedPaths) == 0 {
 		fmt.Fprintln(&output, "Excluded paths: none")
 	} else {
@@ -187,6 +188,46 @@ func formatScanReport(details scanReportDetails, completedAt time.Time) string {
 	}
 	fmt.Fprintln(&output)
 	fmt.Fprintln(&output, "Summary")
+	method := details.Report.Method
+	if method == nil {
+		method = &ScanMethodInfo{Name: scanMethodDirectory}
+	}
+	fmt.Fprintf(&output, "Scan method: %s\n", method.Name)
+	if method.SourceName != "" {
+		fmt.Fprintf(&output, "Cached source scan method: %s\n", method.SourceName)
+	}
+	if method.ReaderVersion > 0 {
+		fmt.Fprintf(&output, "NTFS reader version: %d\n", method.ReaderVersion)
+	}
+	if method.DirectFallbackReason != "" {
+		fmt.Fprintf(&output, "Direct MFT fallback: %s\n", method.DirectFallbackReason)
+		if method.DirectBatches > 0 {
+			fmt.Fprintf(&output, "Abandoned direct MFT attempt: %d file records, %d batches, %d bytes read (not used for the published tree).\n", method.DirectRecords, method.DirectBatches, method.DirectBytes)
+		}
+	}
+	if method.FallbackReason != "" {
+		fmt.Fprintf(&output, "NTFS fast-path fallback: %s\n", method.FallbackReason)
+	}
+	if isNTFSScanMethod(method.Name) || method.Batches > 0 {
+		if !isNTFSScanMethod(method.Name) {
+			fmt.Fprintln(&output, "Abandoned NTFS attempt (these records were not used for the published tree):")
+		}
+		fmt.Fprintf(&output, "NTFS file records: %d\nNTFS metadata batches: %d\n", method.Records, method.Batches)
+		if method.Name == scanMethodNTFSDirect {
+			fmt.Fprintf(&output, "Raw MFT bytes read: %d (includes unused and extension record slots)\n", method.Bytes)
+			fmt.Fprintln(&output, "Direct MFT read-ahead: two buffers; table reads overlap decoding. File references feed the application tree without an intermediate path hierarchy.")
+		} else {
+			fmt.Fprintf(&output, "NTFS metadata bytes returned: %d\n", method.Bytes)
+		}
+	}
+	if isNTFSScanMethod(method.Name) {
+		if method.Name == scanMethodNTFS {
+			fmt.Fprintln(&output, "NTFS batch read-ahead: two buffers, one query at a time; decoding overlaps the next query.")
+		}
+		fmt.Fprintf(&output, "Repeated NTFS names removed: %d\nNTFS directory conflicts requiring native reads: %d\nNTFS conflicting subtrees requiring native reads: %d\n", method.DuplicateNames, method.ReconciledDirectories, method.ReconciledSubtrees)
+		fmt.Fprintln(&output, "Directories containing unresolved reparse points or incomplete file-table metadata use native enumeration. NTFS internal metadata and alternate data streams are not included in file totals.")
+		fmt.Fprintln(&output, "File-table scanning does not open every directory; access through a file or directory path may still be denied.")
+	}
 	fmt.Fprintf(&output, "Skipped paths: %d\n", details.Report.TotalSkipped())
 	fmt.Fprintf(&output, "Filesystem or metadata errors: %d\n", details.Report.TotalErrors())
 	fmt.Fprintf(&output, "Portable directory enumeration fallbacks: %d\n", details.Report.Errors[scanErrorPortableDirectoryFallback])

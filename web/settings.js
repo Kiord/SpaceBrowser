@@ -588,6 +588,8 @@ function populateGeneralForm(profile) {
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsScanTiming").checked = !!profile.scanTiming;
   byId("settingsShowScanPreview").checked = profile.showScanPreview !== false;
+  byId("settingsUseMFT").checked = profile.useMft !== false;
+  byId("settingsUseMFTLabel").hidden = profile.platformSystem !== "windows";
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
   byId("settingsShowBreadcrumbs").checked = profile.showBreadcrumbs !== false;
   byId("settingsShowUnaccounted").checked = !!profile.showUnaccounted;
@@ -763,6 +765,7 @@ async function saveSettings(event) {
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     scanTiming: byId("settingsScanTiming").checked,
     showScanPreview: byId("settingsShowScanPreview").checked,
+    useMft: byId("settingsUseMFT").checked,
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
     showBreadcrumbs: byId("settingsShowBreadcrumbs").checked,
     showUnaccounted: byId("settingsShowUnaccounted").checked,

@@ -63,6 +63,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsShowUnaccounted").checked, false);
   assert.equal(byId("settingsScanTiming").checked, false);
   assert.equal(byId("settingsShowScanPreview").checked, true);
+  assert.equal(byId("settingsUseMFT").checked, true);
   for (const field of ["Icon", "Path", "Size", "ModificationDate", "ScanDate"]) assert.equal(byId(`settingsTooltip${field}`).checked, true);
   for (const field of ["CreationDate", "Counts"]) assert.equal(byId(`settingsTooltip${field}`).checked, false);
   byId("settingsTooltipCreationDate").checked = true;
@@ -71,6 +72,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   byId("settingsShowUnaccounted").checked = true;
   byId("settingsScanTiming").checked = true;
   byId("settingsShowScanPreview").checked = false;
+  byId("settingsUseMFT").checked = false;
   await byId("cancelSettingsButton").emit("click");
   assert.equal(saved.length, 0);
   await byId("settingsButton").emit("click");
@@ -78,6 +80,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   assert.equal(byId("settingsShowUnaccounted").checked, false);
   assert.equal(byId("settingsScanTiming").checked, false, 'cancelling discards the timing draft');
+  assert.equal(byId("settingsUseMFT").checked, true);
   assert.equal(byId("settingsShowScanPreview").checked, true);
   assert.equal(byId("settingsTooltipCreationDate").checked, false);
   byId("settingsTooltipCreationDate").checked = true;
@@ -88,12 +91,14 @@ test("settings tabs and links work, and General settings save, cancel and restor
   byId("settingsShowUnaccounted").checked = true;
   byId("settingsScanTiming").checked = true;
   byId("settingsShowScanPreview").checked = false;
+  byId("settingsUseMFT").checked = false;
   await byId("settingsForm").emit("submit");
   assert.equal(saved.at(-1).updateIncludedScans, false);
   assert.equal(saved.at(-1).showBreadcrumbs, false);
   assert.equal(saved.at(-1).showUnaccounted, true);
   assert.equal(saved.at(-1).scanTiming, true);
   assert.equal(saved.at(-1).showScanPreview, false);
+  assert.equal(saved.at(-1).useMft, false);
   assert.equal(saved.at(-1).tooltipFields.creationDate, true);
   assert.equal(saved.at(-1).tooltipFields.icon, false);
   assert.equal(saved.at(-1).tooltipFields.counts, true);
@@ -102,6 +107,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsShowBreadcrumbs").checked, false);
   assert.equal(byId("settingsShowUnaccounted").checked, true);
   assert.equal(byId("settingsScanTiming").checked, true);
+  assert.equal(byId("settingsUseMFT").checked, false);
   assert.equal(byId("settingsShowScanPreview").checked, false);
   assert.equal(byId("settingsTooltipCreationDate").checked, true);
   await restore.emit("click");
@@ -110,6 +116,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   assert.equal(byId("settingsShowUnaccounted").checked, false);
   assert.equal(byId("settingsScanTiming").checked, false, 'restoring General defaults disables timing');
+  assert.equal(byId("settingsUseMFT").checked, true);
   assert.equal(byId("settingsShowScanPreview").checked, true);
   assert.equal(byId("settingsTooltipCreationDate").checked, false);
   assert.equal(byId("settingsTooltipIcon").checked, true);

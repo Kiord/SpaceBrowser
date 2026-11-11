@@ -84,6 +84,7 @@ SpaceBrowser recreates the main features of [SpaceMonger 1.4](https://github.com
 
 </details>
 
+
 ## Installation
 
 Download the latest available version from the **[GitHub Releases](https://github.com/Kiord/SpaceBrowser/releases)** page.

@@ -15,11 +15,13 @@ import (
 const maximumUnobservedSubtrees = 4096
 
 type scanCacheProfile struct {
+	ReaderVersion  int      `json:"readerVersion,omitempty"`
 	ExcludedPaths  []string `json:"excludedPaths"`
 	SkipHidden     bool     `json:"skipHidden"`
 	MinFileSize    int64    `json:"minFileSize"`
 	FollowSymlinks bool     `json:"followSymlinks"`
 	SkipNetworkFS  bool     `json:"skipNetworkFS"`
+	UseMFT         bool     `json:"useMft"`
 }
 
 type scanCacheEntry struct {
@@ -109,6 +111,10 @@ func scanProfileCacheKey(profile Profile) (scanCacheProfile, string) {
 		MinFileSize:    profile.MinFileSize,
 		FollowSymlinks: profile.FollowSymlinks,
 		SkipNetworkFS:  profile.SkipNetworkFS,
+		UseMFT:         profile.UseMFT,
+	}
+	if runtime.GOOS == "windows" && profile.UseMFT {
+		key.ReaderVersion = ntfsReaderVersion
 	}
 	data, _ := json.Marshal(key)
 	sum := sha256.Sum256(data)
@@ -228,12 +234,12 @@ func cacheDirtyPaths(entry *scanCacheEntry) []string {
 }
 
 func cacheEntryIncrementallySafe(entry *scanCacheEntry, profile Profile) bool {
-	return !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.TotalSkipped() == 0 && entry.report.TotalErrors() == 0
+	return !isNTFSScanReport(entry.report.Method) && !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.TotalSkipped() == 0 && entry.report.TotalErrors() == 0
 }
 
 func cacheEntryCrossRootSafe(entry *scanCacheEntry, profile Profile) bool {
 	// A broader scan can omit directory aliases that a narrower scan needs.
-	return !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.Skipped[scanSkipRepeatedDirectory] == 0 && entry.report.Skipped[scanSkipNestedVolume] == 0
+	return !isNTFSScanReport(entry.report.Method) && !entry.sharedAllocation && !profile.FollowSymlinks && entry.report.Skipped[scanSkipRepeatedDirectory] == 0 && entry.report.Skipped[scanSkipNestedVolume] == 0
 }
 
 func (manager *scanCacheManager) BeginObservation(rootPath string) *scanCacheObservation {

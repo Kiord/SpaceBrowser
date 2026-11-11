@@ -69,6 +69,25 @@ type ScanReportSnapshot struct {
 	Errors   [scanErrorReasonCount]int64
 	Examples []ScanReportExample
 	Timing   *ScanTimingSnapshot
+	Method   *ScanMethodInfo
+}
+
+// Method is immutable after publication so cached reports can share it safely.
+type ScanMethodInfo struct {
+	Name                  string
+	SourceName            string
+	ReaderVersion         int
+	FallbackReason        string
+	DirectFallbackReason  string
+	DirectRecords         int64
+	DirectBatches         int64
+	DirectBytes           int64
+	Records               int64
+	Batches               int64
+	Bytes                 int64
+	DuplicateNames        int64
+	ReconciledDirectories int64
+	ReconciledSubtrees    int64
 }
 
 func (r ScanReportSnapshot) TotalSkipped() int64 {

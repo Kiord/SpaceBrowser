@@ -130,6 +130,11 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 		a.attachScanner(generation, scanner)
 		scanner.SetContext(ctx, func(current string) { a.updateScanPath(generation, current) })
 		timing.finish(scanTimingSetup, setupStarted)
+		if target.NodeID == rootTarget.NodeID {
+			if err := scanner.prepareFastScan(target.Path); err != nil {
+				return nil, err
+			}
+		}
 		walkStarted := timing.start()
 		root, err := scanner.buildTree(target.Path, 0, -1, &files, &dirs)
 		timing.finish(scanTimingWalk, walkStarted)
@@ -148,6 +153,7 @@ func (a *App) RefreshFolders(targets []FolderRefreshTarget, trackedIDs []int) (*
 			continue
 		}
 		part := scanner.Report()
+		report.Method = part.Method
 		if target.NodeID == rootTarget.NodeID {
 			var volume *disk.UsageStat
 			if a.filesystem.IsMountRoot(rootTarget.Path) {

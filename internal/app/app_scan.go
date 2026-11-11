@@ -307,6 +307,15 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		cachedRoot, cachedNodes := cloneTreePreservingIDs(cachePlan.source.root, len(cachePlan.source.nodes))
 		setScanDate(cachedRoot, startedAt.Unix())
 		report := cachePlan.source.report
+		method := &ScanMethodInfo{Name: "Complete-tree cache reuse"}
+		if source := report.Method; source != nil {
+			method.SourceName = source.Name
+			method.ReaderVersion = source.ReaderVersion
+			if source.SourceName != "" {
+				method.SourceName = source.SourceName
+			}
+		}
+		report.Method = method
 		a.finishScanSpace(cachedRoot, report, scopeNote)
 		cachedRoot.SpaceUsage.VolumeScope = scopeKey
 		scanner.timing.finish(scanTimingCacheReuse, reuseStarted)
@@ -347,12 +356,19 @@ func (a *App) GetFullTree(path string) (*TreeInfo, error) {
 		scanner.SetDirectoryObserver(observation.WatchDirectory)
 	}
 	if len(cachePlan.directories) > 0 {
-		scanner.SetIncrementalCache(cachePlan.directories, cachePlan.dirty)
-		scanner.SetIncrementalCacheReports(cachePlan.reports)
+		// A full-volume NTFS index can include directories inaccessible to an
+		// ordinary walk. Never splice its old subtrees into a different reader.
+		if cachePlan.source == nil || !isNTFSScanReport(cachePlan.source.report.Method) {
+			scanner.SetIncrementalCache(cachePlan.directories, cachePlan.dirty)
+			scanner.SetIncrementalCacheReports(cachePlan.reports)
+		}
 	}
 	a.attachScanner(generation, scanner)
 	scanner.SetContext(ctx, func(path string) { a.updateScanPath(generation, path) })
 	scanner.timing.finish(scanTimingSetup, startedAt)
+	if err := scanner.prepareFastScan(path); err != nil {
+		return &TreeInfo{RootID: -1, FileCount: -1, DirCount: -1}, fmt.Errorf("scan cancelled: %w", err)
+	}
 	walkStarted := scanner.timing.start()
 	root, err := scanner.buildTree(path, 0, -1, &files, &dirs)
 	scanner.timing.finish(scanTimingWalk, walkStarted)

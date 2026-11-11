@@ -42,6 +42,18 @@ type DirectoryEntry struct {
 	HasUsage  bool
 	Hidden    bool
 	HasHidden bool
+	Directory ScanDirectory
+}
+
+// ScanDirectory follows an indexed directory by identity. The path is supplied
+// only when the tree builder visits it, so a bulk reader need not construct a
+// second hierarchy of full paths before building the application tree.
+type ScanDirectory interface {
+	ReadScanDirectory(path string, timing bool) ([]DirectoryEntry, *DirectoryReadDiagnostic, *DirectoryReadTimings, error)
+}
+
+type ScanDirectoryProvider interface {
+	RootScanDirectory(path string) ScanDirectory
 }
 
 type DirectoryReadDiagnostic struct {

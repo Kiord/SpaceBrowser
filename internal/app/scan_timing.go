@@ -16,6 +16,7 @@ const (
 	scanTimingWalk
 	scanTimingFinalize
 	scanTimingCacheReuse
+	scanTimingNTFS
 	scanTimingReadDirectory
 	scanTimingEntries
 	scanTimingMetadata
@@ -28,6 +29,15 @@ const (
 	scanTimingDirectoryAllocation
 	scanTimingDirectoryClose
 	scanTimingDirectoryPortable
+	scanTimingNTFSQuery
+	scanTimingNTFSDecode
+	scanTimingNTFSRecords
+	scanTimingNTFSHierarchy
+	scanTimingNTFSWait
+	scanTimingNTFSDirectRead
+	scanTimingNTFSDirectMap
+	scanTimingNTFSDirectTableRead
+	scanTimingNTFSDirectListRead
 	scanTimingStageCount
 )
 
@@ -36,6 +46,7 @@ var scanTimingLabels = [scanTimingStageCount]string{
 	"Directory walk and tree assembly",
 	"Space accounting and finalization",
 	"Complete-tree cache reuse",
+	"NTFS metadata acquisition and indexing (includes unsuccessful attempts)",
 	"Directory enumeration",
 	"Directory entry processing",
 	"Extra allocation / identity lookups",
@@ -48,6 +59,15 @@ var scanTimingLabels = [scanTimingStageCount]string{
 	"Windows compressed / sparse allocation API",
 	"Windows directory close API",
 	"Portable fallback directory read",
+	"NTFS file-table query API",
+	"NTFS file-table record decoding",
+	"NTFS file-record indexing",
+	"NTFS directory hierarchy assembly",
+	"NTFS waiting for next metadata batch",
+	"Direct MFT raw volume reads",
+	"Direct MFT extent mapping and validation",
+	"Direct MFT table reads",
+	"Direct MFT attribute-list reads",
 }
 
 type scanTimingCounter struct {
@@ -102,6 +122,18 @@ func (p *scanTiming) recordDirectoryRead(timing *platform.DirectoryReadTimings) 
 	metrics := [...]platform.DirectoryReadMetric{timing.Open, timing.Identity, timing.Query, timing.Decode, timing.Allocation, timing.Close, timing.Portable}
 	for index, metric := range metrics {
 		counter := &p.stages[int(scanTimingDirectoryOpen)+index]
+		counter.calls.Add(metric.Calls)
+		counter.nanos.Add(int64(metric.Duration))
+	}
+}
+
+func (p *scanTiming) recordFastScan(timing *platform.FastScanTimings) {
+	if p == nil || timing == nil {
+		return
+	}
+	metrics := [...]platform.FastScanMetric{timing.Query, timing.Decode, timing.Records, timing.Hierarchy, timing.Wait, timing.DirectRead, timing.DirectMap, timing.DirectTableRead, timing.DirectListRead}
+	for i, metric := range metrics {
+		counter := &p.stages[int(scanTimingNTFSQuery)+i]
 		counter.calls.Add(metric.Calls)
 		counter.nanos.Add(int64(metric.Duration))
 	}
@@ -171,11 +203,23 @@ func writeScanTiming(output io.Writer, timing *ScanTimingSnapshot, wall time.Dur
 		fmt.Fprintf(output, "  - %s: %s (%d calls)\n", metric.Name, metric.Duration.Round(time.Microsecond), metric.Calls)
 	}
 	fmt.Fprintln(output, "Cumulative operation timings:")
+	windowsAPIs := timing.DirectoryReaders != nil
+	directReads := false
 	for _, metric := range timing.Operations {
+		if metric.Name == scanTimingLabels[scanTimingNTFSDirectRead] {
+			directReads = true
+			windowsAPIs = true
+		}
+		if metric.Name == scanTimingLabels[scanTimingNTFSQuery] {
+			windowsAPIs = true
+		}
 		fmt.Fprintf(output, "  - %s: %s (%d calls, average %s)\n", metric.Name, metric.Duration.Round(time.Microsecond), metric.Calls, (metric.Duration / time.Duration(metric.Calls)).Round(time.Microsecond))
 	}
 	fmt.Fprintln(output, "Concurrent and nested timings overlap; do not add them or interpret them as CPU time. Operation timings include I/O, lock waits and any pauses during those operations.")
-	if timing.DirectoryReaders != nil {
+	if directReads {
+		fmt.Fprintln(output, "Direct MFT raw volume reads includes the table and attribute-list read breakdowns; those rows are not additional time.")
+	}
+	if windowsAPIs {
 		fmt.Fprintln(output, "Windows API timings measure elapsed time inside calls, including kernel work, filesystem filters and waiting; they do not isolate physical disk latency.")
 	}
 	fmt.Fprintln(output, "Report writing, saved-snapshot serialization and frontend rendering are outside this profile. Timing collection itself adds overhead.")

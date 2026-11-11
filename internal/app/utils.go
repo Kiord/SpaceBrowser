@@ -16,6 +16,7 @@ type Profile struct {
 	SkipNetworkFS        bool               `json:"skipNetworkFS"`
 	ScanTiming           bool               `json:"scanTiming"`
 	ShowScanPreview      bool               `json:"showScanPreview"`
+	UseMFT               bool               `json:"useMft"`
 	ShowTooltips         bool               `json:"showTooltips"`
 	ShowBreadcrumbs      bool               `json:"showBreadcrumbs"`
 	ShowUnaccounted      bool               `json:"showUnaccounted"`
@@ -138,6 +139,7 @@ func defaultProfile() *Profile {
 		FollowSymlinks:       false,
 		SkipNetworkFS:        true,
 		ShowScanPreview:      true,
+		UseMFT:               true,
 		ShowTooltips:         true,
 		ShowBreadcrumbs:      true,
 		ShowUnaccounted:      false,

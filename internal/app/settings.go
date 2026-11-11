@@ -9,7 +9,7 @@ import (
 	"spacebrowser/internal/platform"
 )
 
-const settingsFileVersion = 21
+const settingsFileVersion = 22
 
 type persistedSettings struct {
 	Version             int                `json:"version"`
@@ -20,6 +20,7 @@ type persistedSettings struct {
 	SkipNetworkFS       bool               `json:"skipNetworkFS"`
 	ScanTiming          bool               `json:"scanTiming"`
 	ShowScanPreview     bool               `json:"showScanPreview"`
+	UseMFT              bool               `json:"useMft"`
 	ShowTooltips        bool               `json:"showTooltips"`
 	ShowBreadcrumbs     bool               `json:"showBreadcrumbs"`
 	ShowUnaccounted     bool               `json:"showUnaccounted"`
@@ -143,6 +144,10 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 	if saved.Version < 21 {
 		showScanPreview = defaultProfile().ShowScanPreview
 	}
+	useMFT := saved.UseMFT
+	if saved.Version < 22 {
+		useMFT = defaultProfile().UseMFT
+	}
 	tooltipDelayMS := saved.TooltipDelayMS
 	tooltipFields := saved.TooltipFields
 	if saved.Version < 17 {
@@ -175,6 +180,7 @@ func loadSettingsWithFilesystem(path string, filesystem platform.ScannerFilesyst
 		SkipNetworkFS:        saved.SkipNetworkFS,
 		ScanTiming:           saved.ScanTiming,
 		ShowScanPreview:      showScanPreview,
+		UseMFT:               useMFT,
 		ShowTooltips:         showTooltips,
 		ShowBreadcrumbs:      showBreadcrumbs,
 		ShowUnaccounted:      saved.ShowUnaccounted,
@@ -199,6 +205,7 @@ func saveSettings(path string, profile Profile) error {
 		SkipNetworkFS:       profile.SkipNetworkFS,
 		ScanTiming:          profile.ScanTiming,
 		ShowScanPreview:     profile.ShowScanPreview,
+		UseMFT:              profile.UseMFT,
 		ShowTooltips:        profile.ShowTooltips,
 		ShowBreadcrumbs:     profile.ShowBreadcrumbs,
 		ShowUnaccounted:     profile.ShowUnaccounted,
