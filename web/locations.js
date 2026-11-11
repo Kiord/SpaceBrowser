@@ -73,11 +73,11 @@ export function setLocationScanJobs(jobs, statusFactory, path = selectedPath, on
 
 export function rememberLocation(path) {
   const key = pathKey(path);
-  if (knownLocations.has(key) || tiles.has(key)) return;
-  const location = { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path, kind: "folder" };
+  if (knownLocations.has(key)) return;
+  const location = tiles.get(key)?.location || { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path, kind: "folder" };
   addedFolders.set(key, location);
   knownLocations.set(key, location);
-  addLocation(location);
+  if (!tiles.has(key)) addLocation(location);
   renderScanJobs();
 }
 

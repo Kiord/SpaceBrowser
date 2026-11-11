@@ -17,7 +17,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
     return elements.get(id);
   };
   const appearance = { palette: "default", customThemes: [], zoomFactor: 1, boxPadding: 5, cornerRadius: 0, reliefStrength: 0, hoverBrightness: 0, rollOverBoxes: false };
-  const defaults = { appearance, minFileSize: 0, updateIncludedScans: true, showBreadcrumbs: true };
+  const defaults = { platformSystem: "windows", appearance, minFileSize: 0, updateIncludedScans: true, showBreadcrumbs: true };
   let profile = { ...defaults };
   const saved = [];
   const openedURLs = [];
@@ -64,6 +64,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsScanTiming").checked, false);
   assert.equal(byId("settingsShowScanPreview").checked, true);
   assert.equal(byId("settingsUseMFT").checked, true);
+  assert.equal(byId("settingsUseMFTLabel").hidden, false);
   for (const field of ["Icon", "Path", "Size", "ModificationDate", "ScanDate"]) assert.equal(byId(`settingsTooltip${field}`).checked, true);
   for (const field of ["CreationDate", "Counts"]) assert.equal(byId(`settingsTooltip${field}`).checked, false);
   byId("settingsTooltipCreationDate").checked = true;
@@ -136,6 +137,13 @@ test("settings tabs and links work, and General settings save, cancel and restor
   await byId("cancelSettingsButton").emit("click");
   await byId("settingsButton").emit("click");
   assert.equal(byId("settingsAllowPermanentDelete").checked, false);
+  await byId("cancelSettingsButton").emit("click");
+  for (const platformSystem of ["linux", "darwin", "windows"]) {
+    profile = { ...profile, platformSystem };
+    await byId("settingsButton").emit("click");
+    assert.equal(byId("settingsUseMFTLabel").hidden, platformSystem !== "windows");
+    await byId("cancelSettingsButton").emit("click");
+  }
 });
 
 test("appearance slider drafts are included in the live treemap preview", async () => {

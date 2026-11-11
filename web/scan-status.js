@@ -51,15 +51,17 @@ export function updateScanStatus(refs, job) {
   refs.primary.textContent = action;
   refs.primary.setAttribute("aria-label", `${action} ${job.path || "location"}`);
   refs.primary.hidden = queued;
+  refs.clearCache.hidden = !done;
+  refs.clearCache.setAttribute("aria-label", `Clear cached scan ${job.path || "location"}`);
   refs.cancel.hidden = !active;
 }
 
-export function createTileScanStatus(onPause, onCancel, onScan, onReport) {
+export function createTileScanStatus(onPause, onCancel, onScan, onReport, onClearCache) {
   const container = document.createElement("div");
   container.className = "tile-scan-status";
-  container.innerHTML = `<div class="compact-scan-label" data-scan="label"><span data-scan="time"></span><span data-scan="percent"></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span><div class="scan-snapshot-meta"><span class="scan-snapshot-date" data-scan="date"></span><span class="scan-report-meta" data-scan="reportGroup"><button type="button" class="scan-report-link" data-scan="report" hidden>Scan report</button><span class="scan-warning-symbol" data-scan="warning" tabindex="0" role="img" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2z"></path><path d="M12 9v6M12 18h.01"></path></svg></span></span></div><div class="tile-scan-actions"><button type="button" class="tile-scan-primary" data-scan="primary">Scan</button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan">Cancel</button></div>`;
+  container.innerHTML = `<div class="compact-scan-label" data-scan="label"><span data-scan="time"></span><span data-scan="percent"></span></div><span class="compact-scan-progress" data-scan="progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><span class="scan-progress-bar" data-scan="bar"></span></span><div class="scan-snapshot-meta"><span class="scan-snapshot-date" data-scan="date"></span><span class="scan-report-meta" data-scan="reportGroup"><button type="button" class="scan-report-link" data-scan="report" hidden>Scan report</button><span class="scan-warning-symbol" data-scan="warning" tabindex="0" role="img" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2z"></path><path d="M12 9v6M12 18h.01"></path></svg></span></span></div><div class="tile-scan-actions"><button type="button" class="tile-scan-primary" data-scan="primary">Scan</button><button type="button" class="tile-scan-clear-cache" data-scan="clearCache" title="Clear saved scan and cached metadata" hidden>Clear cache</button><button type="button" class="scan-cancel-button" data-scan="cancel" aria-label="Cancel scan">Cancel</button></div>`;
   const refs = { container };
-  for (const name of ["label", "time", "percent", "progress", "bar", "date", "reportGroup", "report", "warning", "primary", "cancel"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
+  for (const name of ["label", "time", "percent", "progress", "bar", "date", "reportGroup", "report", "warning", "primary", "clearCache", "cancel"]) refs[name] = container.querySelector(`[data-scan="${name}"]`);
   let current, busy = false;
   let dismissWarning = null, warningMessage = "";
   const hideWarning = () => { dismissWarning?.(); dismissWarning = null; };
@@ -74,6 +76,7 @@ export function createTileScanStatus(onPause, onCancel, onScan, onReport) {
     if (!current) return;
     updateScanStatus(refs, current);
     refs.primary.disabled = refs.cancel.disabled = busy;
+    refs.clearCache.disabled = busy || !!current.saving;
     if (dismissWarning) {
       if (refs.warning.hidden) hideWarning();
       else if (warningMessage !== refs.warning.getAttribute("aria-label")) showWarning();
@@ -91,6 +94,10 @@ export function createTileScanStatus(onPause, onCancel, onScan, onReport) {
     return perform(job => ["running", "paused"].includes(job.state) ? onPause(job) : onScan(job));
   });
   refs.cancel.addEventListener("click", () => pendingScan(current) && perform(onCancel));
+  refs.clearCache.addEventListener("click", event => {
+    event.stopPropagation();
+    if (current?.state === "completed" && !current.saving) return perform(onClearCache);
+  });
   refs.report.addEventListener("click", event => {
     event.stopPropagation();
     if (current?.state === "completed" && current.report?.reportPath) return onReport?.(current);

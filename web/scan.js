@@ -1,4 +1,4 @@
-import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, RemoveScanLocation, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
+import { QueueScan, QueueFolderRefresh, GetScanJobs, SelectScanJob, GetScanJobView, SetScanJobPaused, CancelScanJob, ClearCachedScan, RemoveScanLocation, OpenPath, ValidateScanPath } from "./wailsjs/go/app/App.js";
 import { byId } from "./dom.js";
 import { AppState } from "./state.js";
 import { clearSelection, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
@@ -94,7 +94,7 @@ function presentJobs() {
   pruneSavedViews();
   AppState.scanInProgress = jobs.some(pendingScan);
   setLocationScanJobs(jobs, () => createTileScanStatus(changePause, cancelJob,
-    job => enqueue(() => QueueScan(job.path)), job => openScanReport(job.report?.reportPath)), AppState.scanRootPath || "", releaseJob);
+    job => enqueue(() => QueueScan(job.path)), job => openScanReport(job.report?.reportPath), clearJobCache), AppState.scanRootPath || "", releaseJob);
   applyJobState(jobs.find(job => job.id === selectedID));
   updateScanVisibility();
   updateNavButtons();
@@ -174,6 +174,15 @@ async function selectJob(id, reveal = true) {
 }
 
 export async function refreshScanJobs() { return pollJobs(); }
+
+async function clearJobCache(job) {
+  try {
+    await ClearCachedScan(job.path);
+    rememberLocation(job.path);
+    await pollJobs();
+  }
+  catch (error) { showErrorToast(error); }
+}
 
 async function releaseJob(job) {
   try {

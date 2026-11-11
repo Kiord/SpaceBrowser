@@ -280,3 +280,19 @@ test('adding a folder keeps it available without scanning, survives refresh, and
   assert.deepEqual(removed, ['/new-folder']);
   assert.equal(h.byId('locationList').children.length, 1);
 });
+
+test('clearing a saved folder scan keeps its existing tile and Scan action after refresh', async () => {
+  const h = await renderLocation({ kind: 'volume' });
+  const updates = [];
+  const factory = () => ({ element: h.element(), update: job => updates.push(job) });
+  h.ui.setLocationScanJobs([{ id: 1, path: '/saved-folder', state: 'completed', cached: true }], factory);
+  const folder = h.byId('locationList').children[1];
+  h.ui.rememberLocation('/saved-folder');
+  h.ui.setLocationScanJobs([], factory);
+  assert.equal(h.byId('locationList').children[1], folder);
+  assert.equal(updates.at(-1).path, '/saved-folder');
+  assert.equal(updates.at(-1).state, 'idle');
+  await h.byId('refreshLocationsButton').emit('click');
+  assert.equal(h.byId('locationList').children[1].children[0].dataset.path, '/saved-folder');
+  assert.equal(updates.at(-1).state, 'idle');
+});

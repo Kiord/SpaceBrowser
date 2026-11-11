@@ -11,8 +11,8 @@ async function harness() {
     return elements.get(id);
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
-  const jobs = [], calls = [], errors = [], timers = new Map();
-  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile, reportTile;
+  const jobs = [], calls = [], errors = [], timers = new Map(), remembered = [];
+  let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile, reportTile, clearTile;
   let autocompleteCloses = 0;
   const view = id => {
     const job = jobs.find(job => job.id === id);
@@ -51,15 +51,16 @@ async function harness() {
     './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
     './path-autocomplete.js': { closePathAutocomplete() { autocompleteCloses++; } },
     './logging.js': { logError: (...args) => errors.push(args) },
-    './locations.js': { rememberLocation() {}, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
-    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh, report) { reportTile = report; refreshTile = refresh; pauseTile = pause; cancelTile = cancel; } },
+    './locations.js': { rememberLocation(path) { remembered.push(path); }, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
+    './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh, report, clear) { reportTile = report; refreshTile = refresh; pauseTile = pause; cancelTile = cancel; clearTile = clear; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
   ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
-  return { ui, jobs, state, element, calls, errors, backend, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
+  return { ui, jobs, state, element, calls, errors, backend, remembered, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
     refreshTile: job => refreshTile(job),
     reportTile: job => reportTile(job),
+    clearTile: job => clearTile(job),
     scanTile: () => refreshTile({ path: state.scanRootPath, state: 'idle' }),
     removeTile: job => removeTile(job),
     pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
@@ -83,6 +84,46 @@ test('removing the selected folder clears its view and cached location', async (
   assert.equal(h.state.homeVisible, true);
   assert.equal(h.element('emptyLocationTitle').textContent, 'Choose a location');
   assert.deepEqual(h.calls.at(-1), ['remove', '/one']);
+});
+
+test('clearing the selected tile cache clears its view and keeps the location available', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0); await h.poll();
+  const queued = h.calls.filter(call => call[0] === 'queue').length;
+  await h.clearTile(h.jobs[0]);
+  assert.equal(h.jobs.length, 0);
+  assert.equal(h.tileJobs().length, 0);
+  assert.equal(h.state.node_id, null);
+  assert.equal(h.state.homeVisible, true);
+  assert.deepEqual(h.remembered, ['/one']);
+  assert.equal(h.calls.some(call => call[0] === 'remove'), false);
+  assert.equal(h.calls.filter(call => call[0] === 'queue').length, queued);
+});
+
+test('clearing another tile cache preserves the selected running scan', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0); await h.poll();
+  const completed = h.jobs[0];
+  h.element('pathInput').value = '/two';
+  await h.ui.analyze(); h.preview(1); await h.poll();
+  await h.clearTile(completed);
+  assert.deepEqual(h.jobs.map(job => job.path), ['/two']);
+  assert.equal(h.jobs[0].state, 'running');
+  assert.equal(h.state.scanRootPath, '/two');
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.state.liveScanPreview, true);
+  assert.deepEqual(h.remembered, ['/one']);
+});
+
+test('a cache clearing error leaves the tile and selected view intact', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0); await h.poll();
+  h.backend.ClearCachedScan = async () => { throw new Error('cache is locked'); };
+  await h.clearTile(h.jobs[0]);
+  assert.equal(h.jobs.length, 1);
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.state.scanRootPath, '/one');
+  assert.match(h.errors[0].message, /cache is locked/);
 });
 
 test('disabled live previews skip label repainting and still display the completed scan', async () => {

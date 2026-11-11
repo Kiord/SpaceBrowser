@@ -1449,6 +1449,10 @@ input[type="range"]:focus-visible {
   cursor: pointer;
 }
 
+.settings-check[hidden] {
+  display: none;
+}
+
 .settings-check input {
   appearance: none;
   position: relative;
@@ -1829,6 +1833,7 @@ button:disabled:hover,
 .tile-scan-actions { grid-row: 4; display: flex; justify-content: flex-end; gap: 7px; }
 .tile-scan-status button { box-sizing: border-box; min-width: 64px; height: 30px; padding: 0 12px; font: 12px "Segoe UI", sans-serif; border: 1px solid #c9c9c9; border-radius: 2px; background: #f6f6f6; color: #333; box-shadow: inset 0 1px rgba(255,255,255,.9), 0 1px 2px rgba(0,0,0,.1); cursor: pointer; }
 .tile-scan-status .tile-scan-primary { flex: 1; }
+.tile-scan-status .tile-scan-clear-cache { flex: 0 0 auto; min-width: 0; padding: 0 8px; white-space: nowrap; }
 .tile-scan-status .scan-cancel-button { color: #76534f; }
 .tile-scan-status button:hover:not(:disabled) { background: #fff; border-color: #aaa; }
 .tile-scan-status .scan-cancel-button:hover:not(:disabled) { background: #fff0ee; border-color: #d7aaa6; color: #6f211e; }

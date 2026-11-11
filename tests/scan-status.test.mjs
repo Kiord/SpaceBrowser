@@ -11,7 +11,7 @@ const element = () => ({ hidden: false, attributes: {}, textContent: "", disable
 const states = { idle: "Scan", running: "Pause", paused: "Resume", queued: "Scan", completed: "Rescan", cancelled: "Scan", failed: "Retry" };
 test("rescans estimate progress from active elapsed time and wait for actual completion", async () => {
   const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
-  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "clearCache", "cancel"].map(name => [name, element()]));
   for (const [state, elapsedMilliseconds, fraction, percent] of [
     ["running", 0, .9, 0],
     ["running", 5000, .9, 50],
@@ -30,7 +30,7 @@ test("rescans estimate progress from active elapsed time and wait for actual com
 
 test("scans without a usable prior duration retain the work-based heuristic", async () => {
   const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
-  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "clearCache", "cancel"].map(name => [name, element()]));
   for (const estimate of [undefined, 0, -1]) {
     ui.updateScanStatus(refs, { state: "running", estimatedDurationMilliseconds: estimate, progress: { elapsedMilliseconds: 5000, fraction: .5 } });
     assert.equal(refs.bar.style["--scan-progress"], '48%');
@@ -40,7 +40,7 @@ test("scans without a usable prior duration retain the work-based heuristic", as
 
 test("saved scans show their recorded duration and omit unavailable legacy timing", async () => {
   const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: String }, "./notifications.js": { showToastAt() {} } });
-  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+  const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "clearCache", "cancel"].map(name => [name, element()]));
   for (const [cached, elapsedMilliseconds, text] of [
     [true, 12345, "Done in 12.3s"],
     [true, 0, "Done"],
@@ -55,11 +55,12 @@ test("saved scans show their recorded duration and omit unavailable legacy timin
 for (const [state, action] of Object.entries(states)) {
   test("tile presents the appropriate action for " + state, async () => {
     const ui = await loadUI("scan-status.js", { "./format.js": { formatDuration: ms => ms + "ms" }, "./notifications.js": { showToastAt() {} } });
-    const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "cancel"].map(name => [name, element()]));
+    const refs = Object.fromEntries(["container", "label", "time", "percent", "bar", "progress", "date", "reportGroup", "report", "warning", "primary", "clearCache", "cancel"].map(name => [name, element()]));
     ui.updateScanStatus(refs, { state, progress: { elapsedMilliseconds: 1200, fraction: .5 } });
     assert.equal(refs.container.hidden, false);
     assert.equal(refs.primary.textContent, action);
     assert.equal(refs.primary.hidden, state === "queued");
+    assert.equal(refs.clearCache.hidden, state !== "completed");
     assert.equal(refs.cancel.hidden, !["running", "paused", "queued"].includes(state));
     assert.equal(refs.progress.hidden, ["idle", "cancelled"].includes(state));
     if (state === "paused") assert.equal(refs.time.textContent, "Paused · 1200ms");
@@ -70,7 +71,7 @@ for (const [state, action] of Object.entries(states)) {
   });
 }
 
-async function harness(onScan) {
+async function harness(onScan, onClearCache) {
   const nodes = new Map();
   const toasts = [];
   const makeElement = () => ({ ...element(), ...eventTarget(),
@@ -84,9 +85,52 @@ async function harness(onScan) {
   const calls = [];
   const tile = ui.createTileScanStatus(job => calls.push(["pause", job.id]),
     job => calls.push(["cancel", job.id]), onScan || (job => calls.push(["scan", job.path])),
-    job => calls.push(["report", job.report.reportPath]));
-  return { tile, calls, toasts, primary: nodes.get('[data-scan="primary"]'), cancel: nodes.get('[data-scan="cancel"]'), report: nodes.get('[data-scan="report"]'), warning: nodes.get('[data-scan="warning"]'), reportGroup: nodes.get('[data-scan="reportGroup"]') };
+    job => calls.push(["report", job.report.reportPath]), onClearCache || (job => calls.push(["clear", job.path])));
+  return { tile, calls, toasts, primary: nodes.get('[data-scan="primary"]'), clearCache: nodes.get('[data-scan="clearCache"]'), cancel: nodes.get('[data-scan="cancel"]'), report: nodes.get('[data-scan="report"]'), warning: nodes.get('[data-scan="warning"]'), reportGroup: nodes.get('[data-scan="reportGroup"]') };
 }
+
+test("clearing a tile cache waits for saving and only acts on its completed scan", async () => {
+  const h = await harness();
+  const job = { id: 3, path: "/disk", state: "completed", saving: true };
+  const click = () => h.clearCache.emit("click", { stopPropagation() {} });
+  h.tile.update(job);
+  assert.equal(h.clearCache.hidden, false);
+  assert.equal(h.clearCache.disabled, true);
+  await click();
+  assert.deepEqual(h.calls, []);
+  h.tile.update({ ...job, saving: false });
+  assert.equal(h.clearCache.disabled, false);
+  assert.equal(h.clearCache.attributes["aria-label"], "Clear cached scan /disk");
+  let stopped = false;
+  await h.clearCache.emit("click", { stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true);
+  assert.deepEqual(h.calls, [["clear", "/disk"]]);
+  for (const state of ["idle", "running", "paused", "queued", "failed", "cancelled"]) {
+    h.tile.update({ ...job, saving: false, state });
+    await click();
+  }
+  assert.equal(h.calls.length, 1);
+});
+
+test("clearing a cache blocks duplicate clicks and rescans until it finishes", async () => {
+  const pending = deferred();
+  let requests = 0;
+  const h = await harness(undefined, () => { requests++; return pending.promise; });
+  h.tile.update({ path: "/disk", state: "completed" });
+  const click = () => h.clearCache.emit("click", { stopPropagation() {} });
+  const first = click();
+  h.tile.update({ path: "/disk", state: "completed" });
+  assert.equal(h.clearCache.disabled, true);
+  assert.equal(h.primary.disabled, true);
+  await click();
+  await h.primary.emit("click");
+  assert.equal(requests, 1);
+  assert.deepEqual(h.calls, []);
+  pending.resolve();
+  await first;
+  assert.equal(h.clearCache.disabled, false);
+  assert.equal(h.primary.disabled, false);
+});
 
 test("report links follow the date and open their own report, including clean scans", async () => {
   const h = await harness();
