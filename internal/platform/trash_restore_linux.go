@@ -14,6 +14,9 @@ import (
 )
 
 func linuxTrashRootContaining(p string) (clean, root string, err error) {
+	if err := RequireAbsolutePath(p); err != nil {
+		return "", "", err
+	}
 	clean, err = filepath.Abs(p)
 	if err != nil {
 		return "", "", err

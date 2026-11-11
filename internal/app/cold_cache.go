@@ -76,7 +76,7 @@ func (c *coldCache) headers() []coldHeader {
 		err = gob.NewDecoder(bufio.NewReader(f)).Decode(&h)
 		stat, statErr := f.Stat()
 		f.Close()
-		if err != nil || statErr != nil || h.Version != 1 || filepath.Base(c.filename(h.Info.Path)) != entry.Name() {
+		if err != nil || statErr != nil || h.Version != 1 || !filepath.IsAbs(h.Info.Path) || !filepath.IsAbs(h.Job.Path) || filepath.Base(c.filename(h.Info.Path)) != entry.Name() {
 			continue
 		}
 		h.Info.DiskBytes = stat.Size()
@@ -88,6 +88,9 @@ func (c *coldCache) headers() []coldHeader {
 func (c *coldCache) save(info ScanJobInfo, snapshot *treeStoreSnapshot, epoch coldEpoch) error {
 	if c == nil || snapshot == nil || snapshot.root == nil {
 		return nil
+	}
+	if !filepath.IsAbs(info.Path) || !filepath.IsAbs(snapshot.root.FullPath) {
+		return fmt.Errorf("saved scan has relative paths; rescan this location")
 	}
 	c.mu.Lock()
 	allowed := !c.disabled && epoch == (coldEpoch{c.generation, c.paths[canonicalCachePath(info.Path)]})
@@ -114,6 +117,9 @@ func (c *coldCache) save(info ScanJobInfo, snapshot *treeStoreSnapshot, epoch co
 	for len(stack) > 0 {
 		node := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
+		if (node.ID >= 0 || node.FullPath != "") && !filepath.IsAbs(node.FullPath) {
+			return fmt.Errorf("saved scan has relative paths; rescan this location")
+		}
 		h.RecordCount++
 		stack = append(stack, node.Children...)
 	}
@@ -161,6 +167,9 @@ func (c *coldCache) save(info ScanJobInfo, snapshot *treeStoreSnapshot, epoch co
 	return os.Rename(name, c.filename(info.Path))
 }
 func (c *coldCache) load(path string) (*treeStoreSnapshot, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("saved scan has relative paths; rescan this location")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	f, err := os.Open(c.filename(path))
@@ -176,6 +185,9 @@ func (c *coldCache) load(path string) (*treeStoreSnapshot, error) {
 	stat, err := f.Stat()
 	if err != nil {
 		return nil, err
+	}
+	if !filepath.IsAbs(h.Info.Path) || !filepath.IsAbs(h.Job.Path) {
+		return nil, fmt.Errorf("saved scan has relative paths; rescan this location")
 	}
 	if h.Version != 1 || canonicalCachePath(h.Info.Path) != canonicalCachePath(path) || h.NodeCount <= 0 || int64(h.NodeCount) > stat.Size() || h.RootID < 0 || h.RootID >= h.NodeCount {
 		return nil, fmt.Errorf("invalid saved scan")
@@ -196,6 +208,9 @@ func (c *coldCache) load(path string) (*treeStoreSnapshot, error) {
 			return nil, err
 		}
 		node := &record.Node
+		if (node.ID >= 0 || node.FullPath != "") && !filepath.IsAbs(node.FullPath) {
+			return nil, fmt.Errorf("saved scan has relative paths; rescan this location")
+		}
 		if node.ScanTime == 0 && !legacyScanDate.IsZero() {
 			node.ScanTime = legacyScanDate.Unix()
 		}

@@ -228,7 +228,7 @@ func (Windows) BaseName(p string) string {
 	return b
 }
 
-// Canonicalize turns a user input path into a scanning-safe, OS-correct path.
+// Canonicalize resolves user input to an absolute, OS-correct scan path.
 // Key behavior: "D:" -> "D:\" (drive root), strip \\?\ for logic, normalize slashes.
 func (Windows) Canonicalize(p string) string {
 	p = strings.TrimSpace(p)
@@ -255,11 +255,20 @@ func (Windows) Canonicalize(p string) string {
 	if len(p) >= 2 && p[1] == ':' && p[0] >= 'a' && p[0] <= 'z' {
 		p = strings.ToUpper(p[:1]) + p[1:]
 	}
-	return filepath.Clean(p)
+	// Scanner-generated paths are already absolute. Avoid a native FullPath
+	// lookup for every visited directory.
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return ""
+	}
+	return filepath.Clean(abs)
 }
 
 func (w Windows) IsMountRoot(p string) bool {
-	// Compare against canonicalized input (no Abs; Abs would pick the drive's current dir)
+	// Canonicalize preserves bare drive designators as drive roots.
 	clean := w.Canonicalize(p)
 
 	// Drive root like "D:\"

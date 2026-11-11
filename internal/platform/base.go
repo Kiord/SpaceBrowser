@@ -98,6 +98,7 @@ type ScannerFilesystem interface {
 	BaseName(string) string
 	IsHidden(string) bool
 	IsMountRoot(string) bool
+	// Canonicalize resolves user input to an absolute path, or returns empty on failure.
 	Canonicalize(string) string
 	IsLikelyNetworkFS(string) bool
 }
@@ -209,6 +210,9 @@ func (Default) ShowProperties(string) error {
 }
 
 func (Default) ValidateDeletion(path string) error {
+	if err := RequireAbsolutePath(path); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect deletion target: %w", err)
@@ -217,6 +221,9 @@ func (Default) ValidateDeletion(path string) error {
 }
 
 func (Default) MoveToTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if _, err := exec.LookPath("gio"); err != nil {
 		return fmt.Errorf("no desktop Trash service is available")
 	}
@@ -227,6 +234,9 @@ func (Default) MoveToTrash(p string) error {
 }
 
 func (Default) DeletePermanently(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(p); err != nil {
 		return fmt.Errorf("delete permanently: %w", err)
 	}
@@ -258,7 +268,10 @@ func (Default) DeleteTrashItemPermanently(string) error {
 }
 
 func (Default) Canonicalize(p string) string {
-	abs, _ := filepath.Abs(p)
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return ""
+	}
 	return filepath.Clean(abs)
 }
 

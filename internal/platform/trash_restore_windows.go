@@ -12,6 +12,9 @@ import (
 )
 
 func windowsTrashPathParts(p string) (clean, root string, parts []string, err error) {
+	if err := RequireAbsolutePath(p); err != nil {
+		return "", "", nil, err
+	}
 	clean = (Windows{}).Canonicalize(p)
 	volume := filepath.VolumeName(clean)
 	if len(volume) != 2 || volume[1] != ':' {

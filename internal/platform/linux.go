@@ -176,6 +176,9 @@ func linuxFileURI(path string) string {
 }
 
 func (Linux) MoveToTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	commands := [][]string{
 		{"gio", "trash", "--", p},
 		{"kioclient6", "move", p, "trash:/"},
@@ -282,6 +285,9 @@ func linuxSafeSharedTrash(path string) bool {
 }
 
 func (l Linux) EmptyTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if !l.IsTrashRoot(p) {
 		return fmt.Errorf("the selected folder is not a supported Trash root")
 	}

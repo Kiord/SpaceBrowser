@@ -36,6 +36,9 @@ var (
 // IFileOperation requires an STA. Keep initialization, every interface call,
 // and release on the same OS thread. If COM is unavailable, fail closed.
 func (Windows) MoveToTrash(path string) error {
+	if err := RequireAbsolutePath(path); err != nil {
+		return err
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	hr, _, _ := recycleInitialize.Call(0, 2) // COINIT_APARTMENTTHREADED

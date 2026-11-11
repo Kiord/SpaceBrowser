@@ -10,6 +10,9 @@ import (
 // Keep deletion relative to an open Trash directory. Root operations enforce
 // containment even if a descendant link changes after validation.
 func removeTrashPaths(root string, dataPaths, metadataPaths []string) error {
+	if err := RequireAbsolutePath(root); err != nil {
+		return err
+	}
 	info, err := os.Lstat(root)
 	if err != nil {
 		return err
@@ -24,6 +27,9 @@ func removeTrashPaths(root string, dataPaths, metadataPaths []string) error {
 	defer directory.Close()
 	relativePaths := make([]string, 0, len(dataPaths)+len(metadataPaths))
 	for _, path := range append(append([]string{}, dataPaths...), metadataPaths...) {
+		if err := RequireAbsolutePath(path); err != nil {
+			return err
+		}
 		relative, err := filepath.Rel(root, path)
 		if err != nil || relative == "." || !filepath.IsLocal(relative) {
 			return fmt.Errorf("deletion target is outside the Trash data directory")

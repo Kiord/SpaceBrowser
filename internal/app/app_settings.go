@@ -187,6 +187,9 @@ func normalizeProfileWithFilesystem(profile Profile, filesystem platform.Scanner
 			continue
 		}
 		path = filesystem.Canonicalize(path)
+		if !filepath.IsAbs(path) {
+			return Profile{}, fmt.Errorf("cannot resolve excluded path to an absolute path")
+		}
 		if _, exists := seen[path]; exists {
 			continue
 		}

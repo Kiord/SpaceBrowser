@@ -91,6 +91,9 @@ end run`
 }
 
 func (Darwin) MoveToTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	const script = `on run argv
 tell application "Finder" to delete POSIX file (item 1 of argv)
 end run`
@@ -173,6 +176,9 @@ func darwinSafeSharedTrash(path string) bool {
 }
 
 func (d Darwin) EmptyTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if !d.IsTrashRoot(p) {
 		return fmt.Errorf("the selected folder is not a supported Trash root")
 	}
@@ -183,6 +189,9 @@ func (d Darwin) EmptyTrash(p string) error {
 }
 
 func (d Darwin) TrashRestoreInfo(p string) (TrashRestoreInfo, error) {
+	if err := RequireAbsolutePath(p); err != nil {
+		return TrashRestoreInfo{}, err
+	}
 	if !d.IsInTrash(p) || d.IsTrashRoot(p) {
 		return TrashRestoreInfo{}, fmt.Errorf("the selected item is not inside a supported Trash folder")
 	}
@@ -195,6 +204,9 @@ func (d Darwin) RestoreTrashItem(p string, expected TrashRestoreInfo) error {
 }
 
 func (d Darwin) DeleteTrashItemPermanently(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if !d.IsInTrash(p) || d.IsTrashRoot(p) {
 		return fmt.Errorf("the selected item is not inside a supported Trash folder")
 	}

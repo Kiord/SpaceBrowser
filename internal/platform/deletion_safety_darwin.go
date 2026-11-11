@@ -10,6 +10,9 @@ import (
 )
 
 func (Darwin) ValidateDeletion(path string) error {
+	if err := RequireAbsolutePath(path); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("inspect deletion target: %w", err)

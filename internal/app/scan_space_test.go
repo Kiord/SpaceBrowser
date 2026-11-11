@@ -187,6 +187,7 @@ func TestSpaceMeasurementSurvivesSavedScanWithoutUsingLiveUsage(t *testing.T) {
 	path := t.TempDir()
 	store := spaceLayoutStore(70)
 	store.root.FullPath = path
+	store.root.Children[0].FullPath = filepath.Join(path, "file")
 	snapshot := store.sharedSnapshot()
 	want := *snapshot.root.SpaceUsage
 	cache := &coldCache{dir: t.TempDir()}

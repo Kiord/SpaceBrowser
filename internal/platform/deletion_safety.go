@@ -24,11 +24,10 @@ func validateDeletionFileType(info os.FileInfo) error {
 }
 
 func validateDeletionTarget(path string, info os.FileInfo, protectedTrees, protectedExact, mountPoints []string, caseInsensitive bool) error {
-	clean, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("inspect deletion target: %w", err)
+	if err := RequireAbsolutePath(path); err != nil {
+		return err
 	}
-	clean = filepath.Clean(clean)
+	clean := filepath.Clean(path)
 	physical, err := physicalDeletionPath(clean, info)
 	if err != nil {
 		return fmt.Errorf("%s: %w", physicalDeletionMessage, err)

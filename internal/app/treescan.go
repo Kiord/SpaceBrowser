@@ -446,6 +446,9 @@ func (s *Scanner) buildTreeDirectory(path string, depth int, parentID int, fileC
 		defer atomic.AddInt64(&s.workProcessed, 1)
 	}
 	abs := s.filesystem.Canonicalize(path)
+	if !filepath.IsAbs(abs) {
+		return nil, errors.New("cannot resolve scan path to an absolute path")
+	}
 	if depth == 0 && s.profile.SkipNetworkFS {
 		if s.filesystem.IsLikelyNetworkFS(abs) {
 			return nil, errNetworkFilesystemRootSkipped

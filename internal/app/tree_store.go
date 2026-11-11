@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"spacebrowser/internal/platform"
 )
 
 // TreeStore owns the currently scanned tree and its dense node index.
@@ -575,6 +577,9 @@ func (s *TreeStore) prepareFilesystemMutation(nodeID int, emptyTrash, collectTra
 		return filesystemMutation{}, fmt.Errorf("selected item is no longer available")
 	}
 	node := s.nodes[nodeID]
+	if err := platform.RequireAbsolutePath(node.FullPath); err != nil {
+		return filesystemMutation{}, err
+	}
 	if emptyTrash {
 		if !node.IsFolder || node.FullPath == "" {
 			return filesystemMutation{}, fmt.Errorf("the selected item is not a supported Trash root")

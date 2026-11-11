@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -47,6 +48,9 @@ func validateScanPathWithFilesystem(path string, filesystem platform.ScannerFile
 	}
 
 	path = filesystem.Canonicalize(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("cannot resolve scan path to an absolute path")
+	}
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("this path does not exist")

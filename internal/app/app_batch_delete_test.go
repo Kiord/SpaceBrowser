@@ -86,13 +86,16 @@ func TestBatchDeletionCollapsesDescendantsAndDuplicateTargets(t *testing.T) {
 }
 
 func TestBatchDeletionValidatesEveryTargetBeforeStarting(t *testing.T) {
-	for _, reason := range []string{"stale path", "protected", "changed mode", "root", "scan active", "disabled"} {
+	for _, reason := range []string{"stale path", "relative path", "protected", "changed mode", "root", "scan active", "disabled"} {
 		t.Run(reason, func(t *testing.T) {
 			app, desktop, targets := batchDeleteFixture(t)
 			second := targets["last"]
 			switch reason {
 			case "stale path":
 				second.Path += "-replaced"
+			case "relative path":
+				second.Path = filepath.Join("data", "last")
+				app.store.nodes[second.NodeID].FullPath = second.Path
 			case "protected":
 				desktop.blocked = second.Path
 			case "changed mode":

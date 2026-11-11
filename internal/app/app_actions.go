@@ -32,7 +32,13 @@ func (a *App) deleteNodeLocked(nodeID int, profile Profile, deferRefresh bool) (
 
 	var result DeleteResult
 	var err error
-	nodePath, _ := a.store.NodePath(nodeID)
+	nodePath, pathErr := a.store.NodePath(nodeID)
+	if pathErr != nil {
+		return DeleteResult{}, pathErr
+	}
+	if err := platform.RequireAbsolutePath(nodePath); err != nil {
+		return DeleteResult{}, err
+	}
 	isTrashRoot := a.store.NodePathMatches(nodeID, a.desktop.IsTrashRoot)
 	isInTrash := !isTrashRoot && a.store.NodePathMatches(nodeID, a.desktop.IsInTrash)
 	if !isTrashRoot && !isInTrash {
@@ -194,6 +200,12 @@ func (a *App) RestoreNode(expected TrashRestoreDetails) (DeleteResult, error) {
 	}
 	if info.TargetPath != expected.TargetPath || info.OriginalPath != expected.OriginalPath || !a.store.isCurrentMutation(target) {
 		return DeleteResult{}, fmt.Errorf("the restore source or destination changed; confirm it again")
+	}
+	if err := platform.RequireAbsolutePath(info.TargetPath); err != nil {
+		return DeleteResult{}, err
+	}
+	if err := platform.RequireAbsolutePath(info.OriginalPath); err != nil {
+		return DeleteResult{}, err
 	}
 	if err := a.desktop.RestoreTrashItem(path, info); err != nil {
 		return DeleteResult{}, err

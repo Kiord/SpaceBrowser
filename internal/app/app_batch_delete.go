@@ -48,6 +48,9 @@ func (a *App) DeleteNodes(targets []DeletionTarget) (BatchDeleteResult, error) {
 		if err != nil || filepath.Clean(path) != filepath.Clean(target.Path) || target.Path == "" {
 			return BatchDeleteResult{}, fmt.Errorf("the selection changed; select the items again")
 		}
+		if err := platform.RequireAbsolutePath(path); err != nil {
+			return BatchDeleteResult{}, err
+		}
 		empty := a.desktop.IsTrashRoot(path)
 		inTrash := !empty && a.desktop.IsInTrash(path)
 		action := "trash"

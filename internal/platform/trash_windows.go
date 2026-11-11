@@ -43,6 +43,9 @@ func (w Windows) IsInTrash(p string) bool {
 }
 
 func (w Windows) EmptyTrash(p string) error {
+	if err := RequireAbsolutePath(p); err != nil {
+		return err
+	}
 	if !w.IsTrashRoot(p) {
 		return fmt.Errorf("the selected folder is not a Recycle Bin root")
 	}
