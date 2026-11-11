@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadUI, deferred } from "./helpers/ui.mjs";
 
-async function harness() {
+async function harness(options = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { hidden: true, value: '/one', textContent: '', handlers: {}, attributes: {},
@@ -11,7 +11,7 @@ async function harness() {
     return elements.get(id);
   };
   const state = { node_id: null, rects: [], navHistory: [], navIndex: -1, navSession: 0, homeVisible: false, selectedNodeIds: new Set() };
-  const jobs = [], calls = [], errors = [], timers = new Map(), remembered = [];
+  const jobs = [], calls = [], errors = [], notices = [], timers = new Map(), remembered = [];
   let selected, nextTimer = 0, redraws = 0, labels = 0, tileJobs = [], refreshTile, pauseTile, cancelTile, removeTile, reportTile, clearTile;
   let autocompleteCloses = 0;
   const view = id => {
@@ -48,16 +48,17 @@ async function harness() {
       }
     } },
     './controls.js': { addControlEventListeners() {}, eventMatchesShortcut() {}, shortcutCanRun() {} },
-    './notifications.js': { hideRectToast() {}, showErrorToast: error => errors.push(error) },
+    './notifications.js': { hideRectToast() {}, showErrorToast: error => { errors.push(error); notices.push(error); } },
     './path-autocomplete.js': { closePathAutocomplete() { autocompleteCloses++; } },
     './logging.js': { logError: (...args) => errors.push(args) },
     './locations.js': { rememberLocation(path) { remembered.push(path); }, hideLocationSelector() { state.homeVisible = false; }, showLocationSelector() { state.homeVisible = true; }, setLocationScanJobs(value, factory, path, remove) { tileJobs = value; removeTile = remove; factory(); } },
     './scan-status.js': { refreshScanIcon: '<svg></svg>', pendingScan: job => ['running', 'queued', 'paused'].includes(job?.state), updateScanStatus(refs, job) { refs.container.hidden = job.state === 'cancelled'; }, createTileScanStatus(pause, cancel, refresh, report, clear) { reportTile = report; refreshTile = refresh; pauseTile = pause; cancelTile = cancel; clearTile = clear; } },
   };
   const ui = await loadUI('scan.js', modules, { performance: { now: () => 1000 },
-    setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeout: id => timers.delete(id) });
-  ui.initScan({ redraw: async () => { redraws++; }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
-  return { ui, jobs, state, element, calls, errors, backend, remembered, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
+    setTimeout: (fn, delay) => { timers.set(++nextTimer, { fn, delay }); return nextTimer; }, clearTimeout: id => timers.delete(id) });
+  ui.initScan({ redraw: async () => { redraws++; await options.redraw?.(); }, repaintScanLabels: () => { labels++; }, hideContextMenu() {} });
+  return { ui, jobs, state, element, calls, errors, notices, backend, remembered, autocompleteCloses: () => autocompleteCloses, tileJobs: () => tileJobs, redraws: () => redraws, labels: () => labels,
+    pollDelays: () => [...timers.values()].map(timer => timer.delay),
     refreshTile: job => refreshTile(job),
     reportTile: job => reportTile(job),
     clearTile: job => clearTile(job),
@@ -65,11 +66,177 @@ async function harness() {
     removeTile: job => removeTile(job),
     pauseTile: () => pauseTile(jobs.find(job => job.id === selected)),
     cancelTile: () => cancelTile(jobs.find(job => job.id === selected)),
-    async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); await fn(); },
+    async poll() { const [id, { fn }] = timers.entries().next().value; timers.delete(id); await fn(); },
     preview(index, count = 3) { Object.assign(jobs[index], { tree: { rootId: 0, fileCount: count, dirCount: 1 }, revision: jobs[index].revision + 1, progress: { fileCount: count, dirCount: 1 } }); },
     complete(index) { this.preview(index); jobs[index].state = 'completed'; },
   };
 }
+
+for (const preview of [false, true]) {
+  test(`a failed final view request retries ${preview ? 'after a preview' : 'without a preview'}`, async () => {
+    const h = await harness();
+    await h.ui.analyze();
+    if (preview) { h.preview(0, 2); await h.poll(); }
+    h.complete(0);
+    const getView = h.backend.GetScanJobView;
+    let requests = 0;
+    h.backend.GetScanJobView = id => {
+      if (++requests === 1) throw new Error('temporary view failure');
+      return getView(id);
+    };
+    await h.poll();
+    assert.deepEqual(h.pollDelays(), [250]);
+    await h.poll();
+    assert.equal(h.state.node_id, 0);
+    assert.equal(h.state.fileCount, 3);
+    assert.equal(h.state.liveScanPreview, false);
+    assert.equal(h.element('emptyLocation').hidden, true);
+    assert.deepEqual(h.pollDelays(), []);
+    assert.deepEqual(h.notices, []);
+  });
+}
+
+test('terminal view retries back off and stop with an actionable error', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0);
+  const getView = h.backend.GetScanJobView;
+  h.backend.GetScanJobView = async () => { throw new Error('view unavailable'); };
+  for (const delay of [250, 500, 1000, 2000]) {
+    await h.poll();
+    assert.deepEqual(h.pollDelays(), [delay]);
+  }
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), []);
+  assert.equal(h.notices.length, 1);
+  assert.match(h.notices[0], /location.*retry/i);
+  h.backend.GetScanJobView = getView;
+  await h.ui.openLocation('/one');
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.calls.filter(call => call[0] === 'queue').length, 1);
+  assert.deepEqual(h.pollDelays(), []);
+});
+
+test('a failed terminal job-list request retries even when nothing is pending', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0); await h.poll();
+  const getJobs = h.backend.GetScanJobs;
+  h.backend.GetScanJobs = async () => { throw new Error('queue unavailable'); };
+  await h.ui.refreshScanJobs();
+  assert.deepEqual(h.pollDelays(), [250]);
+  h.backend.GetScanJobs = getJobs;
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), []);
+  assert.deepEqual(h.notices, []);
+});
+
+test('a queued scan remains selected and retries when fetching the job list fails', async () => {
+  const h = await harness();
+  const getJobs = h.backend.GetScanJobs;
+  let requests = 0;
+  h.backend.GetScanJobs = () => {
+    if (++requests === 1) throw new Error('queue unavailable');
+    return getJobs();
+  };
+  await h.ui.analyze();
+  assert.equal(h.jobs.length, 1);
+  assert.equal(h.state.scanRootPath, '/one');
+  assert.deepEqual(h.pollDelays(), [250]);
+  h.complete(0);
+  await h.poll();
+  assert.equal(h.state.node_id, 0);
+  assert.equal(h.state.fileCount, 3);
+  assert.equal(h.calls.filter(call => call[0] === 'queue').length, 1);
+  assert.deepEqual(h.pollDelays(), []);
+  assert.deepEqual(h.notices, []);
+});
+
+test('a failed redraw does not mark the final view as applied', async () => {
+  let fail = false;
+  const h = await harness({ redraw() { if (fail) { fail = false; throw new Error('layout failed'); } } });
+  await h.ui.analyze(); h.complete(0);
+  const before = h.redraws();
+  fail = true;
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), [250]);
+  await h.poll();
+  assert.equal(h.redraws(), before + 2);
+  assert.equal(h.element('emptyLocation').hidden, true);
+  assert.deepEqual(h.pollDelays(), []);
+});
+
+test('running scans cap retry delays, warn once, and resume normal polling after recovery', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  const getView = h.backend.GetScanJobView;
+  h.backend.GetScanJobView = async () => { throw new Error('view unavailable'); };
+  for (const delay of [250, 500, 1000, 2000, 2000, 2000]) {
+    await h.poll();
+    assert.deepEqual(h.pollDelays(), [delay]);
+  }
+  assert.equal(h.notices.length, 1);
+  h.backend.GetScanJobView = getView;
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), [250]);
+  h.backend.GetScanJobView = async () => { throw new Error('another failure'); };
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), [250]);
+  assert.equal(h.notices.length, 1);
+});
+
+test('an absent terminal view is retried instead of treated as applied', async () => {
+  const h = await harness();
+  await h.ui.analyze(); h.complete(0);
+  const getView = h.backend.GetScanJobView;
+  h.backend.GetScanJobView = async () => null;
+  await h.poll();
+  assert.deepEqual(h.pollDelays(), [250]);
+  h.backend.GetScanJobView = getView;
+  await h.poll();
+  assert.equal(h.state.node_id, 0);
+  assert.deepEqual(h.pollDelays(), []);
+});
+
+test('a failed view response for an old selection does not affect the new selection', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  const stale = deferred(), started = deferred();
+  const getView = h.backend.GetScanJobView;
+  h.backend.GetScanJobView = id => {
+    if (id !== 1) return getView(id);
+    started.resolve();
+    return stale.promise;
+  };
+  const poll = h.poll();
+  await started.promise;
+  h.element('pathInput').value = '/two';
+  await h.ui.analyze();
+  stale.reject(new Error('old view failed'));
+  await poll;
+  assert.equal(h.state.scanRootPath, '/two');
+  assert.deepEqual(h.errors, []);
+});
+
+test('a stale job list cannot clear a newly queued selection', async () => {
+  const h = await harness();
+  await h.ui.analyze();
+  const stale = deferred(), started = deferred();
+  const getJobs = h.backend.GetScanJobs;
+  const oldJobs = await getJobs();
+  h.backend.GetScanJobs = () => {
+    h.backend.GetScanJobs = getJobs;
+    started.resolve();
+    return stale.promise;
+  };
+  const poll = h.poll();
+  await started.promise;
+  h.element('pathInput').value = '/two';
+  await h.ui.analyze();
+  stale.resolve(oldJobs);
+  await poll;
+  assert.equal(h.state.scanRootPath, '/two');
+  assert.equal(h.state.homeVisible, false);
+  assert.deepEqual(h.errors, []);
+});
 
 test('removing the selected folder clears its view and cached location', async () => {
   const h = await harness();

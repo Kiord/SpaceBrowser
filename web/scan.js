@@ -23,6 +23,8 @@ let polling = false;
 let pollRequested = false;
 let queueRequest = false;
 let emptyPath = "";
+let updateFailures = 0;
+const retryDelays = [250, 500, 1000, 2000];
 const views = new Map();
 const previousViews = new Map();
 const reportedFailures = new Set();
@@ -103,12 +105,11 @@ function presentJobs() {
 async function applyView(view, token) {
   if (!view || token !== selectionToken || view.job.id !== selectedID) return;
   if (view.key === selectedKey) return;
-  selectedKey = view.key;
   if (view.restored) {
     const previous = previousViews.get(selectedID);
-    previousViews.delete(selectedID);
     if (previous?.jobID != null && previous.jobID !== selectedID && jobs.some(job => job.id === previous.jobID)) {
       await selectJob(previous.jobID, !AppState.homeVisible);
+      previousViews.delete(view.job.id);
       return;
     }
     clearView();
@@ -116,10 +117,13 @@ async function applyView(view, token) {
     AppState.liveScanPreview = false;
     if (AppState.node_id == null) showLocationSelector();
     else await redraw();
+    if (token !== selectionToken) return;
+    previousViews.delete(selectedID);
+    selectedKey = view.key;
     updateNavButtons();
     return;
   }
-  if (!view.tree) return;
+  if (!view.tree) { selectedKey = view.key; return; }
   if (AppState.node_id == null) {
     AppState.node_id = view.tree.rootId;
     AppState.navHistory = [view.tree.rootId];
@@ -141,6 +145,7 @@ async function applyView(view, token) {
   }
   applyJobState(view.job);
   await redraw();
+  if (token === selectionToken) selectedKey = view.key;
 }
 
 async function selectJob(id, reveal = true) {
@@ -149,6 +154,7 @@ async function selectJob(id, reveal = true) {
   selectedID = id;
   selectedKey = "";
   const token = ++selectionToken;
+  updateFailures = 0;
   hideRectToast(); hideContextMenu();
   const view = await SelectScanJob(id);
   if (token !== selectionToken) return;
@@ -173,7 +179,7 @@ async function selectJob(id, reveal = true) {
   updateScanVisibility();
 }
 
-export async function refreshScanJobs() { return pollJobs(); }
+export async function refreshScanJobs() { updateFailures = 0; return pollJobs(); }
 
 async function clearJobCache(job) {
   try {
@@ -203,8 +209,14 @@ async function pollJobs() {
   if (polling) { pollRequested = true; return; }
   polling = true;
   clearTimeout(pollTimer);
+  pollTimer = null;
+  let token = selectionToken;
+  let fetchingView = false;
+  let failed = false;
   try {
-    jobs = await GetScanJobs();
+    const latestJobs = await GetScanJobs();
+    if (token !== selectionToken) { pollRequested = true; return; }
+    jobs = latestJobs;
     if (selectedID != null && !jobs.some(job => job.id === selectedID)) {
       selectedID = null; selectedKey = ""; selectionToken++; clearView();
       emptyPath = "";
@@ -213,20 +225,41 @@ async function pollJobs() {
       showLocationSelector();
     }
     presentJobs();
-    const token = selectionToken;
-    if (selectedID != null) await applyView(await GetScanJobView(selectedID), token);
+    token = selectionToken;
+    if (selectedID != null) {
+      fetchingView = true;
+      const view = await GetScanJobView(selectedID);
+      if (token !== selectionToken) return;
+      if (!view || view.job.id !== selectedID) throw new Error("The selected scan view is unavailable.");
+      await applyView(view, token);
+      if (token !== selectionToken) return;
+      updateScanVisibility();
+    }
+    // A successful job list alone does not mean the selected results were applied.
+    updateFailures = 0;
     for (const job of jobs) {
       if (job.state === "failed" && !reportedFailures.has(job.id)) {
         reportedFailures.add(job.id); showErrorToast(job.error);
       }
     }
-  } catch (error) { logError("scan queue update failed:", error); }
+  } catch (error) {
+    if (token !== selectionToken) return;
+    failed = true;
+    updateFailures++;
+    logError(fetchingView ? "scan view update failed:" : "scan queue update failed:", error);
+    if (updateFailures === retryDelays.length + 1) {
+      showErrorToast("Could not update scan results. Click the location tile to retry.");
+    }
+  }
   finally {
     polling = false;
     if (pollRequested) {
       pollRequested = false;
       void pollJobs();
-    } else if (jobs.some(job => pendingScan(job) || job.saving)) pollTimer = setTimeout(pollJobs, 250);
+    } else if ((failed && updateFailures <= retryDelays.length) || jobs.some(job => pendingScan(job) || job.saving)) {
+      const delay = failed ? retryDelays[Math.min(updateFailures, retryDelays.length) - 1] : 250;
+      pollTimer = setTimeout(pollJobs, delay);
+    }
   }
 }
 
@@ -238,7 +271,9 @@ async function enqueue(request) {
   try {
     const job = await request();
     if (!previousViews.has(job.id)) previousViews.set(job.id, previous);
-    jobs = await GetScanJobs();
+    // QueueScan has already accepted this job. Keep it selectable even if the
+    // next job-list request fails; polling will reconcile the full queue.
+    jobs = [...jobs.filter(item => item.id !== job.id), job];
     presentJobs();
     await selectJob(job.id, true);
     await pollJobs();
