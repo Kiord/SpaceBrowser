@@ -593,8 +593,9 @@ function populateGeneralForm(profile) {
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
   byId("settingsShowScanPreview").checked = profile.showScanPreview !== false;
-  byId("settingsUseMFT").checked = profile.platformSystem === "windows" && sessionElevated && profile.useMft !== false;
+  byId("settingsUseMFT").checked = profile.platformSystem === "windows" && profile.useMft !== false;
   byId("settingsUseMFTLabel").hidden = profile.platformSystem !== "windows";
+  updateFastNTFSStatus();
   byId("settingsUpdateIncludedScans").checked = profile.updateIncludedScans !== false;
   byId("settingsShowBreadcrumbs").checked = profile.showBreadcrumbs !== false;
   byId("settingsShowUnaccounted").checked = !!profile.showUnaccounted;
@@ -754,32 +755,36 @@ async function restoreDefaultSettings() {
   closeRestoreDefaultsConfirmation();
 }
 
-async function changeFastNTFS() {
+function updateFastNTFSStatus() {
+  const label = byId("settingsUseMFTLabel");
+  const requiresElevation = !label.hidden && !sessionElevated;
+  label.classList.toggle("requires-elevation", requiresElevation);
+  byId("settingsUseMFTElevationButton").hidden = !requiresElevation || !byId("settingsUseMFT").checked;
+}
+
+async function requestScanElevation() {
   const checkbox = byId("settingsUseMFT");
-  if (!checkbox.checked) return;
-  // An enable attempt requests elevation; it must not appear enabled while the
-  // current process is still unelevated, including during the asynchronous check.
-  checkbox.checked = sessionElevated && byId("settingsPlatform").textContent === "windows";
-  if (byId("settingsPlatform").textContent !== "windows" || checkingElevation || savingSettings) return;
+  if (!checkbox.checked || byId("settingsUseMFTLabel").hidden || checkingElevation || savingSettings) return;
+  const button = byId("settingsUseMFTElevationButton");
   checkingElevation = true;
-  checkbox.disabled = true;
+  button.disabled = true;
   try {
     sessionElevated = await IsElevated() === true;
-    checkbox.checked = sessionElevated;
-    if (!sessionElevated && byId("settingsDialog").open) byId("scanElevationDialog").showModal();
+    if (!sessionElevated && checkbox.checked && byId("settingsDialog").open && !byId("scanElevationDialog").open) {
+      byId("scanElevationDialog").showModal();
+    }
   } catch (error) {
     sessionElevated = false;
-    checkbox.checked = false;
     byId("settingsError").textContent = String(error);
   } finally {
-    checkbox.disabled = false;
+    button.disabled = false;
     checkingElevation = false;
+    updateFastNTFSStatus();
   }
 }
 
 function cancelScanElevation() {
   byId("scanElevationDialog").close();
-  byId("settingsUseMFT").checked = false;
 }
 
 async function saveSettings(event, restartElevated = false) {
@@ -824,7 +829,7 @@ async function saveSettings(event, restartElevated = false) {
     skipNetworkFS: byId("settingsSkipNetworkFS").checked,
     scanTiming: byId("settingsScanTiming").checked,
     showScanPreview: byId("settingsShowScanPreview").checked,
-    useMft: restartElevated || (sessionElevated && byId("settingsUseMFT").checked),
+    useMft: byId("settingsUseMFT").checked,
     updateIncludedScans: byId("settingsUpdateIncludedScans").checked,
     showBreadcrumbs: byId("settingsShowBreadcrumbs").checked,
     showUnaccounted: byId("settingsShowUnaccounted").checked,
@@ -894,7 +899,8 @@ export function initSettings(options) {
   byId("settingsExcludedPaths").addEventListener("input", updateExcludedPathsCount);
   byId("settingsShowTooltips").addEventListener("change", updateDependentSettings);
   byId("settingsAllowDelete").addEventListener("change", updateDependentSettings);
-  byId("settingsUseMFT").addEventListener("change", changeFastNTFS);
+  byId("settingsUseMFT").addEventListener("change", updateFastNTFSStatus);
+  byId("settingsUseMFTElevationButton").addEventListener("click", requestScanElevation);
   byId("cancelScanElevationButton").addEventListener("click", cancelScanElevation);
   byId("scanElevationDialog").addEventListener("cancel", event => {
     event.preventDefault();

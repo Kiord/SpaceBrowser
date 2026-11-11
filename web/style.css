@@ -1428,6 +1428,30 @@ input[type="range"]:focus-visible {
   display: none;
 }
 
+.settings-ntfs-option { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.settings-ntfs-option:has(> label[hidden]) { display: none; }
+.settings-check.requires-elevation { color: #999; }
+.settings-check.requires-elevation input { background: #f2f2f2; border-color: #bbb; box-shadow: none; }
+.settings-check.requires-elevation input:checked::after { border-color: #999; }
+
+.settings-dialog .settings-elevation-link,
+.settings-dialog .settings-elevation-link:hover {
+  align-self: flex-start;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #777;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.settings-elevation-link[hidden] { display: none; }
+
 .settings-check input {
   appearance: none;
   position: relative;
