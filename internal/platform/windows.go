@@ -271,20 +271,19 @@ func (w Windows) IsMountRoot(p string) bool {
 	// Canonicalize preserves bare drive designators as drive roots.
 	clean := w.Canonicalize(p)
 
+	// A UNC share is itself a volume name. Handle it before the drive-root
+	// comparison so both spellings, with and without a trailing slash, match.
+	if strings.HasPrefix(clean, `\\`) {
+		parts := strings.Split(strings.TrimRight(clean[2:], `\`), `\`)
+		return len(parts) == 2 && parts[0] != "" && parts[1] != ""
+	}
+
 	// Drive root like "D:\"
 	if vol := filepath.VolumeName(clean); vol != "" {
 		root := vol + `\`
 		return strings.EqualFold(clean, root)
 	}
 
-	// UNC share root: "\\server\share" (two components)
-	if strings.HasPrefix(clean, `\\`) {
-		parts := strings.Split(clean, `\`)
-		// ["", "", "server", "share"] or with trailing slash
-		if len(parts) == 4 || (len(parts) == 5 && parts[4] == "") {
-			return true
-		}
-	}
 	return false
 }
 

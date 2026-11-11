@@ -59,6 +59,39 @@ func TestWindowsNetworkFilesystemClassification(t *testing.T) {
 	}
 }
 
+func TestWindowsMountRootClassification(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"drive designator", `D:`, true},
+		{"bare drive letter", `d`, true},
+		{"drive root", `d:\`, true},
+		{"drive root forward slash", `D:/`, true},
+		{"extended drive root", `\\?\D:\`, true},
+		{"UNC share", `\\server\share`, true},
+		{"UNC share trailing separator", `\\server\share\`, true},
+		{"UNC share forward slashes", `//server/share/`, true},
+		{"extended UNC share", `\\?\UNC\server\share`, true},
+		{"extended UNC share trailing separator", `\\?\UNC\server\share\`, true},
+		{"extended UNC prefix case", `\\?\unc\server\share`, true},
+		{"UNC parent normalization", `\\server\share\folder\..`, true},
+		{"drive subfolder", `D:\folder`, false},
+		{"UNC subfolder", `\\server\share\folder`, false},
+		{"UNC subfolder trailing separator", `\\server\share\folder\`, false},
+		{"extended UNC subfolder", `\\?\UNC\server\share\folder`, false},
+		{"UNC server without share", `\\server`, false},
+		{"UNC server without share trailing separator", `\\server\`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := (Windows{}).IsMountRoot(test.path); got != test.want {
+				t.Fatalf("IsMountRoot(%q) = %v, want %v", test.path, got, test.want)
+			}
+		})
+	}
+}
+
 func TestWindowsTrashRootClassification(t *testing.T) {
 	windowsPlatform := Windows{}
 	for _, path := range []string{`C:\$Recycle.Bin`, `c:\$RECYCLE.BIN\`} {
