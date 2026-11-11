@@ -61,7 +61,7 @@ const SETTINGS_TAB_LABELS = Object.freeze({
   general: "General",
   appearance: "Appearance",
   controls: "Controls",
-  misc: "Misc",
+  misc: "Advanced",
 });
 
 const CONTROL_BINDING_LABELS = Object.freeze({
@@ -583,15 +583,15 @@ function populateAppearanceForm(appearance, useCurrentZoom = true) {
 }
 
 function populateGeneralForm(profile) {
-  byId("settingsPlatform").textContent = profile.platformSystem || "";
   byId("settingsExcludedPaths").value = (profile.excludedPaths || []).join("\n");
+  updateExcludedPathsCount();
+  byId("settingsExcludedPathsDetails").open = (profile.excludedPaths || []).length > 0;
   const threshold = splitSizeIntoUnit(profile.minFileSize ?? 0);
   byId("settingsMinFileSize").value = String(threshold.value);
   byId("settingsMinFileSizeUnit").value = threshold.unit;
   byId("settingsSkipHidden").checked = !!profile.skipHidden;
   byId("settingsFollowSymlinks").checked = !!profile.followSymlinks;
   byId("settingsSkipNetworkFS").checked = !!profile.skipNetworkFS;
-  byId("settingsScanTiming").checked = !!profile.scanTiming;
   byId("settingsShowScanPreview").checked = profile.showScanPreview !== false;
   byId("settingsUseMFT").checked = profile.platformSystem === "windows" && sessionElevated && profile.useMft !== false;
   byId("settingsUseMFTLabel").hidden = profile.platformSystem !== "windows";
@@ -606,10 +606,27 @@ function populateGeneralForm(profile) {
   byId("settingsAllowDelete").checked = !!profile.allowDelete;
   byId("settingsAllowPermanentDelete").checked = !!profile.allowPermanentDelete;
   byId("settingsRescanOnDelete").checked = !!profile.rescanOnDelete;
+  updateDependentSettings();
+}
+
+function updateExcludedPathsCount() {
+  const count = byId("settingsExcludedPaths").value.split(/\r?\n/).filter(path => path.trim()).length;
+  byId("settingsExcludedPathsCount").textContent = count ? `(${count})` : "(none)";
+}
+
+function updateDependentSettings() {
+  byId("settingsTooltipOptions").disabled = !byId("settingsShowTooltips").checked;
+  byId("settingsDeletionOptions").disabled = !byId("settingsAllowDelete").checked;
+}
+
+function populateAdvancedForm(profile) {
+  byId("settingsScanTiming").checked = !!profile.scanTiming;
 }
 
 function populateProfileForm(profile, useCurrentZoom = true) {
+  byId("settingsPlatform").textContent = profile.platformSystem || "";
   populateGeneralForm(profile);
+  populateAdvancedForm(profile);
   populateAppearanceForm(profile.appearance, useCurrentZoom);
   populateControlBindingsForm(profile.controls);
 }
@@ -729,7 +746,10 @@ async function restoreDefaultSettings() {
     previewDraftPalette();
   }
   else if (tabName === "controls") populateControlBindingsForm(defaults.controls);
-  else if (tabName === "misc") useDefaultConfigPath();
+  else if (tabName === "misc") {
+    populateAdvancedForm(defaults);
+    useDefaultConfigPath();
+  }
   byId("settingsError").textContent = "";
   closeRestoreDefaultsConfirmation();
 }
@@ -871,6 +891,9 @@ function useDefaultConfigPath() {
 export function initSettings(options) {
   redraw = options.redraw;
   cachedScansChanged = options.cachedScansChanged || (async () => {});
+  byId("settingsExcludedPaths").addEventListener("input", updateExcludedPathsCount);
+  byId("settingsShowTooltips").addEventListener("change", updateDependentSettings);
+  byId("settingsAllowDelete").addEventListener("change", updateDependentSettings);
   byId("settingsUseMFT").addEventListener("change", changeFastNTFS);
   byId("cancelScanElevationButton").addEventListener("click", cancelScanElevation);
   byId("scanElevationDialog").addEventListener("cancel", event => {

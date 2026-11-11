@@ -967,6 +967,19 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   display: none;
 }
 
+.settings-group { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.settings-group + .settings-group { border-top: 1px solid #e1e1e1; padding-top: 14px; margin-top: 3px; }
+.settings-group h3 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: #444; }
+.settings-group .settings-check { margin-left: 0; }
+.settings-group .settings-row > label { font-weight: 400; }
+.settings-dependent { display: flex; flex-direction: column; gap: 9px; min-width: 0; margin: 0 0 0 7px; padding: 2px 0 2px 16px; border: 0; border-left: 1px solid #ddd; }
+.settings-dependent:disabled { opacity: .55; }
+.settings-dependent:disabled .settings-check { cursor: default; }
+.excluded-paths-settings summary { width: fit-content; cursor: pointer; }
+.excluded-paths-settings summary span { color: #777; }
+.excluded-paths-editor { display: grid; gap: 5px; margin-top: 9px; }
+.excluded-paths-editor small { color: #777; }
+
 .settings-about { line-height: 1.45; }
 .settings-about p { margin: 0; }
 .settings-about a { color: #24577f; overflow-wrap: anywhere; }
@@ -995,6 +1008,7 @@ html.keyboard-navigation .scan-warning-symbol:focus {
 }
 
 .settings-row textarea,
+.excluded-paths-editor textarea,
 .settings-row input[type="number"],
 .settings-row input[type="text"],
 .settings-row select {
@@ -1033,9 +1047,10 @@ html.keyboard-navigation .scan-warning-symbol:focus {
   stroke-linejoin: miter;
 }
 
-.settings-row textarea {
+.settings-row textarea,
+.excluded-paths-editor textarea {
   resize: vertical;
-  min-height: 78px;
+  min-height: 64px;
   font-family: Consolas, monospace;
   line-height: 1.35;
 }
@@ -1459,6 +1474,7 @@ input[type="range"]:focus-visible {
   width: 15px;
   height: 15px;
   margin: 0;
+  flex: 0 0 15px;
   background: #fff;
   border: 1px solid #999;
   border-radius: 1px;
@@ -1477,19 +1493,7 @@ input[type="range"]:focus-visible {
   transform: rotate(45deg);
 }
 
-.tooltip-settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 24px;
-  margin-left: 154px;
-}
-
-.tooltip-settings-row .settings-check {
-  margin-left: 0;
-}
-
-.tooltip-fields-settings { margin: -7px 0 12px 154px; color: #555; font-size: 12px; }
+.tooltip-fields-settings { margin: 0; color: #555; font-size: 12px; }
 .tooltip-fields-settings summary { width: fit-content; cursor: pointer; padding: 4px 0; }
 .tooltip-fields-settings summary:focus-visible { outline: 1px solid #666; outline-offset: 2px; }
 .tooltip-fields-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 8px 0; }
@@ -1508,7 +1512,7 @@ input[type="range"]:focus-visible {
   color: #555;
 }
 
-.tooltip-settings-row .tooltip-delay-field input[type="number"] {
+.tooltip-delay-field input[type="number"] {
   width: 60px;
   box-sizing: border-box;
   padding: 6px 5px;
@@ -1520,26 +1524,8 @@ input[type="range"]:focus-visible {
   font: 12px "Segoe UI", sans-serif;
 }
 
-.deletion-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  margin-top: 4px;
-  padding: 10px 12px;
-  background: #fff3f1;
-  border: 1px solid #edcfcc;
-  border-radius: 2px;
-}
-
 .deletion-settings h3 {
-  margin: 0;
   color: #6e302d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.deletion-settings .settings-check {
-  margin-left: 0;
 }
 
 .deletion-settings .permanent-delete-check {
@@ -1639,9 +1625,6 @@ input[type="range"]:focus-visible {
     margin-left: 0;
   }
 
-  .tooltip-settings-row {
-    margin-left: 0;
-  }
 }
 
 .scan-dialog {

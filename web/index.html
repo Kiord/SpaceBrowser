@@ -203,109 +203,112 @@
         <button id="settingsAppearanceTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAppearancePanel" data-settings-tab="appearance">Appearance</button>
         <button id="settingsControlsTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsControlsPanel" data-settings-tab="controls">Controls</button>
         <button id="settingsCachingTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsCachingPanel" data-settings-tab="caching">Caching</button>
-        <button id="settingsMiscTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsMiscPanel" data-settings-tab="misc">Misc</button>
+        <button id="settingsMiscTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsMiscPanel" data-settings-tab="misc">Advanced</button>
         <button id="settingsAboutTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAboutPanel" data-settings-tab="about">About</button>
       </div>
 
       <div class="settings-body">
         <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general">
-          <div class="settings-row">
-            <label>Platform</label>
-            <output id="settingsPlatform"></output>
-          </div>
-          <div class="settings-row settings-row-top">
-            <label for="settingsExcludedPaths">Excluded paths</label>
-            <div>
-              <textarea id="settingsExcludedPaths" rows="5" spellcheck="false" placeholder="One absolute path per line"></textarea>
-              <small>One path per line. Subfolders are excluded too.</small>
-            </div>
-          </div>
-          <div class="settings-row">
-            <label for="settingsMinFileSize">Small-file threshold</label>
-            <div class="number-field">
-              <input id="settingsMinFileSize" type="number" min="0" step="any" required>
-              <select id="settingsMinFileSizeUnit" aria-label="Small-file threshold unit">
-                <option value="B">B</option>
-                <option value="KB">KiB</option>
-                <option value="MB">MiB</option>
-                <option value="GB">GiB</option>
-              </select>
-            </div>
-          </div>
-          <label class="settings-check">
-            <input id="settingsSkipHidden" type="checkbox">
-            <span>Skip hidden files and folders</span>
-          </label>
-          <label class="settings-check">
-            <input id="settingsFollowSymlinks" type="checkbox">
-            <span>Follow symbolic links</span>
-          </label>
-          <label class="settings-check">
-            <input id="settingsSkipNetworkFS" type="checkbox">
-            <span>Skip network filesystems</span>
-          </label>
-          <label class="settings-check">
-            <input id="settingsUpdateIncludedScans" type="checkbox" checked>
-            <span>Update overlapping scans automatically</span>
-          </label>
-          <label class="settings-check" title="Update the treemap while scanning. Disable to display the finished scan only. Applies to new scans.">
-            <input id="settingsShowScanPreview" type="checkbox" checked>
-            <span>Show live scan previews</span>
-          </label>
-          <label id="settingsUseMFTLabel" class="settings-check" hidden title="Read the MFT directly for local NTFS drive roots when running as administrator. Otherwise use bulk NTFS metadata or directory scanning. Applies to new scans.">
-            <input id="settingsUseMFT" type="checkbox">
-            <span>Fast NTFS Scanning (direct MFT read)</span>
-          </label>
-          <label class="settings-check" title="Measure scan phases and operations to help diagnose slow scans. Adds some overhead; applies to new scans.">
-            <input id="settingsScanTiming" type="checkbox">
-            <span>Include timing profile in scan reports</span>
-          </label>
-          <label class="settings-check">
-            <input id="settingsShowBreadcrumbs" type="checkbox" checked aria-controls="breadcrumbs">
-            <span>Show breadcrumbs</span>
-          </label>
-          <label class="settings-check" title="Show occupied space not attributed to scanned files. Hiding this block rescales the remaining rectangles to fill the map.">
-            <input id="settingsShowUnaccounted" type="checkbox">
-            <span>Show unaccounted space</span>
-          </label>
-          <div class="tooltip-settings-row">
+          <div class="settings-group" role="group" aria-labelledby="scanScopeSettingsTitle">
+            <h3 id="scanScopeSettingsTitle">Scan scope</h3>
             <label class="settings-check">
-              <input id="settingsShowTooltips" type="checkbox">
-              <span>Tooltip</span>
+              <input id="settingsSkipHidden" type="checkbox">
+              <span>Skip hidden files and folders</span>
             </label>
-            <label class="tooltip-delay-field" for="settingsTooltipDelay">
-              <span>Spawn delay</span>
-              <input id="settingsTooltipDelay" type="number" min="0" max="1000" step="1" required>
-              <span>ms</span>
+            <label class="settings-check">
+              <input id="settingsSkipNetworkFS" type="checkbox">
+              <span>Skip network filesystems</span>
             </label>
+            <label class="settings-check">
+              <input id="settingsFollowSymlinks" type="checkbox">
+              <span>Follow symbolic links</span>
+            </label>
+            <details id="settingsExcludedPathsDetails" class="excluded-paths-settings">
+              <summary>Excluded paths <span id="settingsExcludedPathsCount">(none)</span></summary>
+              <div class="excluded-paths-editor">
+                <textarea id="settingsExcludedPaths" aria-label="Excluded paths" rows="3" spellcheck="false" placeholder="One absolute path per line"></textarea>
+                <small>One path per line. Subfolders are excluded too.</small>
+              </div>
+            </details>
           </div>
-          <details class="tooltip-fields-settings">
-            <summary>Tooltip contents</summary>
-            <div class="tooltip-fields-grid">
-              <label class="settings-check"><input id="settingsTooltipIcon" type="checkbox" checked><span>Icon</span></label>
-              <label class="settings-check"><input id="settingsTooltipPath" type="checkbox" checked><span>Path</span></label>
-              <label class="settings-check"><input id="settingsTooltipSize" type="checkbox" checked><span>Size</span></label>
-              <label class="settings-check"><input id="settingsTooltipModificationDate" type="checkbox" checked><span>Modification date</span></label>
-              <label class="settings-check"><input id="settingsTooltipScanDate" type="checkbox" checked><span>Scan date</span></label>
-              <label class="settings-check"><input id="settingsTooltipCreationDate" type="checkbox"><span>Creation date</span></label>
-              <label class="settings-check tooltip-counts-option"><input id="settingsTooltipCounts" type="checkbox"><span>Files and folders (direct/cumulative)</span></label>
+          <div class="settings-group" role="group" aria-labelledby="scanBehaviorSettingsTitle">
+            <h3 id="scanBehaviorSettingsTitle">Scan behavior</h3>
+            <label id="settingsUseMFTLabel" class="settings-check" hidden title="Read the MFT directly for local NTFS drive roots when running as administrator. Otherwise use bulk NTFS metadata or directory scanning. Applies to new scans.">
+              <input id="settingsUseMFT" type="checkbox">
+              <span>Fast NTFS Scanning (direct MFT read)</span>
+            </label>
+            <label class="settings-check">
+              <input id="settingsUpdateIncludedScans" type="checkbox" checked>
+              <span>Update overlapping scans automatically</span>
+            </label>
+            <div class="settings-row" title="Smaller files are grouped together and remain included in totals. Applies to new scans.">
+              <label for="settingsMinFileSize">Group files smaller than</label>
+              <div class="number-field">
+                <input id="settingsMinFileSize" type="number" min="0" step="any" required>
+                <select id="settingsMinFileSizeUnit" aria-label="File grouping threshold unit">
+                  <option value="B">B</option>
+                  <option value="KB">KiB</option>
+                  <option value="MB">MiB</option>
+                  <option value="GB">GiB</option>
+                </select>
+              </div>
             </div>
-          </details>
-          <section class="deletion-settings" aria-labelledby="deletionSettingsTitle">
+          </div>
+          <div class="settings-group" role="group" aria-labelledby="viewSettingsTitle">
+            <h3 id="viewSettingsTitle">View</h3>
+            <label class="settings-check" title="Update the treemap while scanning. Disable to display the finished scan only. Applies to new scans.">
+              <input id="settingsShowScanPreview" type="checkbox" checked>
+              <span>Show live scan previews</span>
+            </label>
+            <label class="settings-check">
+              <input id="settingsShowBreadcrumbs" type="checkbox" checked aria-controls="breadcrumbs">
+              <span>Show breadcrumbs</span>
+            </label>
+            <label class="settings-check" title="Show occupied space not attributed to scanned files. Hiding this block rescales the remaining rectangles to fill the map.">
+              <input id="settingsShowUnaccounted" type="checkbox">
+              <span>Show unaccounted space</span>
+            </label>
+            <label class="settings-check">
+              <input id="settingsShowTooltips" type="checkbox" checked aria-controls="settingsTooltipOptions">
+              <span>Show tooltips</span>
+            </label>
+            <fieldset id="settingsTooltipOptions" class="settings-dependent" aria-label="Tooltip options">
+              <label class="tooltip-delay-field" for="settingsTooltipDelay">
+                <span>Delay</span>
+                <input id="settingsTooltipDelay" type="number" min="0" max="1000" step="1" required>
+                <span>ms</span>
+              </label>
+              <details class="tooltip-fields-settings">
+                <summary>Tooltip contents</summary>
+                <div class="tooltip-fields-grid">
+                  <label class="settings-check"><input id="settingsTooltipIcon" type="checkbox" checked><span>Icon</span></label>
+                  <label class="settings-check"><input id="settingsTooltipPath" type="checkbox" checked><span>Path</span></label>
+                  <label class="settings-check"><input id="settingsTooltipSize" type="checkbox" checked><span>Size</span></label>
+                  <label class="settings-check"><input id="settingsTooltipModificationDate" type="checkbox" checked><span>Modification date</span></label>
+                  <label class="settings-check"><input id="settingsTooltipScanDate" type="checkbox" checked><span>Scan date</span></label>
+                  <label class="settings-check"><input id="settingsTooltipCreationDate" type="checkbox"><span>Creation date</span></label>
+                  <label class="settings-check tooltip-counts-option"><input id="settingsTooltipCounts" type="checkbox"><span>Files and folders (direct/cumulative)</span></label>
+                </div>
+              </details>
+            </fieldset>
+          </div>
+          <div class="settings-group deletion-settings" role="group" aria-labelledby="deletionSettingsTitle">
             <h3 id="deletionSettingsTitle">Deletion</h3>
             <label class="settings-check">
-              <input id="settingsAllowDelete" type="checkbox">
+              <input id="settingsAllowDelete" type="checkbox" aria-controls="settingsDeletionOptions">
               <span>Allow delete command</span>
             </label>
-            <label class="settings-check permanent-delete-check">
-              <input id="settingsAllowPermanentDelete" type="checkbox">
-              <span>Delete permanently</span>
-            </label>
-            <label class="settings-check">
-              <input id="settingsRescanOnDelete" type="checkbox">
-              <span>Rescan on delete</span>
-            </label>
-          </section>
+            <fieldset id="settingsDeletionOptions" class="settings-dependent" aria-label="Deletion options" disabled>
+              <label class="settings-check permanent-delete-check">
+                <input id="settingsAllowPermanentDelete" type="checkbox">
+                <span>Delete permanently</span>
+              </label>
+              <label class="settings-check">
+                <input id="settingsRescanOnDelete" type="checkbox">
+                <span>Rescan on delete</span>
+              </label>
+            </fieldset>
+          </div>
           <div class="settings-panel-actions">
             <button type="button" data-restore-settings="general">Restore General defaults</button>
           </div>
@@ -474,25 +477,39 @@
           <div class="settings-panel-actions"><button id="clearAllCachedScans" type="button" class="danger-button">Clear all cached scans</button></div>
         </section>
         <section id="settingsMiscPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsMiscTab" data-settings-panel="misc" hidden>
-          <div class="settings-row settings-row-top">
-            <label for="settingsConfigPath">Configuration file</label>
-            <div>
-              <div class="config-path-field">
-                <input id="settingsConfigPath" type="text" readonly spellcheck="false">
-                <button id="browseConfigPathButton" class="config-path-browse" type="button" aria-label="Choose configuration file location" data-tooltip="Choose configuration file location">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 8V5h7l2 3h9v11H3z"></path>
-                    <path d="M3 9h18"></path>
-                  </svg>
-                </button>
+          <div class="settings-group" role="group" aria-labelledby="configurationSettingsTitle">
+            <h3 id="configurationSettingsTitle">Configuration</h3>
+            <div class="settings-row settings-row-top">
+              <label for="settingsConfigPath">Configuration file</label>
+              <div>
+                <div class="config-path-field">
+                  <input id="settingsConfigPath" type="text" readonly spellcheck="false">
+                  <button id="browseConfigPathButton" class="config-path-browse" type="button" aria-label="Choose configuration file location" data-tooltip="Choose configuration file location">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 8V5h7l2 3h9v11H3z"></path>
+                      <path d="M3 9h18"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+          <div class="settings-group" role="group" aria-labelledby="diagnosticSettingsTitle">
+            <h3 id="diagnosticSettingsTitle">Diagnostics</h3>
+            <label class="settings-check" title="Measure scan phases and operations to help diagnose slow scans. Adds some overhead; applies to new scans.">
+              <input id="settingsScanTiming" type="checkbox">
+              <span>Include timing profile in scan reports</span>
+            </label>
+          </div>
           <div class="settings-panel-actions">
-            <button type="button" data-restore-settings="misc">Restore Misc defaults</button>
+            <button type="button" data-restore-settings="misc">Restore Advanced defaults</button>
           </div>
         </section>
         <section id="settingsAboutPanel" class="settings-panel settings-about" role="tabpanel" aria-labelledby="settingsAboutTab" data-settings-panel="about" hidden>
+          <div class="settings-row">
+            <label for="settingsPlatform">Platform</label>
+            <output id="settingsPlatform"></output>
+          </div>
           <p><a href="https://github.com/Kiord/SpaceBrowser">github.com/Kiord/SpaceBrowser</a></p>
           <p>Found a bug or have a feature request? Please <a href="https://github.com/Kiord/SpaceBrowser/issues">open an issue on GitHub</a>.</p>
           <div class="about-license">

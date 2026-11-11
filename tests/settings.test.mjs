@@ -26,6 +26,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
   const panels = ["general", "about"].map(name => ({ ...createElement(), dataset: { settingsPanel: name } }));
   const links = ["https://github.com/Kiord/SpaceBrowser", "https://github.com/Kiord/SpaceBrowser/issues"].map(href => ({ ...eventTarget(), href }));
   const restore = { ...eventTarget(), dataset: { restoreSettings: "general" } };
+  const restoreAdvanced = { ...eventTarget(), dataset: { restoreSettings: "misc" } };
   const ui = await loadUI("settings.js", {
     "./wailsjs/go/app/App.js": {
       GetCachingEnabled: async () => true, SetCachingEnabled() {}, GetCachedScans: async () => [], ClearCachedScan() {}, ClearAllCachedScans() {},
@@ -37,7 +38,7 @@ test("settings tabs and links work, and General settings save, cancel and restor
     },
     "./wailsjs/runtime/runtime.js": { BrowserOpenURL: url => openedURLs.push(url) },
     "./dom.js": { byId, queryAll: selector => ({
-      "[data-restore-settings]": [restore], "[data-settings-tab]": tabs,
+      "[data-restore-settings]": [restore, restoreAdvanced], "[data-settings-tab]": tabs,
       "[data-settings-panel]": panels, "#settingsAboutPanel a": links,
     }[selector] || []) },
     "./format.js": { formatSize: String, SIZE_UNITS: { B: 1 }, splitSizeIntoUnit: value => ({ value, unit: "B" }) },
@@ -68,6 +69,27 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsShowScanPreview").checked, true);
   assert.equal(byId("settingsUseMFT").checked, true);
   assert.equal(byId("settingsUseMFTLabel").hidden, false);
+  assert.equal(byId("settingsTooltipOptions").disabled, false);
+  assert.equal(byId("settingsDeletionOptions").disabled, true);
+  byId("settingsShowTooltips").checked = false;
+  await byId("settingsShowTooltips").emit("change");
+  assert.equal(byId("settingsTooltipOptions").disabled, true);
+  byId("settingsShowTooltips").checked = true;
+  await byId("settingsShowTooltips").emit("change");
+  assert.equal(byId("settingsTooltipOptions").disabled, false);
+  byId("settingsRescanOnDelete").checked = true;
+  byId("settingsAllowDelete").checked = true;
+  await byId("settingsAllowDelete").emit("change");
+  assert.equal(byId("settingsDeletionOptions").disabled, false);
+  assert.equal(byId("settingsRescanOnDelete").checked, true, 'enabling deletion preserves its dependent options');
+  byId("settingsAllowDelete").checked = false;
+  await byId("settingsAllowDelete").emit("change");
+  assert.equal(byId("settingsDeletionOptions").disabled, true);
+  assert.equal(byId("settingsExcludedPathsDetails").open, false);
+  assert.equal(byId("settingsExcludedPathsCount").textContent, '(none)');
+  byId("settingsExcludedPaths").value = '  /one\n\n/two\n  ';
+  await byId("settingsExcludedPaths").emit("input");
+  assert.equal(byId("settingsExcludedPathsCount").textContent, '(2)');
   for (const field of ["Icon", "Path", "Size", "ModificationDate", "ScanDate"]) assert.equal(byId(`settingsTooltip${field}`).checked, true);
   for (const field of ["CreationDate", "Counts"]) assert.equal(byId(`settingsTooltip${field}`).checked, false);
   byId("settingsTooltipCreationDate").checked = true;
@@ -119,13 +141,20 @@ test("settings tabs and links work, and General settings save, cancel and restor
   assert.equal(byId("settingsUpdateIncludedScans").checked, true);
   assert.equal(byId("settingsShowBreadcrumbs").checked, true);
   assert.equal(byId("settingsShowUnaccounted").checked, false);
-  assert.equal(byId("settingsScanTiming").checked, false, 'restoring General defaults disables timing');
+  assert.equal(byId("settingsScanTiming").checked, true, 'General defaults leave Advanced diagnostics unchanged');
   assert.equal(byId("settingsUseMFT").checked, true);
   assert.equal(byId("settingsShowScanPreview").checked, true);
   assert.equal(byId("settingsTooltipCreationDate").checked, false);
   assert.equal(byId("settingsTooltipIcon").checked, true);
   assert.equal(byId("settingsTooltipCounts").checked, false);
   assert.equal(saved.length, 1);
+  byId("settingsShowBreadcrumbs").checked = false;
+  await restoreAdvanced.emit("click");
+  assert.equal(byId("restoreDefaultsTitle").textContent, 'Restore Advanced default?');
+  await byId("confirmRestoreDefaultsButton").emit("click");
+  assert.equal(byId("settingsScanTiming").checked, false, 'Advanced defaults reset scan timing');
+  assert.equal(byId("settingsShowBreadcrumbs").checked, false, 'Advanced defaults leave General settings unchanged');
+  byId("settingsShowBreadcrumbs").checked = true;
   await byId("settingsForm").emit("submit");
   assert.equal(saved.at(-1).updateIncludedScans, true);
   assert.equal(saved.at(-1).showBreadcrumbs, true);
