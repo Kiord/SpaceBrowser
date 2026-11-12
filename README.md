@@ -44,7 +44,7 @@ Visualize disk usage with an interactive [treemap](https://en.wikipedia.org/wiki
 
 ## Features
 
-SpaceBrowser recreates the main features of [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1) in a modern, cross-platform application. Strong emphasis on **scan speed** and **intuitive UX**.
+SpaceBrowser recreates the main features of [SpaceMonger 1.4](https://github.com/seanofw/spacemonger1) in a modern, cross-platform application. Strong emphasis on **scan speed** and **intuitive & functional UX**.
 
 <details>
 <summary>Show all features</summary>
