@@ -42,6 +42,8 @@
           <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\SpaceBrowser.Scan">
             <RegistryValue Type="string" Value="Scan with SpaceBrowser" KeyPath="yes" />
             <RegistryValue Name="Icon" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot;,0" />
+            <!-- Single hides background verbs because no filesystem item is selected. -->
+            <RegistryValue Name="MultiSelectModel" Type="string" Value="Document" />
             <RegistryValue Key="command" Type="string" Value="&quot;[#SpaceBrowserExecutable]&quot; -- &quot;%V\.&quot;" />
           </RegistryKey>
         </Component>

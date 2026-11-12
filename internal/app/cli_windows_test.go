@@ -22,6 +22,7 @@ func TestWindowsBackgroundScanCommandPreservesCurrentFolder(t *testing.T) {
 				Path   string `xml:"Key,attr"`
 				Values []struct {
 					Key   string `xml:"Key,attr"`
+					Name  string `xml:"Name,attr"`
 					Value string `xml:"Value,attr"`
 				} `xml:"RegistryValue"`
 			} `xml:"RegistryKey"`
@@ -41,6 +42,11 @@ func TestWindowsBackgroundScanCommandPreservesCurrentFolder(t *testing.T) {
 		if component.Key.Path == `Software\Classes\Directory\Background\shell\SpaceBrowser.Scan` {
 			componentID = component.ID
 			for _, value := range component.Key.Values {
+				// The background menu has zero selected items. Single causes the
+				// Windows shell to omit the verb before its command is ever run.
+				if value.Name == "MultiSelectModel" && strings.EqualFold(value.Value, "Single") {
+					t.Fatal("folder-background commands must not require a selected item")
+				}
 				if value.Key == "command" {
 					command = value.Value
 				}
