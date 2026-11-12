@@ -178,11 +178,13 @@ html.keyboard-navigation button:focus {
 .ui-icon { display: block; width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; }
 button:disabled .ui-icon { opacity: .45; }
 .controls .toolbar-action-button,
-.controls .toolbar-labeled-button { display: inline-flex; align-items: center; justify-content: flex-start; flex: 0 0 auto; gap: 6px; height: 28px; padding: 0 7px; }
+.controls .toolbar-labeled-button { display: inline-flex; align-items: center; justify-content: flex-start; flex: 0 0 auto; gap: 6px; width: max-content; min-width: 0; height: 28px; padding: 0 7px; }
 .controls .toolbar-action-button { font: 11px/11px "Segoe UI", sans-serif; }
-.toolbar-action-label { display: block; flex: 0 0 auto; white-space: pre; text-align: left; }
-.controls .locations-button { min-width: 92px; }
-.controls .free-space-button { min-width: 96px; }
+.toolbar-action-label { display: grid; flex: 0 0 auto; white-space: pre; text-align: center; }
+.toolbar-action-label > span,
+.toolbar-action-label::after { grid-area: 1 / 1; }
+/* Reserve the longest label in the same cell so toggling never resizes the button. */
+.toolbar-action-label::after { content: attr(data-width-label); visibility: hidden; pointer-events: none; }
 
 .controls [data-tooltip]::after {
   content: attr(data-tooltip);
@@ -689,10 +691,6 @@ button:disabled:hover {
   color: #333;
 }
 
-/* Analyze button */
-#analyzeButton {
-  min-width: 48px;
-}
 #analyzeButton:hover {
   background: #fff;
 }
