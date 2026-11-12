@@ -6,7 +6,7 @@ async function harness(profile = {}) {
   const { byId } = dom();
   const menuItem = action => {
     const item = byId(`menu-${action}`);
-    item.querySelector = () => byId(`label-${action}`);
+    item.querySelector = selector => byId(`${selector === "img" ? "icon" : "label"}-${action}`);
     return item;
   };
   byId("contextMenu").querySelector = selector => menuItem(selector.match(/data-action="([^"]+)"/)[1]);
@@ -24,7 +24,8 @@ async function harness(profile = {}) {
         return { ...(await pending.promise), deleted: targets.map(target => target.nodeId), failures: [] };
       }, RestoreNode: mutation("restore"),
       GetTrashRestoreInfo: async nodeId => ({ nodeId, path: state.rects[0].full_path, targetPath: state.rects[0].full_path, originalPath: "D:\\original.bin", treeGeneration: "1" }),
-      GetDefaultApplicationName: async () => "Editor", OpenInFileBrowser: noop,
+      GetDefaultApplicationInfo: async () => ({ name: "Editor" }),
+      GetFileBrowserInfo: async () => ({}), OpenInFileBrowser: noop,
       OpenPath: async path => calls.push(["open", path]), OpenWith: noop, ShowProperties: noop,
     };
   const ui = await loadUI("file-actions.js", {
@@ -55,6 +56,87 @@ test("cancelling confirmation never invokes deletion", async () => {
   assert.equal(prevented, true);
   assert.equal(h.byId("deleteConfirmDialog").open, false);
   assert.equal(h.calls.length, 0);
+});
+
+const flushMenu = () => new Promise(resolve => setImmediate(resolve));
+
+test("default-open menu uses the application's icon and resets it for another selection", async () => {
+  const h = await harness();
+  h.backend.GetDefaultApplicationInfo = async () => ({ name: "Editor", iconUrl: "data:image/png;base64,editor" });
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.byId("icon-open-default").src, "icons/open-application.svg");
+  await flushMenu();
+  assert.equal(h.byId("label-open-default").textContent, "Open with Editor");
+  assert.equal(h.byId("icon-open-default").src, "data:image/png;base64,editor");
+  h.select({ node_id: 2, full_path: "D:\\folder", is_folder: true });
+  h.ui.showContextMenu(0, 0);
+  assert.equal(h.menuItem("open-default").hidden, true);
+  assert.equal(h.byId("icon-open-default").src, "icons/open-application.svg");
+});
+
+for (const name of ["Finder", "ForkLift", "Dolphin", "File Explorer"]) {
+  test(`file-browser menu follows the configured ${name} application`, async () => {
+    const h = await harness({ platformSystem: "darwin" });
+    h.backend.GetFileBrowserInfo = async () => ({ name, iconUrl: "data:image/png;base64,browser" });
+    h.select({ node_id: 2, full_path: "/folder", is_folder: true });
+    h.ui.showContextMenu(0, 0);
+    await flushMenu();
+    assert.equal(h.byId("label-open").textContent, `Open in ${name}`);
+    assert.equal(h.byId("icon-open").src, "data:image/png;base64,browser");
+  });
+}
+
+test("missing or undecodable application icons retain the SVG fallbacks", async () => {
+  const h = await harness();
+  h.backend.GetDefaultApplicationInfo = async () => ({ name: "Editor" });
+  h.backend.GetFileBrowserInfo = async () => ({ name: "Browser", iconUrl: "data:image/png;base64,broken" });
+  h.ui.showContextMenu(0, 0);
+  await flushMenu();
+  assert.equal(h.byId("icon-open-default").src, "icons/open-application.svg");
+  assert.equal(h.byId("label-open-default").textContent, "Open with Editor");
+  h.byId("icon-open").onerror();
+  assert.equal(h.byId("icon-open").src, "icons/folder-open.svg");
+  assert.equal(h.byId("icon-open").onerror, null);
+});
+
+test("failed application lookups keep generic labels and SVGs without a toast", async () => {
+  const h = await harness();
+  h.backend.GetDefaultApplicationInfo = h.backend.GetFileBrowserInfo = async () => { throw Error("unavailable"); };
+  h.ui.showContextMenu(0, 0);
+  await flushMenu();
+  assert.equal(h.byId("label-open-default").textContent, "Open with default application");
+  assert.equal(h.byId("label-open").textContent, "Open in file browser");
+  assert.equal(h.byId("icon-open-default").src, "icons/open-application.svg");
+  assert.equal(h.byId("icon-open").src, "icons/folder-open.svg");
+  assert.deepEqual(h.errors, []);
+});
+
+test("late default-application responses cannot overwrite a newer menu", async () => {
+  const h = await harness();
+  const first = deferred();
+  h.backend.GetDefaultApplicationInfo = path => path === "D:\\selected.bin" ? first.promise
+    : Promise.resolve({ name: "New app", iconUrl: "data:image/png;base64,new" });
+  h.ui.showContextMenu(0, 0);
+  await flushMenu();
+  h.select({ node_id: 2, full_path: "D:\\other.txt" });
+  h.ui.showContextMenu(0, 0);
+  await flushMenu();
+  first.resolve({ name: "Old app", iconUrl: "data:image/png;base64,old" });
+  await flushMenu();
+  assert.equal(h.byId("label-open-default").textContent, "Open with New app");
+  assert.equal(h.byId("icon-open-default").src, "data:image/png;base64,new");
+});
+
+test("a group does not acquire an arbitrary selected application's icon", async () => {
+  const h = await harness();
+  let lookups = 0;
+  h.backend.GetDefaultApplicationInfo = async () => { lookups++; return {}; };
+  h.select([{ node_id: 1, full_path: "/one.txt" }, { node_id: 2, full_path: "/two.png" }]);
+  h.ui.showContextMenu(0, 0);
+  await flushMenu();
+  assert.equal(h.byId("label-open-default").textContent, "Open 2 selected items");
+  assert.equal(h.byId("icon-open-default").src, "icons/open-application.svg");
+  assert.equal(lookups, 0);
 });
 
 test("breadcrumb context actions use an ancestor outside the visible treemap", async () => {

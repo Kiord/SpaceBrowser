@@ -5,7 +5,9 @@ package platform
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -26,6 +28,13 @@ func (w Windows) OpenInFileBrowser(path string) error {
 	if err != nil {
 		return fmt.Errorf("open in file browser: %w", err)
 	}
+	if info.IsDir() {
+		return shellOpenPath(path, "")
+	}
+	if browser, err := w.FileBrowserApplication(); err != nil || !strings.EqualFold(filepath.Base(browser.Path), "explorer.exe") {
+		// Third-party file managers do not share Explorer's selection API.
+		return shellOpenPath(filepath.Dir(path), "")
+	}
 	// Explorer's process exit status does not describe whether it opened a window.
 	// Ask the shell directly and retain real errors from the request instead.
 	runtime.LockOSThread()
@@ -36,9 +45,6 @@ func (w Windows) OpenInFileBrowser(path string) error {
 	}
 	if int32(hr) >= 0 {
 		defer browserCoUninitialize.Call()
-	}
-	if info.IsDir() {
-		return w.OpenPath(path)
 	}
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {

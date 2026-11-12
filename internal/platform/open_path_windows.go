@@ -13,9 +13,17 @@ const swShowNormal = 1
 var procShellExecuteW = syscall.NewLazyDLL("shell32.dll").NewProc("ShellExecuteW")
 
 func (Windows) OpenPath(path string) error {
-	verb, err := syscall.UTF16PtrFromString("open")
-	if err != nil {
-		return err
+	return shellOpenPath(path, "open")
+}
+
+func shellOpenPath(path, operation string) error {
+	var verb *uint16
+	if operation != "" {
+		var err error
+		verb, err = syscall.UTF16PtrFromString(operation)
+		if err != nil {
+			return err
+		}
 	}
 	file, err := syscall.UTF16PtrFromString(path)
 	if err != nil {

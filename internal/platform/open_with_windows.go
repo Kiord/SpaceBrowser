@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	// Do not mistake Windows' unknown-file application chooser for a default app.
+	assocFInitIgnoreUnknown = 0x00000400
 	assocStrExecutable      = 2
 	assocStrFriendlyAppName = 4
 	oaifAllowRegistration   = 0x00000001
@@ -38,7 +40,7 @@ func queryAssociation(extension string, valueType uintptr) (string, error) {
 	buffer := make([]uint16, 1024)
 	length := uint32(len(buffer))
 	result, _, _ := assocQueryStringW.Call(
-		0,
+		assocFInitIgnoreUnknown,
 		valueType,
 		uintptr(unsafe.Pointer(association)),
 		0,

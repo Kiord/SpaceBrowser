@@ -40,13 +40,8 @@ func (Linux) UsageFor(_ string, fi os.FileInfo) FileUsage {
 }
 func (Linux) OpenInFileBrowser(p string) error {
 	if info, err := os.Stat(p); err == nil && !info.IsDir() {
-		uri := linuxFileURI(p)
-		if err := exec.Command("dbus-send", "--session",
-			"--dest=org.freedesktop.FileManager1", "--type=method_call", "--print-reply",
-			"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems",
-			"array:string:"+uri, "string:").Run(); err == nil {
-			return nil
-		}
+		// FileManager1 may belong to another running manager. xdg-open uses
+		// the configured directory handler shown in the context menu.
 		return exec.Command("xdg-open", filepath.Dir(p)).Run()
 	}
 	return exec.Command("xdg-open", p).Run()
@@ -84,26 +79,21 @@ func (Linux) DefaultApplicationName(p string) (string, error) {
 }
 
 func linuxDesktopApplicationName(desktopID string) string {
-	var dataRoots []string
-	if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {
-		dataRoots = append(dataRoots, dataHome)
-	} else if home, err := os.UserHomeDir(); err == nil {
-		dataRoots = append(dataRoots, filepath.Join(home, ".local", "share"))
+	path, err := linuxDesktopApplicationPath(desktopID)
+	if err != nil {
+		return ""
 	}
-	dataDirs := os.Getenv("XDG_DATA_DIRS")
-	if dataDirs == "" {
-		dataDirs = "/usr/local/share:/usr/share"
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return ""
 	}
-	dataRoots = append(dataRoots, filepath.SplitList(dataDirs)...)
-	for _, root := range dataRoots {
-		contents, err := os.ReadFile(filepath.Join(root, "applications", desktopID))
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(contents), "\n") {
-			if strings.HasPrefix(line, "Name=") {
-				return strings.TrimSpace(strings.TrimPrefix(line, "Name="))
-			}
+	inEntry := false
+	for _, line := range strings.Split(string(contents), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			inEntry = line == "[Desktop Entry]"
+		} else if inEntry && strings.HasPrefix(line, "Name=") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Name="))
 		}
 	}
 	return ""

@@ -34,9 +34,20 @@ func (Darwin) UsageFor(_ string, fi os.FileInfo) FileUsage {
 		MetadataError: fmt.Errorf("native macOS file metadata is unavailable"),
 	}
 }
-func (Darwin) OpenInFileBrowser(p string) error {
-	if info, err := os.Stat(p); err == nil && !info.IsDir() {
+func (d Darwin) OpenInFileBrowser(p string) error {
+	info, err := os.Stat(p)
+	if err != nil {
+		return err
+	}
+	browser, _ := d.FileBrowserApplication()
+	if !info.IsDir() && strings.EqualFold(filepath.Base(filepath.Clean(browser.Path)), "Finder.app") {
 		return exec.Command("open", "-R", p).Run() // reveal
+	}
+	if !info.IsDir() {
+		p = filepath.Dir(p)
+	}
+	if browser.Path != "" {
+		return exec.Command("open", "-a", browser.Path, p).Run()
 	}
 	return exec.Command("open", p).Run()
 }

@@ -22,6 +22,28 @@ const (
 	maximumIconSize = 4 << 20
 )
 
+func desktopApplicationIcon(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(io.LimitReader(file, maximumIconSize))
+	inEntry := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "[") {
+			inEntry = line == "[Desktop Entry]"
+		} else if inEntry && strings.HasPrefix(line, "Icon=") {
+			name := strings.TrimSpace(strings.TrimPrefix(line, "Icon="))
+			if name != "" {
+				return name, nil
+			}
+		}
+	}
+	return "", ErrUnavailable
+}
+
 type iconThemeDirectory struct {
 	name      string
 	size      int

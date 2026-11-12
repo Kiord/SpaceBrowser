@@ -58,6 +58,7 @@ import "C"
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unsafe"
 )
@@ -71,6 +72,17 @@ func newPlatformBackend() backend {
 }
 
 func (b *linuxBackend) Lookup(path string, _ bool) (Icon, error) {
+	if strings.EqualFold(filepath.Ext(path), ".desktop") {
+		name, err := desktopApplicationIcon(path)
+		if err != nil {
+			return Icon{}, err
+		}
+		iconPath, err := b.resolver.Resolve([]string{name})
+		if err != nil {
+			return Icon{}, err
+		}
+		return readIconFile(iconPath)
+	}
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	var kind C.int

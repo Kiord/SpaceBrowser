@@ -1,7 +1,8 @@
 import { clearSelection, getSelectedRect, getSelectedRects, isPassiveRect, reduceDeletionTargets, selectionIds } from "./selection.js";
 import {
   DeleteNodes,
-  GetDefaultApplicationName,
+  GetDefaultApplicationInfo,
+  GetFileBrowserInfo,
   GetTrashRestoreInfo,
   OpenInFileBrowser,
   OpenPath,
@@ -23,7 +24,31 @@ let pendingDeletion = null;
 let deletionInProgress = false;
 let contextMenuRequest = 0;
 let restoreDetailsRequest = 0;
-const defaultApplicationNames = new Map();
+const defaultApplications = new Map();
+let fileBrowserInfo;
+let fileBrowserInfoExpires = 0;
+const applicationInfoLifetime = 30_000;
+
+function defaultApplicationInfo(path) {
+  if (!defaultApplications.has(path) || defaultApplications.get(path).expires <= Date.now()) {
+    if (defaultApplications.size >= 256) defaultApplications.delete(defaultApplications.keys().next().value);
+    defaultApplications.set(path, {
+      expires: Date.now() + applicationInfoLifetime,
+      promise: Promise.resolve().then(() => GetDefaultApplicationInfo(path)).catch(() => ({})),
+    });
+  }
+  return defaultApplications.get(path).promise;
+}
+
+function setMenuIcon(image, source, fallback) {
+  if (!image) return;
+  image.onerror = null;
+  image.src = source || fallback;
+  if (source) image.onerror = () => {
+    image.onerror = null;
+    image.src = fallback;
+  };
+}
 
 function trashDestinationName() {
   return AppState.profile?.platformSystem === "windows" ? "Recycle Bin" : "Trash";
@@ -258,28 +283,39 @@ export function showContextMenu(x, y) {
   }
   const defaultOpen = menu.querySelector('[data-action="open-default"]');
   const defaultOpenLabel = defaultOpen?.querySelector("span");
+  const defaultOpenIcon = defaultOpen?.querySelector("img");
   if (defaultOpen) defaultOpen.hidden = !multiple && (!rect || rect.is_folder);
   if (defaultOpenLabel) defaultOpenLabel.textContent = multiple ? `Open ${selected.length} selected items` : "Open with default application";
+  setMenuIcon(defaultOpenIcon, "", "icons/open-application.svg");
+  const browserOpen = menu.querySelector('[data-action="open"]');
+  const browserLabel = browserOpen?.querySelector("span");
+  const browserIcon = browserOpen?.querySelector("img");
+  if (browserLabel) browserLabel.textContent = "Open in file browser";
+  setMenuIcon(browserIcon, "", "icons/folder-open.svg");
 
   placeContextMenu(menu, x, y);
+  const isCurrent = () => request === contextMenuRequest && menu.style.display !== "none";
+  if (!fileBrowserInfo || fileBrowserInfoExpires <= Date.now()) {
+    fileBrowserInfoExpires = Date.now() + applicationInfoLifetime;
+    fileBrowserInfo = Promise.resolve().then(() => GetFileBrowserInfo()).catch(() => ({}));
+  }
+  fileBrowserInfo.then(info => {
+    if (!isCurrent()) return;
+    const name = String(info?.name || "").trim();
+    if (browserLabel && name) browserLabel.textContent = `Open in ${name}`;
+    setMenuIcon(browserIcon, info?.iconUrl, "icons/folder-open.svg");
+    placeContextMenu(menu, x, y);
+  });
   if (!rect || rect.is_folder || !defaultOpenLabel) return;
 
-  const cachedName = defaultApplicationNames.get(rect.full_path);
-  if (cachedName !== undefined) {
-    if (cachedName) defaultOpenLabel.textContent = `Open with ${cachedName}`;
-    placeContextMenu(menu, x, y);
-    return;
-  }
-
-  GetDefaultApplicationName(rect.full_path)
-    .then(name => {
-      const applicationName = String(name || "").trim();
-      defaultApplicationNames.set(rect.full_path, applicationName);
-      if (request !== contextMenuRequest || menu.style.display === "none" || getSelectedRect()?.full_path !== rect.full_path) return;
+  defaultApplicationInfo(rect.full_path)
+    .then(info => {
+      if (!isCurrent() || getSelectedRect()?.full_path !== rect.full_path) return;
+      const applicationName = String(info?.name || "").trim();
       if (applicationName) defaultOpenLabel.textContent = `Open with ${applicationName}`;
+      setMenuIcon(defaultOpenIcon, info?.iconUrl, "icons/open-application.svg");
       placeContextMenu(menu, x, y);
-    })
-    .catch(() => defaultApplicationNames.set(rect.full_path, ""));
+    });
 }
 
 export function hideContextMenu() {
