@@ -92,7 +92,7 @@ function requestSelectedDeletion() {
 }
 
 async function requestSelectedRestore() {
-  if (AppState.scanInProgress) return;
+  if (AppState.scanInProgress || AppState.profile?.platformSystem === "darwin") return;
   hideContextMenu();
   hideRectToast();
   const rect = getSelectedRect();
@@ -245,7 +245,7 @@ export function showContextMenu(x, y) {
   const copyLabel = menu.querySelector('[data-action="copy"]')?.querySelector("span");
   if (copyLabel) copyLabel.textContent = multiple ? "Copy paths" : "Copy path";
   const restoreAction = menu.querySelector('[data-action="restore"]');
-  if (restoreAction) restoreAction.hidden = !trashItem;
+  if (restoreAction) restoreAction.hidden = !trashItem || AppState.profile?.platformSystem === "darwin";
   if (restoreAction) restoreAction.classList.toggle("disabled", !!AppState.scanInProgress);
   if (deleteAction) {
     deleteAction.classList.toggle("disabled", !!AppState.scanInProgress || !selected.length || (multiple && selected.some(item => item.is_trash_root)));

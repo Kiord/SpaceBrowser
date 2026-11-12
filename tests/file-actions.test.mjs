@@ -146,6 +146,34 @@ test("permanent deletion and empty trash have explicit confirmation labels", asy
   assert.match(h.byId("deleteConfirmTitle").textContent, /Empty Recycle Bin/);
 });
 
+test("restore stays hidden and inactive on macOS", async () => {
+  const h = await harness({ platformSystem: "darwin" });
+  let restoreInfoRequested = false;
+  h.backend.GetTrashRestoreInfo = async () => { restoreInfoRequested = true; };
+  for (const selection of [
+    { node_id: 1, full_path: "/file" },
+    { node_id: 2, full_path: "/.Trash/file", is_in_trash: true },
+    { node_id: 3, full_path: "/.Trash", is_in_trash: true, is_trash_root: true },
+  ]) {
+    h.select(selection);
+    h.ui.showContextMenu(0, 0);
+    assert.equal(h.menuItem("restore").hidden, true);
+    await h.action("restore");
+    assert.equal(h.byId("deleteConfirmDialog").open, false);
+  }
+  assert.equal(restoreInfoRequested, false);
+  assert.deepEqual(h.errors, []);
+});
+
+test("restore remains available for Trash items on Windows and Linux", async () => {
+  for (const platformSystem of ["windows", "linux"]) {
+    const h = await harness({ platformSystem });
+    h.select({ node_id: 1, full_path: "/trash/file", is_in_trash: true });
+    h.ui.showContextMenu(0, 0);
+    assert.equal(h.menuItem("restore").hidden, false);
+  }
+});
+
 test("restore confirmation routes to RestoreNode and refreshes when required", async () => {
   const h = await harness();
   h.select({ node_id: 4, is_in_trash: true, full_path: "D:\\$Recycle.Bin\\item", size: 99 });
