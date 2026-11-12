@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Open folder</title>
+  <path d="M1.5 12.5v-10h5l2 2h5v8" fill="#e5e9ec" vector-effect="non-scaling-stroke" />
+  <path d="m1.5 12.5 2-6h12l-2 6z" fill="#f7f7f5" vector-effect="non-scaling-stroke" />
+</svg>

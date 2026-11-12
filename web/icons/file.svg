@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">File</title>
+  <path d="M4.5 1.5h5l3 3v10h-8z" fill="#f7f7f5" vector-effect="non-scaling-stroke" />
+  <path d="M9.5 1.5v3h3" vector-effect="non-scaling-stroke" />
+</svg>

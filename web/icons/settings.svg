@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Settings</title>
+  <path d="M2.5 1.5v13M7.5 1.5v13M12.5 1.5v13" vector-effect="non-scaling-stroke" />
+  <path d="M.5 4.5h4v3h-4zM5.5 9.5h4v3h-4zM10.5 3.5h4v3h-4z" fill="#e5e9ec" vector-effect="non-scaling-stroke" />
+</svg>

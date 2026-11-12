@@ -93,16 +93,23 @@ export function goForward() {
   if (AppState.navIndex < AppState.navHistory.length - 1) window.history.forward();
 }
 
+function updateFreeSpaceButton(button, shown) {
+  button.setAttribute("aria-pressed", String(shown));
+  button.setAttribute("aria-label", shown ? "Hide Free Space" : "Show Free Space");
+  byId("toggleFreeSpaceLabel").textContent = `${shown ? "Hide" : "Show"} Free\nSpace`;
+  byId("toggleFreeSpaceIcon").src = `icons/free-space-${shown ? "hide" : "show"}.svg`;
+}
+
 export async function toggleFreeSpace(event) {
   const button = event?.currentTarget ?? byId("toggleFreeSpaceButton");
   const wasChecked = button.getAttribute("aria-pressed") === "true";
   const checked = !wasChecked;
-  button.setAttribute("aria-pressed", String(checked));
+  updateFreeSpaceButton(button, checked);
   try {
     await SetShowFreeSpace(checked);
     await redraw();
   } catch (error) {
-    button.setAttribute("aria-pressed", String(wasChecked));
+    updateFreeSpaceButton(button, wasChecked);
     logError("toggleFreeSpace failed:", error);
   }
 }
@@ -177,6 +184,8 @@ export function initNavigation(options) {
   byId("parentButton").addEventListener("click", goToParent);
   byId("backwardButton").addEventListener("click", goBackward);
   byId("forwardButton").addEventListener("click", goForward);
+  const freeSpaceButton = byId("toggleFreeSpaceButton");
+  updateFreeSpaceButton(freeSpaceButton, freeSpaceButton.getAttribute("aria-pressed") === "true");
   byId("toggleFreeSpaceButton").addEventListener("click", toggleFreeSpace);
   window.addEventListener("popstate", handlePopState);
   addControlEventListeners(handleNavigationShortcut);

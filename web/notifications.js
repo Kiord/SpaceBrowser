@@ -53,8 +53,7 @@ function showFallbackIcon(isFolder) {
   const fallback = byId("rectToastFallbackIcon");
   image.classList.add("is-hidden");
   fallback.classList.remove("is-hidden");
-  byId("rectToastFallbackShape").setAttribute("d", isFolder ? "M3 8V5h7l2 3h9v11H3z" : "M6 3h8l4 4v14H6z");
-  byId("rectToastFallbackDetail").setAttribute("d", isFolder ? "M3 9h18" : "M14 3v5h5");
+  fallback.src = isFolder ? "icons/folder-open.svg" : "icons/file.svg";
 }
 
 function applyAssociatedIcon(rect, icon) {

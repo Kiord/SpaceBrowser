@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Hide locations</title>
+  <path d="M1.5 2.5h7v3h-7zM1.5 6.5h7v3h-7zM1.5 10.5h7v3h-7z" fill="#e5e9ec" vector-effect="non-scaling-stroke" />
+  <path d="M3.5 4h2M3.5 8h2M3.5 12h2" vector-effect="non-scaling-stroke" />
+  <path d="m14 5-3 3 3 3M11 8h4" vector-effect="non-scaling-stroke" />
+</svg>

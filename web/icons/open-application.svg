@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Open with default application</title>
+  <path d="M7.5 2.5h-6v12h12v-5M1.5 5.5h4" fill="none" vector-effect="non-scaling-stroke" />
+  <path d="M7 9 14.5 1.5M10 1.5h4.5V6" vector-effect="non-scaling-stroke" />
+  <path d="M3 4h1" vector-effect="non-scaling-stroke" />
+</svg>

@@ -42,10 +42,18 @@ test('sidebar toggle resizes the treemap without navigating or starting a scan',
   await button.emit('click');
   assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'true');
   assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.equal(button.getAttribute('aria-label'), 'Show Locations');
+  assert.equal(button.getAttribute('data-tooltip'), null);
+  assert.equal(h.byId('toggleLocationsLabel').textContent, 'Show\nLocations');
+  assert.equal(h.byId('toggleLocationsIcon').src, 'icons/locations-show.svg');
   assert.deepEqual(h.calls, [['resize'], ['redraw']]);
   await button.emit('click');
   assert.equal(h.byId('workspace').getAttribute('data-sidebar-collapsed'), 'false');
   assert.equal(button.getAttribute('aria-expanded'), 'true');
+  assert.equal(button.getAttribute('aria-label'), 'Hide Locations');
+  assert.equal(button.getAttribute('data-tooltip'), null);
+  assert.equal(h.byId('toggleLocationsLabel').textContent, 'Hide\nLocations');
+  assert.equal(h.byId('toggleLocationsIcon').src, 'icons/locations-hide.svg');
   assert.deepEqual(h.calls, [['resize'], ['redraw'], ['resize'], ['redraw']]);
 });
 

@@ -4,6 +4,7 @@ import { dom, eventTarget, loadUI, noop } from "./helpers/ui.mjs";
 
 async function harness() {
   const { byId } = dom();
+  byId("toggleFreeSpaceButton").setAttribute("aria-pressed", "true");
   const window = eventTarget();
   const calls = [];
   let created = 0;
@@ -119,12 +120,38 @@ test("invalid visits, files and virtual selections do not navigate", async () =>
   assert.equal(h.calls.length, 1);
 });
 
-test("free-space toggle rolls back when the backend rejects it", async () => {
+test("free-space toggle labels and icons describe the next action", async () => {
+  const h = await harness();
+  const button = h.byId("toggleFreeSpaceButton");
+  assert.equal(h.byId("toggleFreeSpaceLabel").textContent, "Hide Free\nSpace");
+  assert.equal(h.byId("toggleFreeSpaceIcon").src, "icons/free-space-hide.svg");
+  await button.emit("click", { currentTarget: button });
+  assert.equal(button.getAttribute("aria-pressed"), "false");
+  assert.equal(button.getAttribute("aria-label"), "Show Free Space");
+  assert.equal(button.getAttribute("data-tooltip"), null);
+  assert.equal(h.byId("toggleFreeSpaceLabel").textContent, "Show Free\nSpace");
+  assert.equal(h.byId("toggleFreeSpaceIcon").src, "icons/free-space-show.svg");
+  await button.emit("click", { currentTarget: button });
+  assert.equal(button.getAttribute("aria-pressed"), "true");
+  assert.equal(button.getAttribute("aria-label"), "Hide Free Space");
+  assert.equal(h.byId("toggleFreeSpaceLabel").textContent, "Hide Free\nSpace");
+  assert.equal(h.byId("toggleFreeSpaceIcon").src, "icons/free-space-hide.svg");
+  assert.equal(h.redraws(), 2);
+});
+
+test("free-space toggle rolls back its label and icon when the backend rejects it", async () => {
   const h = await harness();
   h.byId("toggleFreeSpaceButton").setAttribute("aria-pressed", "true");
   h.failToggle();
-  await h.ui.toggleFreeSpace();
+  const toggling = h.ui.toggleFreeSpace();
+  assert.equal(h.byId("toggleFreeSpaceLabel").textContent, "Show Free\nSpace");
+  assert.equal(h.byId("toggleFreeSpaceIcon").src, "icons/free-space-show.svg");
+  await toggling;
   assert.equal(h.byId("toggleFreeSpaceButton").getAttribute("aria-pressed"), "true");
+  assert.equal(h.byId("toggleFreeSpaceButton").getAttribute("aria-label"), "Hide Free Space");
+  assert.equal(h.byId("toggleFreeSpaceButton").getAttribute("data-tooltip"), null);
+  assert.equal(h.byId("toggleFreeSpaceLabel").textContent, "Hide Free\nSpace");
+  assert.equal(h.byId("toggleFreeSpaceIcon").src, "icons/free-space-hide.svg");
   assert.equal(h.redraws(), 0);
 });
 

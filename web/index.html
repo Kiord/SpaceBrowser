@@ -12,56 +12,44 @@
 <body>
   <div class="container workspace" id="workspace">
     <div class="controls query-toolbar" id="topbar">
-      <button id="toggleLocationsButton" class="nav-button" type="button" aria-label="Hide locations" aria-expanded="true" aria-controls="locationSelector" data-tooltip="Hide locations">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"></rect><path d="M9 4v16"></path><path class="sidebar-collapse-icon" d="m16 9-3 3 3 3"></path><path class="sidebar-expand-icon" d="m13 9 3 3-3 3"></path></svg>
+      <button id="toggleLocationsButton" class="toolbar-action-button locations-button" type="button" aria-label="Hide Locations" aria-expanded="true" aria-controls="locationSelector">
+        <img id="toggleLocationsIcon" class="ui-icon" src="icons/locations-hide.svg" width="16" height="16" alt="">
+        <span id="toggleLocationsLabel" class="toolbar-action-label">Hide<br>Locations</span>
       </button>
       <span class="toolbar-separator" aria-hidden="true"></span>
             <div class="input-group" id="pathGroup">
               <button type="button" class="browse-button" id="triggerFolderSelectButton" aria-label="Browse for folder" data-tooltip="Choose folder">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 8V5h7l2 3h9v11H3z"></path>
-                  <path d="M3 9h18"></path>
-                </svg>
+                <img class="ui-icon" src="icons/folder-open.svg" width="16" height="16" alt="">
               </button>
 
               <div class="path-query">
               <input type="text" id="pathInput" aria-label="Folder to scan" placeholder="Select or paste a folder path…" role="combobox" aria-autocomplete="list" aria-controls="pathSuggestions" aria-expanded="false" autocomplete="off" />
                 <div id="pathSuggestions" class="path-suggestions" role="listbox" aria-label="Folder suggestions" hidden></div>
               </div>
-              <button id="analyzeButton" aria-label="Scan folder" data-tooltip="Scan folder">Scan</button>
+              <button id="analyzeButton" aria-label="Scan folder">Scan</button>
             </div>
       <div class="navigation-section" aria-label="Treemap navigation">
         <button class="nav-button" id="backwardButton" type="button" aria-label="Back" data-tooltip="Back · Mouse Back" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M19 12H5"></path>
-            <path d="m10 7-5 5 5 5"></path>
-          </svg>
+          <img class="ui-icon" src="icons/back.svg" width="16" height="16" alt="">
         </button>
         <button class="nav-button" id="forwardButton" type="button" aria-label="Forward" data-tooltip="Forward · Mouse Forward" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 12h14"></path>
-            <path d="m14 7 5 5-5 5"></path>
-          </svg>
+          <img class="ui-icon" src="icons/forward.svg" width="16" height="16" alt="">
         </button>
         <button class="nav-button" id="parentButton" type="button" aria-label="Go to parent" data-tooltip="Go to parent folder" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 19V5"></path>
-            <path d="m7 10 5-5 5 5"></path>
-          </svg>
+          <img class="ui-icon" src="icons/parent.svg" width="16" height="16" alt="">
         </button>
         <button class="nav-button home-button" id="rootButton" type="button" aria-label="Go to scan root" data-tooltip="Go to scan root" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 4h16M12 20V8m-5 5 5-5 5 5"></path>
-          </svg>
+          <img class="ui-icon" src="icons/scan-root.svg" width="16" height="16" alt="">
         </button>
       </div>
         <span class="toolbar-separator" aria-hidden="true"></span>
-        <button class="toggle-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" data-tooltip="Show or hide available disk space">Free space</button>
-        <button class="nav-button" id="settingsButton" type="button" aria-label="Scan settings" data-tooltip="Scan settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-          </svg>
+        <button class="toolbar-action-button free-space-button" id="toggleFreeSpaceButton" type="button" aria-pressed="true" aria-label="Hide Free Space">
+          <img id="toggleFreeSpaceIcon" class="ui-icon" src="icons/free-space-hide.svg" width="16" height="16" alt="">
+          <span id="toggleFreeSpaceLabel" class="toolbar-action-label">Hide Free<br>Space</span>
+        </button>
+        <button class="toolbar-labeled-button" id="settingsButton" type="button" aria-label="Scan settings">
+          <img class="ui-icon" src="icons/settings.svg" width="16" height="16" alt="">
+          <span>Settings</span>
         </button>
 
     </div>
@@ -71,15 +59,13 @@
             <h1 id="locationSelectorTitle">Locations</h1>
             <button id="refreshLocationsButton" class="location-refresh-button" type="button" aria-label="Refresh locations" data-tooltip="Refresh locations">
               <!-- Teenyicons refresh icon, MIT licensed; see THIRD_PARTY_NOTICES.md. -->
-              <svg viewBox="0 0 15 15" fill="none" aria-hidden="true" focusable="false">
-                <path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5" stroke="currentColor"/>
-              </svg>
+              <img class="ui-icon" src="icons/refresh.svg" width="16" height="16" alt="">
             </button>
           </header>
           <div id="locationList" class="location-list"></div>
           <p id="locationStatus" class="location-status" role="status">Finding available locations...</p>
           <button id="addFolderButton" class="location-add-button" type="button" aria-label="Add folder" title="Add folder">
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"></path></svg>
+            <img class="ui-icon" src="icons/add.svg" width="16" height="16" alt="">
           </button>
         </div>
       </section>
@@ -104,63 +90,39 @@
   <ul id="contextMenu" class="context-menu">
     <li data-action="refresh">
       <!-- Teenyicons refresh icon, MIT licensed; see THIRD_PARTY_NOTICES.md. -->
-      <svg viewBox="0 0 15 15" fill="none" aria-hidden="true" focusable="false">
-        <path d="M7.5 14.5C3.63401 14.5 0.5 11.366 0.5 7.5C0.5 5.26904 1.54367 3.28183 3.1694 2M7.5 0.5C11.366 0.5 14.5 3.63401 14.5 7.5C14.5 9.73096 13.4563 11.7182 11.8306 13M11.5 10V13.5H15M0 1.5H3.5V5" stroke="currentColor" stroke-width="1"/>
-      </svg>
+      <img class="ui-icon" src="icons/refresh.svg" width="16" height="16" alt="">
       <span>Rescan folder</span>
     </li>
     <li data-action="goto">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="10.5" cy="10.5" r="5.5"></circle>
-        <path d="m15 15 5 5"></path>
-      </svg>
+      <img class="ui-icon" src="icons/enter-block.svg" width="16" height="16" alt="">
       <span>Go to</span>
     </li>
     <li data-action="open">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3 8V5h7l2 3h9v11H3z"></path>
-        <path d="M3 9h18"></path>
-      </svg>
+      <img class="ui-icon" src="icons/folder-open.svg" width="16" height="16" alt="">
       <span>Open in file browser</span>
     </li>
     <li data-action="open-default" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 4h10v5M9 15l10-10M13 5h6v6"></path>
-        <path d="M19 14v6H5V4"></path>
-      </svg>
+      <img class="ui-icon" src="icons/open-application.svg" width="16" height="16" alt="">
       <span>Open with default application</span>
     </li>
     <li data-action="open-with">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="5" width="18" height="14"></rect>
-        <path d="M3 9h18M8 14h.01M12 14h.01M16 14h.01"></path>
-      </svg>
+      <img class="ui-icon" src="icons/open-with.svg" width="16" height="16" alt="">
       <span>Open with...</span>
     </li>
     <li data-action="copy">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="8" y="7" width="11" height="13"></rect>
-        <path d="M16 7V4H5v13h3"></path>
-      </svg>
+      <img class="ui-icon" src="icons/copy.svg" width="16" height="16" alt="">
       <span>Copy path</span>
     </li>
     <li data-action="restore" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 9l1 12h12l1-12M3 9h5m8 0h5"></path>
-        <path d="M12 14V2m-4 4 4-4 4 4"></path>
-      </svg>
+      <img class="ui-icon" src="icons/restore.svg" width="16" height="16" alt="">
       <span>Restore</span>
     </li>
     <li class="context-menu-delete" data-action="delete">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"></path>
-      </svg>
+      <img class="ui-icon" src="icons/delete.svg" width="16" height="16" alt="">
       <span>Delete</span>
     </li>
     <li class="context-menu-properties" data-action="properties">
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 3h14v18H5zM8 8h2M13 8h3M8 12h2M13 12h3M8 16h2M13 16h3"></path>
-      </svg>
+      <img class="ui-icon" src="icons/properties.svg" width="16" height="16" alt="">
       <span>Properties...</span>
     </li>
   </ul>
@@ -171,10 +133,7 @@
   <div id="rectToast" class="rect-toast" role="tooltip" hidden>
     <div id="rectToastIcon" class="rect-toast-icon" aria-hidden="true">
       <img id="rectToastAssociatedIcon" class="is-hidden" alt="">
-      <svg id="rectToastFallbackIcon" viewBox="0 0 24 24" aria-hidden="true">
-        <path id="rectToastFallbackShape" d="M3 8V5h7l2 3h9v11H3z"></path>
-        <path id="rectToastFallbackDetail" d="M3 9h18"></path>
-      </svg>
+      <img id="rectToastFallbackIcon" src="icons/folder-open.svg" alt="">
     </div>
     <div class="rect-toast-details">
       <div id="rectToastPath" class="rect-toast-path"><span id="rectToastPathPrefix"></span><strong id="rectToastName"></strong></div>
@@ -192,9 +151,7 @@
       <header class="settings-header">
         <h2 id="settingsTitle">Settings</h2>
         <button class="dialog-icon-button" id="closeSettingsButton" type="button" aria-label="Close settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 6l12 12M18 6 6 18"></path>
-          </svg>
+          <img class="ui-icon" src="icons/close.svg" width="16" height="16" alt="">
         </button>
       </header>
 
@@ -324,7 +281,7 @@
               <div class="palette-combobox">
                 <button id="settingsPaletteButton" class="palette-combobox-button" type="button" aria-haspopup="listbox" aria-controls="settingsPaletteMenu" aria-expanded="false">
                   <span>Default</span>
-                  <svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1l5 5 5-5"></path></svg>
+                  <img class="ui-icon" src="icons/chevron-down.svg" width="16" height="16" alt="">
                 </button>
                 <div id="settingsPaletteMenu" class="palette-combobox-menu" role="listbox" hidden></div>
                 <select id="settingsPalette" tabindex="-1" aria-hidden="true" hidden></select>
@@ -400,70 +357,70 @@
             <label for="controlBindingToggleLocations">Show/hide locations</label>
             <div class="control-binding-field">
               <button id="controlBindingToggleLocations" class="control-binding-button" type="button" data-control-binding="toggleLocations"><span>Ctrl+B</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="toggleLocations" aria-label="Clear Show/hide locations binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="toggleLocations" aria-label="Clear Show/hide locations binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingRefresh">Refresh selected folders</label>
             <div class="control-binding-field">
             <button id="controlBindingRefresh" class="control-binding-button" type="button" data-control-binding="refresh"><span>Ctrl+R</span></button>
-            <button class="control-binding-clear" type="button" data-clear-control-binding="refresh" aria-label="Clear Refresh selected folder binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+            <button class="control-binding-clear" type="button" data-clear-control-binding="refresh" aria-label="Clear Refresh selected folder binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingBack">Back</label>
             <div class="control-binding-field">
               <button id="controlBindingBack" class="control-binding-button" type="button" data-control-binding="back"><span>Unassigned</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="back" aria-label="Clear Back binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="back" aria-label="Clear Back binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingForward">Forward</label>
             <div class="control-binding-field">
               <button id="controlBindingForward" class="control-binding-button" type="button" data-control-binding="forward"><span>Unassigned</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="forward" aria-label="Clear Forward binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="forward" aria-label="Clear Forward binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingParent">Parent folder</label>
             <div class="control-binding-field">
               <button id="controlBindingParent" class="control-binding-button" type="button" data-control-binding="parent"><span>Unassigned</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="parent" aria-label="Clear Parent folder binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="parent" aria-label="Clear Parent folder binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingRoot">Go to scan root</label>
             <div class="control-binding-field">
               <button id="controlBindingRoot" class="control-binding-button" type="button" data-control-binding="root"><span>Unassigned</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="root" aria-label="Clear Go to scan root binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="root" aria-label="Clear Go to scan root binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingOpen">Open</label>
             <div class="control-binding-field">
               <button id="controlBindingOpen" class="control-binding-button" type="button" data-control-binding="open"><span>Ctrl+O</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="open" aria-label="Clear Open binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="open" aria-label="Clear Open binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingOpenWith">Open with...</label>
             <div class="control-binding-field">
               <button id="controlBindingOpenWith" class="control-binding-button" type="button" data-control-binding="openWith"><span>Ctrl+Shift+O</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="openWith" aria-label="Clear Open with binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="openWith" aria-label="Clear Open with binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row">
             <label for="controlBindingVisitSelected">Visit selected</label>
             <div class="control-binding-field">
               <button id="controlBindingVisitSelected" class="control-binding-button" type="button" data-control-binding="visitSelected"><span>Enter</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="visitSelected" aria-label="Clear Visit selected binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="visitSelected" aria-label="Clear Visit selected binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-row control-binding-row control-binding-row-danger">
             <label for="controlBindingDelete">Delete</label>
             <div class="control-binding-field">
               <button id="controlBindingDelete" class="control-binding-button" type="button" data-control-binding="delete"><span>Delete</span></button>
-              <button class="control-binding-clear" type="button" data-clear-control-binding="delete" aria-label="Clear Delete binding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+              <button class="control-binding-clear" type="button" data-clear-control-binding="delete" aria-label="Clear Delete binding"><img class="ui-icon" src="icons/close.svg" width="16" height="16" alt=""></button>
             </div>
           </div>
           <div class="settings-panel-actions">
@@ -488,10 +445,7 @@
                 <div class="config-path-field">
                   <input id="settingsConfigPath" type="text" readonly spellcheck="false">
                   <button id="browseConfigPathButton" class="config-path-browse" type="button" aria-label="Choose configuration file location" data-tooltip="Choose configuration file location">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M3 8V5h7l2 3h9v11H3z"></path>
-                      <path d="M3 9h18"></path>
-                    </svg>
+                    <img class="ui-icon" src="icons/folder-open.svg" width="16" height="16" alt="">
                   </button>
                 </div>
               </div>

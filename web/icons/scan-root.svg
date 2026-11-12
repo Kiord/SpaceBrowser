@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Go to scan root</title>
+  <path d="M7.5 5.5v3M2.5 11.5v-3h10v3" vector-effect="non-scaling-stroke" />
+  <path d="M5.5 1.5h4v4h-4z" fill="#929a9f" vector-effect="non-scaling-stroke" />
+  <path d="M1.5 11.5h3v3h-3zM10.5 11.5h3v3h-3z" fill="#e5e9ec" vector-effect="non-scaling-stroke" />
+</svg>

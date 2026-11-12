@@ -30,7 +30,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   byId("pathGroup").removeAttribute("title");
   const analyzeButton = byId("analyzeButton");
   analyzeButton.removeAttribute("title");
-  analyzeButton.dataset.tooltip = "Scan folder";
 
   initTreemapView();
   initBreadcrumbs({ visit, select: selectBreadcrumb, showContextMenu, hideContextMenu,
@@ -52,8 +51,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     workspace.setAttribute("data-sidebar-collapsed", String(collapsed));
     const button = byId("toggleLocationsButton");
     button.setAttribute("aria-expanded", String(!collapsed));
-    button.setAttribute("aria-label", collapsed ? "Show locations" : "Hide locations");
-    button.setAttribute("data-tooltip", collapsed ? "Show locations" : "Hide locations");
+    button.setAttribute("aria-label", collapsed ? "Show Locations" : "Hide Locations");
+    byId("toggleLocationsLabel").textContent = `${collapsed ? "Show" : "Hide"}\nLocations`;
+    byId("toggleLocationsIcon").src = `icons/locations-${collapsed ? "show" : "hide"}.svg`;
     hideContextMenu();
     resizeCanvas();
     await redraw();

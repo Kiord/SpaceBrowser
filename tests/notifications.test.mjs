@@ -46,6 +46,16 @@ async function tooltipHarness(fields, getDetails = async () => ({})) {
   return { ui, byId, state, hover, icons: () => icons };
 }
 
+test("tooltip fallbacks use the folder and file SVG assets for their respective items", async () => {
+  const h = await tooltipHarness();
+  h.hover();
+  assert.equal(h.byId("rectToastFallbackIcon").src, "icons/folder-open.svg");
+  h.ui.hideRectToast();
+  h.state.rects = [{ ...h.state.rects[0], is_folder: false, name: "file", full_path: "/folder/file" }];
+  h.hover();
+  assert.equal(h.byId("rectToastFallbackIcon").src, "icons/file.svg");
+});
+
 test("unaccounted-space hover explains occupied storage without requesting file details", async () => {
   let requests = 0;
   const h = await tooltipHarness({ creationDate: true, counts: true }, async () => { requests++; return {}; });

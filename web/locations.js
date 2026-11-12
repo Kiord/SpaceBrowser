@@ -147,12 +147,6 @@ function renderScanJobs() {
   if (tiles.size) byId("locationStatus").hidden = true;
 }
 
-const fallbackIcon = `
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M4 5h16v14H4z"></path>
-    <path d="M4 14h16M8 17h.01M11 17h.01"></path>
-  </svg>`;
-
 async function openLocation(location) {
   await analyzeLocation(location.path);
 }
@@ -166,14 +160,11 @@ function locationButton(location) {
 
   const icon = document.createElement("span");
   icon.className = "location-card-icon";
-  if (location.iconUrl) {
-    const image = document.createElement("img");
-    image.src = location.iconUrl;
-    image.alt = "";
-    icon.append(image);
-  } else {
-    icon.innerHTML = location.kind === "folder" ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 3h9v12H3z"></path><path d="M3 9h18"></path></svg>' : fallbackIcon;
-  }
+  const image = document.createElement("img");
+  image.src = location.iconUrl || (location.kind === "folder" ? "icons/folder-open.svg" : "icons/drive.svg");
+  image.alt = "";
+  if (!location.iconUrl) image.className = "location-fallback-icon";
+  icon.append(image);
 
   const text = document.createElement("span");
   text.className = "location-card-text";

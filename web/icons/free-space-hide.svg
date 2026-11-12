@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#404040" stroke-width="1" stroke-linecap="square" stroke-linejoin="miter" role="img" aria-labelledby="title">
+  <title id="title">Hide free space</title>
+  <path d="M1.5 3.5h13v9h-13z" fill="#929a9f" vector-effect="non-scaling-stroke" />
+  <path d="M1.5 7.5h13" vector-effect="non-scaling-stroke" />
+</svg>
